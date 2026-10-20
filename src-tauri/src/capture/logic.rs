@@ -60,6 +60,11 @@ pub fn topmost_at(windows: &[Rect], x: i32, y: i32) -> Option<Rect> {
     windows.iter().find(|w| w.contains(x, y)).copied()
 }
 
+/// Position in `windows` of the window drawn on top at a point.
+pub fn topmost_index(windows: &[Rect], x: i32, y: i32) -> Option<usize> {
+    windows.iter().position(|w| w.contains(x, y))
+}
+
 /// The monitor holding a point, or the closest one when the point is in a gap between monitors.
 pub fn monitor_at(monitors: &[Rect], x: i32, y: i32) -> Option<Rect> {
     if let Some(m) = monitors.iter().find(|m| m.contains(x, y)) {
@@ -301,6 +306,34 @@ pub fn blend_mask(img: &mut RgbaImage, mask: &[u8], mw: u32, mh: u32, x: i32, y:
     }
 }
 
+// ---- Editor crop and pins ----
+
+/// The crop box the editor sent ("x,y,w,h" in image pixels), snapped to whole pixels and kept inside
+/// an image of `iw` by `ih`. None when nothing of the box is left or the text is not four numbers.
+pub fn clamp_crop(text: &str, iw: u32, ih: u32) -> Option<(u32, u32, u32, u32)> {
+    let v: Vec<f64> = text.split(',').map(|p| p.trim().parse::<f64>()).collect::<Result<_, _>>().ok()?;
+    let &[x, y, w, h] = v.as_slice() else { return None };
+    if !(x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite()) {
+        return None;
+    }
+    let left = x.round().clamp(0.0, f64::from(iw));
+    let top = y.round().clamp(0.0, f64::from(ih));
+    let right = (x + w).round().clamp(0.0, f64::from(iw));
+    let bottom = (y + h).round().clamp(0.0, f64::from(ih));
+    (right > left && bottom > top).then(|| (left as u32, top as u32, (right - left) as u32, (bottom - top) as u32))
+}
+
+/// Size of a pinned image after wheel notches (positive grows): 10 percent per notch, the aspect
+/// ratio kept, width between `min_w` and `max_w`.
+pub fn pin_size(width: u32, height: u32, notches: f64, min_w: u32, max_w: u32) -> (u32, u32) {
+    if width == 0 || height == 0 {
+        return (width, height);
+    }
+    let w = (f64::from(width) * 1.1f64.powf(notches)).round().clamp(f64::from(min_w), f64::from(max_w.max(min_w)));
+    let h = (w * f64::from(height) / f64::from(width)).round().max(1.0);
+    (w as u32, h as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +490,34 @@ mod tests {
         normalise_contrast(&mut light);
         assert_eq!(light.get_pixel(0, 0)[0], 0);
         assert_eq!(light.get_pixel(1, 0)[0], 255);
+    }
+
+    #[test]
+    fn topmost_index_picks_the_first_window_under_the_point() {
+        let windows = [Rect::new(0, 0, 50, 50), Rect::new(0, 0, 200, 200)];
+        assert_eq!(topmost_index(&windows, 10, 10), Some(0));
+        assert_eq!(topmost_index(&windows, 100, 100), Some(1));
+        assert_eq!(topmost_index(&windows, 300, 10), None);
+    }
+
+    #[test]
+    fn crop_snaps_and_stays_inside_the_image() {
+        assert_eq!(clamp_crop("10.4,20.6,100.2,50", 400, 300), Some((10, 21, 101, 50)));
+        assert_eq!(clamp_crop("-20,-10,100,100", 400, 300), Some((0, 0, 80, 90)));
+        assert_eq!(clamp_crop("350,250,200,200", 400, 300), Some((350, 250, 50, 50)));
+        assert_eq!(clamp_crop("500,10,50,50", 400, 300), None);
+        assert_eq!(clamp_crop("10,10,0.2,50", 400, 300), None);
+        assert_eq!(clamp_crop("10,10,50", 400, 300), None);
+        assert_eq!(clamp_crop("a,b,c,d", 400, 300), None);
+        assert_eq!(clamp_crop("NaN,0,10,10", 400, 300), None);
+    }
+
+    #[test]
+    fn pin_zoom_keeps_the_aspect_and_the_limits() {
+        assert_eq!(pin_size(200, 100, 0.0, 80, 2000), (200, 100));
+        assert_eq!(pin_size(200, 100, 1.0, 80, 2000), (220, 110));
+        assert_eq!(pin_size(200, 100, -30.0, 80, 2000), (80, 40));
+        assert_eq!(pin_size(200, 100, 60.0, 80, 500), (500, 250));
+        assert_eq!(pin_size(0, 0, 1.0, 80, 500), (0, 0));
     }
 }

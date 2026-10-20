@@ -20,6 +20,7 @@ use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationElement, TreeScope_Children, TreeScope_Descendants,
     UIA_ButtonControlTypeId, UIA_ClassNamePropertyId, UIA_ControlTypePropertyId,
 };
+use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_GETSTATE, ABM_SETSTATE, ABS_AUTOHIDE, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowW, GetAncestor, GetClassNameW, GetWindowRect, WindowFromPoint, GA_ROOT,
 };
@@ -239,12 +240,43 @@ pub fn process_app_id(pid: u32) -> Option<String> {
     }
 }
 
+/// The taskbar state flags with auto-hide switched on or off, other flags kept.
+fn with_autohide(state: u32, on: bool) -> u32 {
+    if on { state | ABS_AUTOHIDE } else { state & !ABS_AUTOHIDE }
+}
+
+fn app_bar(lparam: isize) -> APPBARDATA {
+    let hwnd = unsafe { FindWindowW(windows::core::w!("Shell_TrayWnd"), None) }.unwrap_or_default();
+    APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, hWnd: hwnd, lParam: LPARAM(lparam), ..Default::default() }
+}
+
+/// Whether the taskbar hides itself when not in use.
+pub fn autohide() -> bool {
+    let mut data = app_bar(0);
+    unsafe { SHAppBarMessage(ABM_GETSTATE, &mut data) as u32 & ABS_AUTOHIDE != 0 }
+}
+
+/// Turns taskbar auto-hide on or off for the session; the caller restores what it changed.
+pub fn set_autohide(on: bool) {
+    let mut data = app_bar(0);
+    let state = unsafe { SHAppBarMessage(ABM_GETSTATE, &mut data) } as u32;
+    let mut data = app_bar(with_autohide(state, on) as isize);
+    unsafe { SHAppBarMessage(ABM_SETSTATE, &mut data) };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn b(name: &str, id: &str) -> TaskbarButton {
         TaskbarButton { name: name.into(), automation_id: id.into(), rect: Rect { x: 10, y: 1000, width: 40, height: 40 }, taskbar: Rect::default() }
+    }
+
+    #[test]
+    fn autohide_flag_keeps_other_flags() {
+        assert_eq!(with_autohide(2, true), 3);
+        assert_eq!(with_autohide(3, false), 2);
+        assert_eq!(with_autohide(0, false), 0);
     }
 
     #[test]

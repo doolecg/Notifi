@@ -441,6 +441,11 @@
       background-color var(--sel) var(--m-selectionMove-ease);
   }
 
+  .list > .row {
+    min-height: 0;
+    border-top: 2px solid transparent;
+  }
+
   .row.sel {
     border-color: var(--acc);
     background: var(--acc-soft);

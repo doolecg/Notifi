@@ -25,6 +25,8 @@ mod win_observe;
 #[cfg(windows)]
 pub mod win_drag;
 #[cfg(windows)]
+pub mod win_switcher;
+#[cfg(windows)]
 pub mod win_taskbar;
 #[cfg(windows)]
 pub mod win_thumbnail;

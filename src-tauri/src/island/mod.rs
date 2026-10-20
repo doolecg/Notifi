@@ -15,6 +15,7 @@ pub mod lyrics;
 pub mod terminals;
 pub mod timer;
 pub mod usage;
+pub mod watch;
 
 use std::{
     sync::{
@@ -275,6 +276,8 @@ pub struct Snapshot {
     /// False when the platform has no media session API.
     media_supported: bool,
     open: bool,
+    /// The text read from the watched screen area, for the resting pill; `None` when nothing is watched or it is not shown.
+    watch: Option<watch::Reading>,
 }
 
 #[derive(Serialize, Clone)]
@@ -638,6 +641,7 @@ fn start(app: &AppHandle) {
     let Some(wake) = app.state::<IslandState>().wake_rx.lock().unwrap().take() else { return };
     start_usage(app);
     start_claude_limits(app);
+    watch::start(app);
     #[cfg(windows)]
     start_raise(app);
     let app = app.clone();
@@ -833,6 +837,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             brightness: bright,
             media_supported,
             open,
+            watch: watch::reading(),
         };
         if let Ok(value) = serde_json::to_value(&snap) {
             let mut i = state.inner.lock().unwrap();

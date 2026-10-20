@@ -16,8 +16,12 @@ pub fn grab(_r: &Rect) -> Option<Frame> {
     None
 }
 
-pub fn top_windows(_skip: &[isize]) -> Vec<Rect> {
+pub fn top_windows(_skip: &[isize]) -> Vec<(isize, Rect)> {
     Vec::new()
+}
+
+pub fn grab_window(_hwnd: isize, _frame: &Rect) -> Option<RgbaImage> {
+    None
 }
 
 pub fn set_excluded(_hwnd: isize, _on: bool) -> bool {
@@ -54,3 +58,11 @@ pub fn ocr_lines(_img: &RgbaImage, _languages: &[String]) -> Result<Vec<String>,
 }
 
 pub fn watermark(_img: &mut RgbaImage, _text: &str) {}
+
+pub fn ocr_boxes(_img: &RgbaImage, _languages: &[String]) -> Result<Vec<[f64; 4]>, String> {
+    Err("Text recognition is only built for Windows so far.".into())
+}
+
+pub fn trash(path: &std::path::Path) -> Result<(), String> {
+    std::fs::remove_file(path).map_err(|e| e.to_string())
+}

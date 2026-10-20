@@ -322,10 +322,12 @@
   }
 
   .menu {
-    position: absolute;
-    top: 30px;
-    right: 6px;
+    position: fixed;
+    top: 8px;
+    right: 8px;
     z-index: 2;
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     min-width: 170px;

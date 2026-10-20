@@ -128,9 +128,24 @@ pub fn layout(size: &str, custom_w: f64, custom_h: f64, counts: (usize, usize, u
     }
 }
 
+/// The docked menu is roomier than the floating one: it rises from the taskbar and its modules need the height.
+pub const DOCK_TALL: f64 = 600.0;
+
+pub fn dock_open_size(size: &str, custom_w: f64, custom_h: f64) -> (f64, f64) {
+    match size {
+        "spacious" => (620.0, 420.0),
+        "custom" => {
+            let (w, h) = open_size(size, custom_w, custom_h);
+            // The stretched menu asks for the tallest custom height.
+            if h >= MAX_H { (w, DOCK_TALL) } else { (w, h) }
+        }
+        _ => (500.0, 320.0),
+    }
+}
+
 /// Layout for the bottom-left dock: every button goes in one column to the right of the menu.
 pub fn layout_dock(size: &str, custom_w: f64, custom_h: f64, counts: (usize, usize, usize)) -> Layout {
-    let open = open_size(size, custom_w, custom_h);
+    let open = dock_open_size(size, custom_w, custom_h);
     Layout {
         dock: true,
         window: dock_window_size(open),
@@ -230,10 +245,12 @@ mod tests {
         let l = layout_dock("compact", 0.0, 0.0, (2, 2, 1));
         assert!(l.dock && l.left.is_empty());
         assert_eq!(l.right.len(), 5);
-        assert_eq!(l.right[0], (440.0 + SIDE_GAP + 20.0, 28.0));
-        assert_eq!(l.right[4], (440.0 + SIDE_GAP + 20.0, 28.0 + 4.0 * 50.0));
+        assert_eq!(l.right[0], (500.0 + SIDE_GAP + 20.0, 28.0));
+        assert_eq!(l.right[4], (500.0 + SIDE_GAP + 20.0, 28.0 + 4.0 * 50.0));
         assert!(l.bottom.is_empty());
-        assert_eq!(l.window, (440.0 + SIDE_GAP + ORBIT_D + EDGE, 236.0 + EDGE + DOCK_GAP));
+        assert_eq!(l.window, (500.0 + SIDE_GAP + ORBIT_D + EDGE, 320.0 + EDGE + DOCK_GAP));
+        let tall = layout_dock("custom", 500.0, MAX_H, (2, 2, 1));
+        assert_eq!(tall.open, (500.0, DOCK_TALL));
     }
 
     #[test]

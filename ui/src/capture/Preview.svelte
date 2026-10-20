@@ -57,6 +57,7 @@
         <button class="main" onclick={() => act('save')}>{data.autoCopy ? 'Save and copy' : 'Save'}</button>
         <button onclick={() => act('shelf')}>Shelf</button>
         <button onclick={() => act('edit')}>Edit</button>
+        <button onclick={() => act('pin')}>Pin</button>
         <button onclick={() => act('text')}>Copy text</button>
         <button class="quiet" onclick={() => act('dismiss')} title="Dismiss">Close</button>
       </div>
@@ -101,6 +102,7 @@
   .shot {
     display: flex;
     flex: 1;
+    min-height: 84px;
     align-items: center;
     justify-content: center;
     min-height: 0;

@@ -55,6 +55,9 @@ pub struct FeatureShortcut {
     pub action: &'static str,
 }
 
+/// Opens the Media tools window. Not named "media..." because those actions are play, pause and track keys.
+const MEDIA_TOOLS: &str = "openMediaTools";
+
 pub const FEATURE_SHORTCUTS: &[FeatureShortcut] = &[
     FeatureShortcut { namespace: "commandBar", key: "shortcut", action: crate::commandbar::ACTION },
     FeatureShortcut { namespace: "clipboardHistory", key: "openShortcut", action: "clipboardHistory" },
@@ -73,7 +76,9 @@ pub const FEATURE_SHORTCUTS: &[FeatureShortcut] = &[
     FeatureShortcut { namespace: "screenRecording", key: "pauseShortcut", action: crate::recording::PAUSE },
     FeatureShortcut { namespace: "screenshot", key: "shortcut", action: "captureScreenshot" },
     FeatureShortcut { namespace: "textFromScreen", key: "shortcut", action: "captureText" },
+    FeatureShortcut { namespace: "recentCaptures", key: "shortcut", action: "captureRecent" },
     FeatureShortcut { namespace: "radialMenu", key: "shortcut", action: crate::radial::ACTION },
+    FeatureShortcut { namespace: "mediaTools", key: "shortcut", action: MEDIA_TOOLS },
 ];
 
 /// Whether a settings change touches a feature shortcut or its feature switch.
@@ -207,6 +212,7 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
 pub fn run(app: &AppHandle, action: &str) {
     match action {
         "openSettings" => window::open_settings(app),
+        MEDIA_TOOLS => crate::media_tools::open(app),
         media if media.starts_with("media") => crate::island::run_media_key(app, media),
         island if island.starts_with("island") => crate::island::run_action(app, island),
         sound if crate::sound::ACTIONS.contains(&sound) => crate::sound::run_action(app, sound),
@@ -246,5 +252,21 @@ pub fn pause_shortcuts(app: AppHandle, store: State<Store>, paused: bool) {
         app.state::<Registry>().bound.lock().unwrap().clear();
     } else {
         apply(&app, &store.get().shortcuts);
+    }
+}
+
+#[cfg(test)]
+mod media_tools_shortcut_tests {
+    use super::*;
+
+    #[test]
+    fn media_tools_action_is_not_taken_by_the_media_keys() {
+        assert!(!MEDIA_TOOLS.starts_with("media") && !MEDIA_TOOLS.starts_with("island"));
+        assert!(FEATURE_SHORTCUTS.iter().any(|f| f.namespace == "mediaTools" && f.key == "shortcut" && f.action == MEDIA_TOOLS));
+    }
+
+    #[test]
+    fn accelerators_parse() {
+        assert!(parse("Ctrl+Alt+M").is_ok());
     }
 }

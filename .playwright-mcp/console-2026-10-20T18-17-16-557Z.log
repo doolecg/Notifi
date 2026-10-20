@@ -1,0 +1,41 @@
+[   51080ms] TypeError: Cannot read properties of undefined (reading 'find')
+
+	in <unknown>
+	in undefined
+
+    at http://localhost:1420/src/scratchpad/Scratchpad.svelte:95:52
+    at update_reaction (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4209:16)
+    at execute_derived (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:1770:12)
+    at update_derived (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:1784:14)
+    at is_dirty (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4155:30)
+    at #traverse (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2153:14)
+    at #process (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2079:19)
+    at Batch.flush (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2261:17)
+    at Array.<anonymous> (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2397:32)
+    at run_all (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:39:45)
+[   51105ms] TypeError: Cannot read properties of undefined (reading 'find')
+
+	in <unknown>
+	in undefined
+
+    at http://localhost:1420/src/scratchpad/Scratchpad.svelte:95:52
+    at update_reaction (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4209:16)
+    at execute_derived (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:1770:12)
+    at update_derived (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:1784:14)
+    at is_dirty (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4155:30)
+    at is_dirty (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4155:8)
+    at #traverse (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2153:14)
+    at #process (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2079:19)
+    at Batch.flush (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2261:17)
+    at Array.<anonymous> (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2397:32)
+[   51117ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1420/favicon.ico:0
+[   99631ms] TypeError: Cannot read properties of null (reading 'entries')
+    at load (http://localhost:1420/src/clipboard/Clipboard.svelte:180:25)
+[  104287ms] TypeError: Cannot read properties of null (reading 'hasBattery')
+    at http://localhost:1420/src/panel/Panel.svelte:217:24
+[  118260ms] TypeError: Cannot read properties of null (reading 'entries')
+    at load (http://localhost:1420/src/clipboard/Clipboard.svelte:180:25)
+[  563961ms] TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/@tauri-apps_api_event.js?v=df9c1f99:97:42)
+    at http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/@tauri-apps_api_event.js?v=df9c1f99:142:22
+    at http://localhost:1420/src/capture/Editor.svelte?t=1792519446104:315:20

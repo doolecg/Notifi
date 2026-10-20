@@ -1,6 +1,6 @@
 # Notifi progress notes
 
-Last saved: 2026-10-20 (after wave 2 was built and tested).
+Last saved: 2026-10-20 (after wave 3 was built and tested).
 
 ## Where things stand
 - Branch `dev-0.2.0`, local only, nothing pushed. Version 0.2.0 in `package.json`.
@@ -29,6 +29,14 @@ Last saved: 2026-10-20 (after wave 2 was built and tested).
 - Radial menu: `src-tauri/src/radial`, plus Monitor, Command bar, App switcher (mergeTabs), Island lock notice/sounds, backup tests, cleaning mode suspends click filter and debounce.
 - Island pill now shows "sessions" = terminals open (counted from running claude/codex/opencode programs) and "subagents" running; subagent logs no longer count as sessions, and a turn waiting on subagents no longer reads "Needs you".
 - Not built: share links (expiry, recordingLimit), screenshot editor extras (spotlight, ellipse, crop, layers), WebM, post-recording editor, fan curves (no Windows API), app switcher other-desktop lists, browser tabs, Island pickArea/hideWhenIdle.
+
+## Wave 3 (written, compiled, tests pass, not yet tried live)
+- UI audit: cut-off fixes for scratchpad, shelf, switcher, taskbar preview, recording bar, colour picker, radial wheel editor, capture editor, apps window. `ui/src/lib/fill.css` gives a window's `#app` full height; import it only in windows that fill their size (not panel or command bar, which measure their content).
+- Island menu is roomier when docked: 500x320 (compact), 620x420 (spacious), 600 px when stretched. `DOCK_TALL` in `island/layout.rs` and `TALL_H` in `Island.svelte` must match.
+- Screenshot extras: editor tools (line, ellipse, highlighter, spotlight, step badges, crop, text-only blur), pin windows, recent captures window and list, PrintWindow window grabs, after-recording trimmer (GIF and MP4).
+- Switcher: other-desktop, hidden (tray) and windowless apps (Windows 11 22H2+), taskbar-preview extras, Media tools shortcut, per-display extra dimming page, brightness slider in the tray panel.
+- Island watch (pick a screen area, show its OCR text as a pill page named Watch).
+- Still not built: browser tabs in the switcher (needs a browser extension), switcher badge for other-desktop windows, share links, select/move and eraser and layers in the editor, post-recording editor beyond trim.
 
 ## Known gaps
 - Cannot be built on Windows: keyboard backlight, extra brightness (SDR white level), Bluetooth connect notices.

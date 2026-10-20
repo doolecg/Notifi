@@ -81,7 +81,7 @@
 }
 .t .name {
   display: block;
-  max-width: 340px;
+  max-width: clamp(200px, calc(100vw - 560px), 340px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

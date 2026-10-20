@@ -25,7 +25,7 @@ use crate::win::Win;
 mod control;
 
 /// Shell windows that fill the screen without being an app (desktop, taskbars).
-const SHELL_CLASSES: &[&str] = &["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];
+pub(crate) const SHELL_CLASSES: &[&str] = &["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"];
 
 fn rect(r: RECT) -> Rect {
     Rect {
@@ -36,7 +36,7 @@ fn rect(r: RECT) -> Rect {
     }
 }
 
-unsafe fn class_name(hwnd: HWND) -> String {
+pub(crate) unsafe fn class_name(hwnd: HWND) -> String {
     let mut buf = [0u16; 256];
     let n = GetClassNameW(hwnd, &mut buf);
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
@@ -53,7 +53,7 @@ unsafe fn title(hwnd: HWND) -> String {
 }
 
 /// Visible bounds without the invisible resize border, in physical pixels.
-unsafe fn bounds(hwnd: HWND) -> Rect {
+pub(crate) unsafe fn bounds(hwnd: HWND) -> Rect {
     let mut r = RECT::default();
     let size = std::mem::size_of::<RECT>() as u32;
     if DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut RECT as *mut _, size).is_err() {
@@ -80,7 +80,7 @@ pub(crate) unsafe fn monitor_name(hwnd: HWND) -> Option<String> {
 
 static EXE_NAMES: Mutex<Option<HashMap<u32, Option<String>>>> = Mutex::new(None);
 
-fn exe_name(pid: u32) -> Option<String> {
+pub(crate) fn exe_name(pid: u32) -> Option<String> {
     let mut guard = EXE_NAMES.lock().unwrap_or_else(|e| e.into_inner());
     let cache = guard.get_or_insert_with(HashMap::new);
     if let Some(n) = cache.get(&pid) {
@@ -104,7 +104,7 @@ fn exe_name(pid: u32) -> Option<String> {
     name
 }
 
-unsafe fn info(hwnd: HWND, foreground: HWND) -> WindowInfo {
+pub(crate) unsafe fn info(hwnd: HWND, foreground: HWND) -> WindowInfo {
     let mut pid = 0u32;
     GetWindowThreadProcessId(hwnd, Some(&mut pid));
     WindowInfo {
@@ -120,14 +120,14 @@ unsafe fn info(hwnd: HWND, foreground: HWND) -> WindowInfo {
 }
 
 /// The windows Alt+Tab would show: visible, uncloaked, unowned (or app-styled), titled, not tool windows.
-fn is_app_window(visible: bool, cloaked: bool, owned: bool, ex_style: u32, has_title: bool) -> bool {
+pub(crate) fn is_app_window(visible: bool, cloaked: bool, owned: bool, ex_style: u32, has_title: bool) -> bool {
     let app = ex_style & WS_EX_APPWINDOW.0 != 0;
     let tool = ex_style & WS_EX_TOOLWINDOW.0 != 0;
     visible && !cloaked && has_title && (app || (!owned && !tool))
 }
 
 /// Fullscreen means filling the monitor, not just being maximised (which with an auto-hide taskbar fills it too).
-fn is_fullscreen(class: &str, bounds: Rect, monitor: Rect, maximised_with_caption: bool) -> bool {
+pub(crate) fn is_fullscreen(class: &str, bounds: Rect, monitor: Rect, maximised_with_caption: bool) -> bool {
     !SHELL_CLASSES.contains(&class) && !maximised_with_caption && covers(bounds, monitor)
 }
 

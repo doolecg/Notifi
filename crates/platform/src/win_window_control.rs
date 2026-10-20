@@ -33,7 +33,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_SHOW, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MOVESIZEEND,
     EVENT_SYSTEM_MOVESIZESTART, MSG, OBJID_WINDOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_CLOSE,
+    SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_CLOSE,
     WS_BORDER, WS_THICKFRAME,
 };
 
@@ -115,6 +115,9 @@ pub(super) fn focus(id: WindowId) -> Result<()> {
     unsafe {
         if IsIconic(h).as_bool() {
             let _ = ShowWindow(h, SW_RESTORE);
+        } else if !IsWindowVisible(h).as_bool() {
+            // An app hidden to its tray icon.
+            let _ = ShowWindow(h, SW_SHOW);
         }
         // A tap on Alt lets a background process take the foreground.
         send_keys(&[key(VK_MENU, KEYBD_EVENT_FLAGS(0)), key(VK_MENU, KEYEVENTF_KEYUP)]);

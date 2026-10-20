@@ -3,6 +3,8 @@
 //! (clipboard, file, Shelf, editor, preview), scrolling capture and text recognition.
 
 mod logic;
+pub mod pin;
+pub mod recent;
 mod stitch;
 #[cfg_attr(windows, path = "win.rs")]
 #[cfg_attr(not(windows), path = "other.rs")]
@@ -35,13 +37,13 @@ use tauri::{
 };
 
 use crate::settings::{Settings, Store};
-use logic::{file_stem, join_text, resolve_target, shorten, unique_path, web_link, Frame, Rect, Target};
+use logic::{clamp_crop, file_stem, join_text, resolve_target, shorten, topmost_index, unique_path, web_link, Frame, Rect, Target};
 use stitch::{Step, Stitcher};
 
 pub const OVERLAY: &str = "capture";
 pub const PREVIEW: &str = "capturepreview";
 pub const EDITOR: &str = "captureedit";
-pub const ACTIONS: &[&str] = &["captureScreenshot", "captureText"];
+pub const ACTIONS: &[&str] = &["captureScreenshot", "captureText", "captureRecent"];
 
 const START_EVENT: &str = "capture://start";
 const PREVIEW_EVENT: &str = "capture://preview";
@@ -69,6 +71,8 @@ struct Session {
     mode: Mode,
     frame: Arc<Frame>,
     windows: Vec<Rect>,
+    /// Window handles in the same order as `windows`.
+    hwnds: Vec<isize>,
     monitors: Vec<Rect>,
     freeze: bool,
 }
@@ -86,6 +90,7 @@ pub struct CaptureState {
     last: Mutex<Option<Arc<Last>>>,
     last_rect: Mutex<Option<Rect>>,
     link: Mutex<Option<String>>,
+    pins: pin::Pins,
 }
 
 // ---- Options ----
@@ -199,6 +204,7 @@ pub fn available() -> bool {
 pub fn run_action(app: &AppHandle, action: &str) {
     match action {
         "captureText" => start(app, Mode::Text),
+        "captureRecent" => recent::open(app),
         _ => match Opts::read(app).default_mode.as_str() {
             "text" => start(app, Mode::Text),
             "color" => crate::picker::toggle(app),
@@ -311,7 +317,7 @@ fn open_selector(app: &AppHandle, mode: Mode) -> bool {
     skip.extend(hwnd_of(app, OVERLAY));
     skip.extend(hwnd_of(app, PREVIEW));
     let local = |r: &Rect| r.offset(-screen.x, -screen.y);
-    let windows = sys::top_windows(&skip);
+    let (hwnds, windows): (Vec<isize>, Vec<Rect>) = sys::top_windows(&skip).into_iter().unzip();
     let monitors = monitor_rects(app);
     let state = app.state::<CaptureState>();
     let outline = if o.outline { *state.last_rect.lock().unwrap() } else { None };
@@ -327,7 +333,7 @@ fn open_selector(app: &AppHandle, mode: Mode) -> bool {
         magnification: o.magnification,
         outline: outline.map(|r| local(&r)),
     };
-    *state.session.lock().unwrap() = Some(Session { mode, frame: Arc::new(frame), windows, monitors, freeze: o.freeze });
+    *state.session.lock().unwrap() = Some(Session { mode, frame: Arc::new(frame), windows, hwnds, monitors, freeze: o.freeze });
     state.shown.store(false, Ordering::SeqCst);
     let Some(window) = app.get_webview_window(OVERLAY) else {
         state.session.lock().unwrap().take();
@@ -372,7 +378,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .build()?;
     WebviewWindowBuilder::new(app, PREVIEW, WebviewUrl::App("capture.html#preview".into()))
         .title("Notifi Capture Preview")
-        .inner_size(340.0, 236.0)
+        .inner_size(340.0, 252.0)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -491,7 +497,19 @@ fn run_finish(app: &AppHandle, finish: Finish) {
         None => return,
     };
     *state.last_rect.lock().unwrap() = Some(rect);
-    let img = if session.freeze {
+    // A window grab asks the window to draw itself, so windows lying over it stay out of the shot.
+    let own = match finish.target {
+        Target::Window { x, y } if session.mode == Mode::Screenshot && !finish.scrolling => {
+            let (ox, oy) = session.frame.origin;
+            topmost_index(&session.windows, x.floor() as i32 + ox, y.floor() as i32 + oy)
+                .and_then(|i| session.hwnds.get(i).copied())
+                .and_then(|h| sys::grab_window(h, &rect))
+        }
+        _ => None,
+    };
+    let img = if own.is_some() {
+        own
+    } else if session.freeze {
         session.frame.crop(&rect)
     } else {
         if !state.hideable.load(Ordering::SeqCst) {
@@ -577,6 +595,7 @@ fn save_file(app: &AppHandle, o: &Opts, last: &Last) -> Result<PathBuf, String> 
     let path = unique_path(&dir, &file_stem(&o.name_template, &sys::local_time()), ext, |p| p.exists());
     fs::write(&path, bytes).map_err(|e| format!("Could not save {}: {e}", path.display()))?;
     *last.saved.lock().unwrap() = Some(path.clone());
+    recent::remember(app, &path, "shot");
     Ok(path)
 }
 
@@ -665,7 +684,7 @@ fn show_preview(app: &AppHandle, o: &Opts, last: &Last) {
         text: String::new(),
         link: None,
     };
-    show_card(app, (340.0, 236.0), data);
+    show_card(app, (340.0, 252.0), data);
 }
 
 fn hide_preview(app: &AppHandle) {
@@ -689,7 +708,7 @@ pub async fn capture_thumb(app: AppHandle) -> Result<Response, String> {
     Ok(Response::new(png_fast(&small)?))
 }
 
-/// A button on the preview: copy, save, shelf, edit, text, open-link, stop or dismiss.
+/// A button on the preview: copy, save, shelf, edit, pin, text, open-link, stop or dismiss.
 #[tauri::command]
 pub fn capture_action(app: AppHandle, action: String) {
     let _ = std::thread::Builder::new().name("notifi-capture-action".into()).spawn(move || {
@@ -706,6 +725,10 @@ pub fn capture_action(app: AppHandle, action: String) {
             "edit" => {
                 hide_preview(&app);
                 open_editor(&app);
+            }
+            "pin" => {
+                hide_preview(&app);
+                pin::pin_last(&app);
             }
             "copy" | "save" | "shelf" | "text" => {
                 let Some(last) = last_shot(&app) else { return };
@@ -794,6 +817,18 @@ pub fn capture_editor_opts(app: AppHandle) -> EditorOpts {
     EditorOpts { text_size: o.text_size, blur: o.blur }
 }
 
+/// Boxes around the words found in a part of the editor image (x, y, width, height in image pixels),
+/// for the text-only blur.
+#[tauri::command]
+pub async fn capture_editor_text_boxes(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<Vec<[f64; 4]>, String> {
+    let last = last_shot(&app).ok_or("There is no capture to read.")?;
+    let (cx, cy, cw, ch) = clamp_crop(&format!("{x},{y},{w},{h}"), last.img.width(), last.img.height()).ok_or("That area is outside the picture.")?;
+    let part = image::imageops::crop_imm(&last.img, cx, cy, cw, ch).to_image();
+    let languages = Opts::read(&app).languages;
+    let boxes = sys::ocr_boxes(&part, &languages)?;
+    Ok(boxes.into_iter().map(|b| [b[0] + f64::from(cx), b[1] + f64::from(cy), b[2], b[3]]).collect())
+}
+
 #[tauri::command]
 pub async fn capture_editor_image(app: AppHandle) -> Result<Response, String> {
     let last = last_shot(&app).ok_or("There is no capture to edit.")?;
@@ -805,12 +840,19 @@ pub async fn capture_editor_image(app: AppHandle) -> Result<Response, String> {
 pub fn capture_editor_export(app: AppHandle, request: Request<'_>) -> Result<String, String> {
     let InvokeBody::Raw(bytes) = request.body() else { return Err("The editor sent no image.".into()) };
     let action = request.headers().get("action").and_then(|v| v.to_str().ok()).unwrap_or("copy").to_string();
-    let img = image::load_from_memory_with_format(bytes, ImageFormat::Png).map_err(|e| e.to_string())?.to_rgba8();
+    let mut img = image::load_from_memory_with_format(bytes, ImageFormat::Png).map_err(|e| e.to_string())?.to_rgba8();
+    if let Some((x, y, w, h)) = request.headers().get("crop").and_then(|v| v.to_str().ok()).and_then(|v| clamp_crop(v, img.width(), img.height())) {
+        img = image::imageops::crop_imm(&img, x, y, w, h).to_image();
+    }
     let o = Opts::read(&app);
     let scale = last_shot(&app).map_or(1.0, |l| l.scale);
     let last = Arc::new(Last { img, scale, saved: Mutex::new(None) });
     *app.state::<CaptureState>().last.lock().unwrap() = Some(last.clone());
     match action.as_str() {
+        "pin" => {
+            pin::pin_last(&app);
+            Ok("Pinned".into())
+        }
         "save" => save_file(&app, &o, &last).map(|p| format!("Saved {}", file_label(&p))),
         "shelf" => save_file(&app, &o, &last).map(|p| {
             crate::clipboard::shelf::add(&app, &[p]);
@@ -866,7 +908,7 @@ fn scroll_capture(app: &AppHandle, o: &Opts, rect: Rect, first: RgbaImage) -> Op
     state.stop_scroll.store(false, Ordering::SeqCst);
     let _guard = ScrollGuard(app);
     let hint = if o.scroll_auto { "Scrolling for you. Esc or Enter stops." } else { "Scroll the page yourself. Esc or Enter stops." };
-    show_card(app, (340.0, 96.0), PreviewData { kind: "scroll", seconds: -1, auto_copy: o.auto_copy, width: 0, height: first.height(), text: hint.into(), link: None });
+    show_card(app, (340.0, 150.0), PreviewData { kind: "scroll", seconds: -1, auto_copy: o.auto_copy, width: 0, height: first.height(), text: hint.into(), link: None });
     let armed = Instant::now();
     let before = sys::cursor();
     if o.scroll_auto {
@@ -989,7 +1031,7 @@ fn read_text(app: &AppHandle, o: &Opts, img: RgbaImage) {
             } else if o.show_toast {
                 *state.link.lock().unwrap() = Some(link.clone());
                 let data = PreviewData { kind: "link", seconds: 8, auto_copy: false, width: 0, height: 0, text: link.clone(), link: Some(link) };
-                show_card(app, (340.0, 120.0), data);
+                show_card(app, (340.0, 160.0), data);
             }
         }
         return;

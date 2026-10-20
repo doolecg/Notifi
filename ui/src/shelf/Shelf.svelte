@@ -323,9 +323,23 @@
     width: 100%;
     font-size: 12px;
   }
+  .item {
+    position: relative;
+  }
   .actions {
+    position: absolute;
+    top: 50%;
+    right: 6px;
     display: flex;
+    border-radius: 7px;
+    background: var(--bg);
     opacity: 0;
+    transform: translateY(-50%);
+  }
+  .across .actions {
+    top: 4px;
+    right: 4px;
+    transform: none;
   }
   .item:hover .actions,
   .item:focus-within .actions {

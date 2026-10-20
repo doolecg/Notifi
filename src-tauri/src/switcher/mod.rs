@@ -3,15 +3,17 @@
 //! keeps the keyboard until a window is chosen. Keys arrive from a low-level hook (Windows) or a
 //! key grab (X11) and are handled on one controller thread, in order.
 
+mod filter;
 mod keys;
 mod model;
+mod sources;
 pub mod taskbar;
 mod thumbs;
 
 #[cfg(windows)]
 mod hook_win;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
@@ -23,6 +25,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::settings::{Settings, Store};
+use filter::{Facts, Rules};
 use keys::{Bindings, Command};
 use model::{Entry, Grid, Layout, Model};
 use thumbs::{Kind, Slot, Thumbs};
@@ -56,6 +59,8 @@ struct Inner {
     thumbs: Thumbs,
     icons: HashMap<String, Option<String>>,
     kind: Option<Kind>,
+    /// Programs behind the apps-without-windows entries, by entry id.
+    idle: HashMap<u64, String>,
 }
 
 #[derive(Default)]
@@ -89,12 +94,16 @@ fn settings(app: &AppHandle) -> Settings {
 
 /// The display name of an app: executable stem on Windows, WM_CLASS on Linux.
 pub(crate) fn app_name(w: &WindowInfo) -> String {
-    let id = w.app_id.clone().unwrap_or_default();
-    let stem = id.strip_suffix(".exe").or_else(|| id.strip_suffix(".EXE")).unwrap_or(&id);
+    let name = app_name_of(w.app_id.as_deref().unwrap_or_default());
+    if name.is_empty() { w.title.clone() } else { name }
+}
+
+fn app_name_of(app_id: &str) -> String {
+    let stem = app_id.strip_suffix(".exe").or_else(|| app_id.strip_suffix(".EXE")).unwrap_or(app_id);
     let mut c = stem.chars();
     match c.next() {
         Some(f) => f.to_uppercase().chain(c).collect(),
-        None => w.title.clone(),
+        None => String::new(),
     }
 }
 
@@ -107,11 +116,15 @@ pub(crate) fn listed(list: &[String], app: &str) -> bool {
 }
 
 /// "Merge tabs": windows of one app at exactly the same place and size are tabs of one window, so only
-/// the front-most is kept. Minimised windows have no real position and are never merged.
-fn merge_tabs(list: Vec<WindowInfo>) -> Vec<WindowInfo> {
+/// the front-most is kept. Minimised windows have no real position and windows on other desktops share
+/// no screen with these, so neither is merged.
+fn merge_tabs(list: Vec<WindowInfo>, other_desktop: &HashSet<u64>) -> Vec<WindowInfo> {
     let mut kept: Vec<WindowInfo> = Vec::with_capacity(list.len());
     for w in list {
-        let twin = !w.minimized && w.app_id.is_some() && kept.iter().any(|k| !k.minimized && k.app_id == w.app_id && k.bounds == w.bounds);
+        let stacked = |k: &WindowInfo| {
+            !k.minimized && !other_desktop.contains(&k.id.0) && k.app_id == w.app_id && k.bounds == w.bounds
+        };
+        let twin = !w.minimized && !other_desktop.contains(&w.id.0) && w.app_id.is_some() && kept.iter().any(stacked);
         if !twin {
             kept.push(w);
         }
@@ -230,24 +243,34 @@ fn cursor_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
 
 fn collect(app: &AppHandle, s: &Settings, same_app: bool, mru: &[u64], kind: Kind) -> Vec<Entry> {
     let platform = app.state::<Platform>();
-    let Ok(list) = platform.windows().list() else { return Vec::new() };
+    let hidden_apps = opt_bool(s, NS, "showHiddenApps", true);
+    let found = sources::windows(&platform, hidden_apps);
     let me = std::process::id();
-    let show_min = opt_bool(s, NS, "showMinimised", true);
+    let rules = Rules {
+        show_minimised: opt_bool(s, NS, "showMinimised", true),
+        current_desktop_only: opt_bool(s, NS, "currentDesktopOnly", false),
+        show_hidden_apps: hidden_apps,
+        other_desktop_fullscreen: opt_bool(s, NS, "showOtherDesktopFullscreen", false),
+    };
     let display = opt_bool(s, NS, "currentDisplayOnly", false).then(|| cursor_monitor(app).and_then(|m| m.name().cloned())).flatten();
     let paused = opt_list(s, NS, "pauseApps");
-    let fg_app = same_app.then(|| list.iter().find(|w| w.focused).and_then(|w| w.app_id.clone())).flatten();
-    let list: Vec<WindowInfo> = list
+    let fg_app = same_app.then(|| found.iter().find(|(w, _)| w.focused).and_then(|(w, _)| w.app_id.clone())).flatten();
+    let with_windows: HashSet<String> = found.iter().filter_map(|(w, _)| w.app_id.as_ref().map(|a| a.to_lowercase())).collect();
+    let facts: HashMap<u64, Facts> = found.iter().map(|(w, f)| (w.id.0, *f)).collect();
+    let list: Vec<WindowInfo> = found
         .into_iter()
-        .filter(|w| w.pid != Some(me))
-        .filter(|w| show_min || !w.minimized)
-        .filter(|w| display.as_ref().is_none_or(|d| w.monitor.as_ref() == Some(d)))
-        .filter(|w| !same_app || (fg_app.is_some() && w.app_id == fg_app))
+        .filter(|(w, _)| w.pid != Some(me))
+        .filter(|(_, f)| filter::keep(*f, rules))
+        .filter(|(w, _)| display.as_ref().is_none_or(|d| w.monitor.as_ref() == Some(d)))
+        .filter(|(w, _)| !same_app || (fg_app.is_some() && w.app_id == fg_app))
+        .map(|(w, _)| w)
         .collect();
-    let list = if opt_bool(s, NS, "mergeTabs", false) { merge_tabs(list) } else { list };
+    let other_desktop: HashSet<u64> = facts.iter().filter(|(_, f)| f.other_desktop).map(|(id, _)| *id).collect();
+    let list = if opt_bool(s, NS, "mergeTabs", false) { merge_tabs(list, &other_desktop) } else { list };
     let zorder: Vec<u64> = list.iter().map(|w| w.id.0).collect();
     let order = model::mru_order(&zorder, mru);
     let state = app.state::<SwitcherState>();
-    order
+    let mut entries: Vec<Entry> = order
         .into_iter()
         .filter_map(|id| list.iter().find(|w| w.id.0 == id))
         .map(|w| {
@@ -261,18 +284,49 @@ fn collect(app: &AppHandle, s: &Settings, same_app: bool, mru: &[u64], kind: Kin
                 })
             };
             let name = app_name(w);
+            let f = facts.get(&w.id.0).copied().unwrap_or_default();
             Entry {
                 id: w.id.0,
                 title: w.title.clone(),
-                no_thumb: w.minimized || kind == Kind::None || listed(&paused, &app_key) || listed(&paused, &name),
+                no_thumb: w.minimized || f.tray_hidden || kind == Kind::None || listed(&paused, &app_key) || listed(&paused, &name),
                 app: name,
                 pid: w.pid,
                 minimized: w.minimized,
                 monitor: w.monitor.clone(),
                 icon,
+                other_desktop: f.other_desktop,
+                no_window: false,
             }
         })
-        .collect()
+        .collect();
+
+    let mut idle_paths = HashMap::new();
+    if opt_bool(s, NS, "showAppsWithoutWindows", false) && !same_app && display.is_none() {
+        let hide_file_manager = opt_bool(s, NS, "hideFileManager", false);
+        let window_only = opt_list(s, NS, "windowOnlyApps");
+        for a in sources::idle_apps() {
+            if a.pid == me || !filter::keep_windowless(&a.app_id, &with_windows, hide_file_manager, &window_only) {
+                continue;
+            }
+            let id = filter::idle_id(a.pid);
+            let name = app_name_of(&a.app_id);
+            entries.push(Entry {
+                id,
+                title: name.clone(),
+                app: name,
+                pid: Some(a.pid),
+                minimized: false,
+                monitor: None,
+                icon: None,
+                no_thumb: true,
+                other_desktop: false,
+                no_window: true,
+            });
+            idle_paths.insert(id, a.path);
+        }
+    }
+    state.inner.lock().unwrap().idle = idle_paths;
+    entries
 }
 
 const ICON_ROW: f64 = 112.0;
@@ -421,12 +475,16 @@ fn close(app: &AppHandle, focus: Option<u64>) {
             ctx.hook.reset();
         }
     }
-    if let Some(id) = focus {
+    let launch = focus.filter(|id| filter::is_idle(*id)).and_then(|id| state.inner.lock().unwrap().idle.get(&id).cloned());
+    if let Some(id) = focus.filter(|id| !filter::is_idle(*id)) {
         let _ = app.state::<Platform>().windows().focus(WindowId(id));
+    }
+    if let Some(path) = launch {
+        let _ = std::process::Command::new(path).spawn();
     }
     let (shown, generation) = {
         let mut inner = state.inner.lock().unwrap();
-        if let Some(id) = focus {
+        if let Some(id) = focus.filter(|id| !filter::is_idle(*id)) {
             model::touch(&mut inner.mru, id);
         }
         inner.thumbs.clear();
@@ -461,7 +519,7 @@ fn close_windows(app: &AppHandle, ids: &[u64], quit_pid: Option<u32>) {
             let _ = platform.windows().quit_process(pid);
         }
         None => {
-            for id in ids {
+            for id in ids.iter().filter(|id| !filter::is_idle(**id)) {
                 let _ = platform.windows().close(WindowId(*id));
             }
         }
@@ -774,8 +832,16 @@ mod tests {
     #[test]
     fn merging_tabs_keeps_the_front_window_of_each_stack() {
         let list = vec![win(1, "a.exe", 0, false), win(2, "a.exe", 0, false), win(3, "a.exe", 50, false), win(4, "b.exe", 0, false), win(5, "a.exe", 0, true), win(6, "a.exe", 0, true)];
-        let ids: Vec<u64> = merge_tabs(list).iter().map(|w| w.id.0).collect();
+        let ids: Vec<u64> = merge_tabs(list, &HashSet::new()).iter().map(|w| w.id.0).collect();
         assert_eq!(ids, vec![1, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn windows_on_other_desktops_are_not_merged() {
+        let list = vec![win(1, "a.exe", 0, false), win(2, "a.exe", 0, false), win(3, "a.exe", 0, false)];
+        let other: HashSet<u64> = [2].into_iter().collect();
+        let ids: Vec<u64> = merge_tabs(list, &other).iter().map(|w| w.id.0).collect();
+        assert_eq!(ids, vec![1, 2]);
     }
 
     #[test]

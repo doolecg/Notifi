@@ -78,10 +78,10 @@ fn pack(hi: u32, lo: u32) -> u64 {
     (u64::from(hi) << 32) | u64::from(lo)
 }
 
-struct Writer {
-    writer: IMFSinkWriter,
-    video: u32,
-    audio: Option<u32>,
+pub(super) struct Writer {
+    pub(super) writer: IMFSinkWriter,
+    pub(super) video: u32,
+    pub(super) audio: Option<u32>,
 }
 
 fn run_mf(cfg: &Config, rx: &Receiver<Msg>, ready: &Sender<Result<(), String>>) -> Result<(), String> {
@@ -176,7 +176,7 @@ unsafe fn audio_type(subtype: &windows::core::GUID, bytes_per_second: u32, block
     Ok(t)
 }
 
-fn open_writer(cfg: &Config) -> Result<Writer, String> {
+pub(super) fn open_writer(cfg: &Config) -> Result<Writer, String> {
     unsafe {
         let mut attrs: Option<IMFAttributes> = None;
         MFCreateAttributes(&mut attrs, 2).map_err(mf_err("Media Foundation"))?;

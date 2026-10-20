@@ -199,6 +199,7 @@ pub const PAGES: &[Page] = &[
             Card { title: "Recent captures", tab: "Sharing", feature: "recentCaptures", options: &[
                 key("shortcut", "Shortcut to open", "", ""),
                 num("keep", "Keep the last", "", 5.0, 500.0, 5.0, "captures", 50.0),
+                custom("list", "Recent captures", "The captures kept so far."),
             ], ..CARD },
         ],
         specs: &[
@@ -316,6 +317,7 @@ pub const PAGES: &[Page] = &[
         tool: true,
         cards: &[
             card("Output", &[
+                key("shortcut", "Shortcut to open Media tools", "", ""),
                 text("folder", "Output folder", "Leave empty to save next to the originals.", "Next to the source", ""),
                 sw("subfolder", "Put batches in a subfolder", "", true),
                 text("nameTemplate", "File name", "Placeholders: {name} {index} {date} {time} {width} {height} {format}.", "{name}", "{name}-converted"),

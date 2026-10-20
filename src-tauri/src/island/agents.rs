@@ -21,6 +21,8 @@ pub const OFFLINE_MS: u64 = 20_000;
 pub const TOOL_MAX_MS: u64 = 30 * 60_000;
 /// A pending tool call this quiet most likely waits on the user (a permission prompt).
 pub const NEEDS_MS: u64 = 8_000;
+/// A shell or agent tool that has been quiet this long may be waiting on you; shorter is just a tool still running.
+pub const NEEDS_SLOW_MS: u64 = 120_000;
 /// How long a finished agent reads as done.
 pub const DONE_MS: u64 = 8_000;
 const TAIL_BYTES: u64 = 512 * 1024;
@@ -96,7 +98,8 @@ pub enum Entry {
     /// The user started a turn, in this project when the line says.
     Prompt { project: Option<String> },
     /// `todos` is (done, total) when the line rewrote the agent's to-do list.
-    Reply { model: Option<String>, usage: Usage, done: bool, tool: bool, todos: Option<(u32, u32)> },
+    /// `needs_after` is how long a pending tool call must stay quiet before it reads as waiting for you.
+    Reply { model: Option<String>, usage: Usage, done: bool, tool: bool, todos: Option<(u32, u32)>, needs_after: Option<u64> },
     ToolResult,
     TurnEnd,
     /// Token use, with plan limits when the tool reported them.
@@ -111,6 +114,8 @@ pub struct Session {
     pub last_ts: u64,
     pub turn_start: Option<u64>,
     pub tool_pending: bool,
+    /// Quiet time before the pending tool call counts as needing you; the default when unset.
+    pub needs_after: Option<u64>,
     pub usage: Usage,
     pub session_limit: Option<Limit>,
     pub week_limit: Option<Limit>,
@@ -131,7 +136,8 @@ impl Session {
                 self.turn_start = Some(ts);
                 self.tool_pending = false;
             }
-            Entry::Reply { model, usage, done, tool, todos } => {
+            Entry::Reply { model, usage, done, tool, todos, needs_after } => {
+                self.needs_after = if tool { needs_after } else { None };
                 self.model = model.or(self.model.take());
                 self.todos = todos.or(self.todos);
                 self.add(usage);
@@ -173,7 +179,7 @@ impl Session {
     }
 
     pub fn needs_you(&self, now: u64) -> bool {
-        self.working(now) && self.tool_pending && now.saturating_sub(self.last_ts) >= NEEDS_MS
+        self.working(now) && self.tool_pending && now.saturating_sub(self.last_ts) >= self.needs_after.unwrap_or(NEEDS_MS)
     }
 
     pub fn elapsed(&self, now: u64) -> u64 {
@@ -243,6 +249,23 @@ fn n(v: &Value, key: &str) -> u64 {
     v.get(key).and_then(Value::as_u64).unwrap_or(0)
 }
 
+/// How long a pending tool call must stay quiet before it reads as waiting for you. Questions to you
+/// count at once; edits are the ones that usually raise a permission prompt; shells, subagents and
+/// the like are usually just running, so they get a long wait.
+fn needs_after_of(content: Option<&Value>) -> u64 {
+    let names: Vec<&str> = content
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter(|i| i.get("type").and_then(Value::as_str) == Some("tool_use")).filter_map(|i| i.get("name").and_then(Value::as_str)).collect())
+        .unwrap_or_default();
+    if names.iter().any(|n| matches!(*n, "AskUserQuestion" | "ExitPlanMode")) {
+        0
+    } else if !names.is_empty() && names.iter().all(|n| matches!(*n, "Edit" | "Write" | "MultiEdit" | "NotebookEdit")) {
+        NEEDS_MS
+    } else {
+        NEEDS_SLOW_MS
+    }
+}
+
 /// (done, total) from a `TodoWrite` tool call.
 fn todo_counts(item: &Value) -> Option<(u32, u32)> {
     if item.get("name").and_then(Value::as_str) != Some("TodoWrite") {
@@ -284,7 +307,8 @@ pub fn parse_claude(line: &str) -> Option<(u64, Entry)> {
             let done = matches!(stop, Some("end_turn" | "stop_sequence" | "max_tokens" | "refusal"));
             let model = msg.get("model").and_then(Value::as_str).filter(|m| !m.starts_with('<')).map(str::to_string);
             let todos = msg.get("content").and_then(Value::as_array).and_then(|items| items.iter().rev().find_map(todo_counts));
-            Some((ts, Entry::Reply { model, usage, done, tool, todos }))
+            let needs_after = tool.then(|| needs_after_of(msg.get("content")));
+            Some((ts, Entry::Reply { model, usage, done, tool, todos, needs_after }))
         }
         _ => project_of(v.get("cwd").and_then(Value::as_str)).map(|p| (ts, Entry::Meta { project: Some(p), model: None })),
     }
@@ -325,7 +349,7 @@ pub fn parse_codex(line: &str) -> Option<(u64, Entry)> {
             Entry::Usage { usage, session, week }
         }
         ("response_item", Some("function_call" | "custom_tool_call" | "local_shell_call")) => {
-            Entry::Reply { model: None, usage: Usage::default(), done: false, tool: true, todos: None }
+            Entry::Reply { model: None, usage: Usage::default(), done: false, tool: true, todos: None, needs_after: None }
         }
         ("response_item", Some("function_call_output" | "custom_tool_call_output")) => Entry::ToolResult,
         _ => return None,
@@ -787,7 +811,7 @@ mod tests {
         s.apply(t0, Entry::ToolResult);
         assert!(s.working(t0 + 1_000));
         assert_eq!(s.turn_start, Some(t0));
-        s.apply(t0 + 2_000, Entry::Reply { model: None, usage: Usage::default(), done: true, tool: false, todos: None });
+        s.apply(t0 + 2_000, Entry::Reply { model: None, usage: Usage::default(), done: true, tool: false, todos: None, needs_after: None });
         assert!(!s.working(t0 + 2_500));
     }
 
@@ -853,5 +877,18 @@ mod tests {
         assert!(tr.poll(&home, t0 + 200_000, 120_000).is_empty());
         assert_eq!(tr.snapshot(&home, t0 + 180_500)[0].usage.written, 4);
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn pending_tools_wait_according_to_what_they_are() {
+        let line = |name: &str| format!(r#"{{"type":"assistant","timestamp":"2026-10-20T10:00:00Z","message":{{"stop_reason":"tool_use","content":[{{"type":"tool_use","name":"{name}"}}]}}}}"#);
+        let wait = |name: &str| match parse_claude(&line(name)) {
+            Some((_, Entry::Reply { needs_after, .. })) => needs_after,
+            _ => None,
+        };
+        assert_eq!(wait("AskUserQuestion"), Some(0));
+        assert_eq!(wait("Edit"), Some(NEEDS_MS));
+        assert_eq!(wait("Bash"), Some(NEEDS_SLOW_MS));
+        assert_eq!(wait("Task"), Some(NEEDS_SLOW_MS));
     }
 }

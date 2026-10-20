@@ -181,9 +181,15 @@
   }
   .slice {
     display: grid;
-    grid-template-columns: 1.1fr 0.8fr 1.4fr 1.6fr auto;
+    grid-template-columns: 1.3fr 0.9fr 1.8fr;
     gap: 6px;
     align-items: center;
+  }
+  .slice > :nth-child(4) {
+    grid-column: 1 / span 2;
+  }
+  .slice .tools {
+    justify-self: end;
   }
   .text,
   select {

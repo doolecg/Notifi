@@ -25,7 +25,7 @@ const FILE: &str = "color-history.json";
 /// Width and height of the sampled square, in pixels. The middle one is copied.
 pub const GRID: i32 = 11;
 /// Logical sizes of the window as a magnifier and as the history list.
-const MAGNIFIER: (f64, f64) = (156.0, 200.0);
+const MAGNIFIER: (f64, f64) = (156.0, 236.0);
 const LIST: (f64, f64) = (280.0, 360.0);
 /// Gap between the pointer and the magnifier, so the magnifier never covers sampled pixels.
 const GAP: f64 = 24.0;

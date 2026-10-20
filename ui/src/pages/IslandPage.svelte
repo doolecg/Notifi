@@ -1,11 +1,12 @@
 <script lang="ts">
   // Custom options of the Island settings page (spec/everyday/island.md, "Settings page").
-  // Switches on `option.id`: layout, modules, activity, behaviour, shortcuts, preview.
+  // Switches on `option.id`: layout, modules, activity, behaviour, shortcuts, preview, pickArea.
   import { invoke } from '@tauri-apps/api/core';
   import KeyCapture from '../lib/KeyCapture.svelte';
   import Switch from '../lib/Switch.svelte';
   import { store } from '../lib/settings.svelte';
   import Glyph from '../island/Glyph.svelte';
+  import WatchArea from './WatchArea.svelte';
   import { maxBottom, maxSide, openSize, slots, windowSize, MAX_H, MAX_W, MIN_H, MIN_W, type Side } from '../island/layout';
   import { BUTTONS, DEFAULT_CONFIG, MODULE_ACTIONS, MODULE_ICONS, MODULE_LABELS, type IslandConfig } from '../island/types';
   import type { CustomProps } from '../sections/customs';
@@ -264,6 +265,8 @@
   {/if}
 {:else if option.id === 'preview'}
   <button class="ghost" disabled={!cfg.enabled} onclick={() => invoke('island_preview').catch(() => {})}>Open the Island</button>
+{:else if option.id === 'pickArea'}
+  <WatchArea {option} />
 {/if}
 
 <style>

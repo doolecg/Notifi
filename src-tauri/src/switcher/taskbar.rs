@@ -6,6 +6,7 @@
 //! no UIA call ever runs inside the mouse hook. The low-level mouse hook only compares the click
 //! point with the hovered button rect the worker last published. Linux: not available yet.
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use notifi_platform::{Platform, Rect, WindowId, WindowInfo};
@@ -37,6 +38,8 @@ pub struct Card {
     pub minimized: bool,
     pub icon: Option<String>,
     pub no_thumb: bool,
+    /// The window is on another virtual desktop.
+    pub other_desktop: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -120,7 +123,7 @@ pub fn place(button: Rect, bar: Rect, display: Rect, size: (u32, u32)) -> (i32, 
 
 /// Shows the preview for `windows` next to `button`.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn show(app: &AppHandle, key: String, app_name: String, windows: Vec<WindowInfo>, button: Rect, bar: Rect) {
+fn show(app: &AppHandle, key: String, app_name: String, windows: Vec<WindowInfo>, other_desktop: &HashSet<u64>, button: Rect, bar: Rect) {
     let s = settings(app);
     let kind = thumbs::kind(app.state::<Platform>().backend());
     let minimal = opt_bool(&s, PREVIEW, "minimal", false);
@@ -136,6 +139,7 @@ fn show(app: &AppHandle, key: String, app_name: String, windows: Vec<WindowInfo>
                 minimized: w.minimized,
                 icon: thumbs::icon_url(w.id.0),
                 no_thumb: w.minimized || kind == Kind::None || listed(&paused, &name),
+                other_desktop: other_desktop.contains(&w.id.0),
                 app: name,
             }
         })
@@ -254,7 +258,7 @@ pub fn taskbar_action(app: AppHandle, id: u64, action: String) {
 
 #[cfg(windows)]
 mod win {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::mpsc::channel;
     use std::time::{Duration, Instant};
 
@@ -263,7 +267,7 @@ mod win {
     use tauri::{AppHandle, Manager};
 
     use super::super::hook_win::CLICKS;
-    use super::super::{listed, opt_list, opt_num, opt_str};
+    use super::super::{listed, opt_bool, opt_list, opt_num, opt_str, sources};
     use super::{settings, TaskbarState, CLICKS as CLICKS_NS, PREVIEW};
 
     fn key(b: &TaskbarButton) -> String {
@@ -288,6 +292,22 @@ mod win {
             .filter(|w| w.pid != Some(me) && b.matches(w.app_id.as_deref(), ids.aumid(w.pid).as_deref()))
             .cloned()
             .collect()
+    }
+
+    /// Keeps an auto-hiding taskbar up while a preview is open, and puts auto-hide back afterwards.
+    fn hold_taskbar(held: &mut bool, want: bool) {
+        if want == *held {
+            return;
+        }
+        if want {
+            if win_taskbar::autohide() {
+                win_taskbar::set_autohide(false);
+                *held = true;
+            }
+        } else {
+            win_taskbar::set_autohide(true);
+            *held = false;
+        }
     }
 
     fn click(app: &AppHandle, b: &TaskbarButton, ids: &mut Ids) {
@@ -317,12 +337,14 @@ mod win {
             let mut hovered: Option<(String, Instant)> = None;
             let mut left_at: Option<Instant> = None;
             let mut ids = Ids(HashMap::new());
+            let mut held = false;
             loop {
                 let s = settings(&app);
                 let (preview, clicks) = (s.enabled(PREVIEW), s.enabled(CLICKS_NS));
                 if !preview && !clicks {
                     CLICKS.lock().unwrap().target = None;
                     super::hide(&app);
+                    hold_taskbar(&mut held, false);
                     std::thread::sleep(Duration::from_millis(400));
                     continue;
                 }
@@ -376,11 +398,15 @@ mod win {
                             let delay = if shown.is_some() { opt_num(&s, PREVIEW, "switchDelay", 100.0) } else { opt_num(&s, PREVIEW, "openDelay", 200.0) };
                             let since = hovered.as_ref().map(|(_, t)| t.elapsed()).unwrap_or_default();
                             if since >= Duration::from_millis(delay.max(0.0) as u64) && shown.as_ref().is_none_or(|(_, sk)| *sk != k) {
-                                let wins = platform.windows().list().map(|l| windows_of(b, &l, &mut ids)).unwrap_or_default();
+                                let all = sources::windows(&platform, false);
+                                let other: HashSet<u64> = all.iter().filter(|(_, f)| f.other_desktop).map(|(w, _)| w.id.0).collect();
+                                let show_other = opt_bool(&s, PREVIEW, "otherDesktops", true);
+                                let list: Vec<WindowInfo> = all.into_iter().map(|(w, _)| w).filter(|w| show_other || !other.contains(&w.id.0)).collect();
+                                let wins = windows_of(b, &list, &mut ids);
                                 if wins.is_empty() {
                                     super::hide(&app);
                                 } else {
-                                    super::show(&app, k, b.app_name().to_string(), wins, b.rect, b.taskbar);
+                                    super::show(&app, k, b.app_name().to_string(), wins, &other, b.rect, b.taskbar);
                                 }
                             }
                         }
@@ -400,6 +426,8 @@ mod win {
                         }
                     }
                 }
+                let keep = preview && opt_bool(&s, PREVIEW, "keepTaskbarVisible", false) && app.state::<TaskbarState>().shown.lock().unwrap().is_some();
+                hold_taskbar(&mut held, keep);
                 std::thread::sleep(Duration::from_millis(50));
             }
         });

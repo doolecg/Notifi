@@ -281,6 +281,14 @@ export interface Snapshot {
   brightness: number | null;
   mediaSupported: boolean;
   open: boolean;
+  /** Text read from the watched screen area; null when nothing is watched or it is not shown on the pill. */
+  watch: WatchReading | null;
+}
+
+/** `paused` says why nothing is being read (the window moved, text recognition failed); empty while reading. */
+export interface WatchReading {
+  text: string;
+  paused: string;
 }
 
 export interface Activity {

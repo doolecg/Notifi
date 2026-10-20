@@ -2,6 +2,7 @@
   import { store } from '../../lib/settings.svelte';
   import Switch from '../../lib/Switch.svelte';
   import QuickToggles from '../../quick/QuickToggles.svelte';
+  import Brightness from './Brightness.svelte';
   import Icon from '../Icon.svelte';
   import type { IconName } from '../icons';
 
@@ -25,6 +26,10 @@
     </span>
     <Switch checked={false} label="Quick toggles" onchange={(on) => toggle('quickToggles', on)} />
   </div>
+{/if}
+
+{#if store.featureOn('displays')}
+  <Brightness />
 {/if}
 
 {#each groups as group (group.id)}

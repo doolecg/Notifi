@@ -1,0 +1,23 @@
+[      79ms] TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/core-Dd1IwrkE.js?v=6f95036d:96:36)
+    at listen (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/@tauri-apps_api_event.js?v=6f95036d:140:12)
+    at http://localhost:1420/src/capture/Preview.svelte?t=1792519790143:60:4
+    at untrack (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4485:10)
+    at $effect (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/index-client-BNYWHDEO.js?v=6f95036d:4423:19)
+    at update_reaction (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4209:16)
+    at update_effect (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4319:18)
+    at flush_queued_effects (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2510:4)
+    at #process (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2114:3)
+    at Batch.flush (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2261:17)
+[      80ms] TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/core-Dd1IwrkE.js?v=6f95036d:96:36)
+    at listen (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/@tauri-apps_api_event.js?v=6f95036d:140:12)
+    at http://localhost:1420/src/capture/Preview.svelte?t=1792519790143:61:4
+    at untrack (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4485:10)
+    at $effect (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/index-client-BNYWHDEO.js?v=6f95036d:4423:19)
+    at update_reaction (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4209:16)
+    at update_effect (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:4319:18)
+    at flush_queued_effects (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2510:4)
+    at #process (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2114:3)
+    at Batch.flush (http://localhost:1420/@fs/E:/REPOS/PROGRAMS/Notifi/node_modules/.vite/deps/runtime-Bo3zIwPe.js?v=6f95036d:2261:17)
+[     106ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:1420/favicon.ico:0

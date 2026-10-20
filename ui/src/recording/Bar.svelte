@@ -27,6 +27,7 @@
   const stop = () => invoke('recording_toggle').catch(() => {});
   const pause = () => invoke('recording_pause').catch(() => {});
   const openFolder = () => invoke('recording_open_folder').catch(() => {});
+  const trim = () => invoke('recording_trim_open').catch(() => {});
   const dismiss = () => invoke('recording_dismiss').catch(() => {});
 
   onMount(() => {
@@ -67,6 +68,7 @@
   {:else if s.phase === 'saved'}
     <span class="text name" title={s.path}>Saved {fileName}</span>
     <button class="plain" onclick={openFolder}>Open folder</button>
+    <button class="plain" onclick={trim}>Trim</button>
     <button class="plain" onclick={dismiss}>Close</button>
   {:else}
     <span class="text name" title={s.message}>{s.message}</span>
@@ -119,7 +121,15 @@
     white-space: nowrap;
   }
   .text.name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     color: var(--fg);
+    font-size: 12px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
   button {
     flex: none;

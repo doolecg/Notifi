@@ -7,6 +7,7 @@
 //! stop). The bar is hidden from the recording itself.
 
 mod pure;
+pub mod trim;
 
 #[cfg(windows)]
 mod audio;
@@ -39,7 +40,7 @@ const NS: &str = "screenRecording";
 const STATE_EVENT: &str = "recording://state";
 const PICK_EVENT: &str = "recording://pick";
 /// Logical size of the control bar.
-const BAR_SIZE: (f64, f64) = (340.0, 56.0);
+const BAR_SIZE: (f64, f64) = (420.0, 56.0);
 /// Distance of the bar from the bottom of the display, in logical pixels.
 const BAR_LIFT: f64 = 96.0;
 /// Smallest area worth recording, in pixels.
@@ -85,6 +86,8 @@ struct Inner {
     session: Option<Arc<Session>>,
     /// The last finished file, for the bar's Open folder button.
     saved: Option<PathBuf>,
+    /// The recording the trimmer works on.
+    trim: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -373,6 +376,9 @@ fn finish(app: &AppHandle, outcome: Outcome) {
             inner.saved = Some(p.clone());
         }
     }
+    if let Outcome::Saved(p) = &outcome {
+        crate::capture::recent::remember(app, p, "video");
+    }
     match outcome {
         Outcome::Saved(path) => {
             emit(app, "saved", 0, 0, Some(&path), "");
@@ -474,6 +480,20 @@ pub fn recording_window_at(app: AppHandle, x: f64, y: f64) -> Option<[f64; 4]> {
         f64::from(b.width) / scale,
         f64::from(b.height) / scale,
     ])
+}
+
+/// Opens the trimmer for the recording that was just saved.
+#[tauri::command]
+pub fn recording_trim_open(app: AppHandle) {
+    let path = app.state::<RecordingState>().inner.lock().unwrap().saved.clone();
+    if let Some(path) = path {
+        trim::open(&app, &path);
+    }
+}
+
+/// Opens the trimmer for a recording in the Recent captures list.
+pub fn open_trimmer(app: &AppHandle, path: &Path) {
+    trim::open(app, path);
 }
 
 #[tauri::command]

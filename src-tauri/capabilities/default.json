@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Settings window, tray panel and Island",
-  "windows": ["snap", "apps", "settings", "panel", "island", "clipboard", "snippets", "shelf","quick", "scratchpad", "picker", "recordbar", "recordpick", "capture", "capturepreview", "captureedit","mediatools", "osd", "micmuted", "switcher", "taskbar", "radial"],
+  "windows": ["snap", "apps", "settings", "panel", "island", "clipboard", "snippets", "shelf","quick", "scratchpad", "picker", "recordbar", "recordpick", "capture", "capturepreview", "captureedit", "capturerecent", "capturepin-*", "recordtrim","mediatools", "osd", "micmuted", "switcher", "taskbar", "radial"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

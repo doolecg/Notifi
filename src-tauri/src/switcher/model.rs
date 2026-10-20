@@ -34,6 +34,10 @@ pub struct Entry {
     pub icon: Option<String>,
     /// No live thumbnail: minimised, paused for this app, or capture unavailable.
     pub no_thumb: bool,
+    /// The window is on another virtual desktop.
+    pub other_desktop: bool,
+    /// An app with no window; choosing it starts or reopens the program.
+    pub no_window: bool,
 }
 
 /// Orders windows most recently used first: windows in `mru` (most recent first) keep that order,
@@ -208,16 +212,20 @@ impl Model {
     }
 
     /// Selects the second most recent window (the Alt+Tab flip), or the last one when reversing.
+    /// Apps without windows come last and are never picked by the flip.
     pub fn select_initial(&mut self, reverse: bool) {
-        let n = self.len();
+        let windowed = match self.layout {
+            Layout::Icons => self.groups().iter().filter(|g| g.1.iter().any(|&i| !self.entries[i].no_window)).count(),
+            _ => self.visible.iter().filter(|&&i| !self.entries[i].no_window).count(),
+        };
         self.selected = 0;
         self.group = 0;
         self.group_window = 0;
-        if n > 1 {
-            if reverse {
-                self.step(-1);
-            } else {
-                self.step(1);
+        if windowed > 1 {
+            let at = if reverse { windowed - 1 } else { 1 };
+            match self.layout {
+                Layout::Icons => self.group = at,
+                _ => self.selected = at,
             }
         }
     }
@@ -338,7 +346,7 @@ mod tests {
     use super::*;
 
     fn e(id: u64, app: &str, title: &str) -> Entry {
-        Entry { id, title: title.into(), app: app.into(), pid: None, minimized: false, monitor: None, icon: None, no_thumb: false }
+        Entry { id, title: title.into(), app: app.into(), pid: None, minimized: false, monitor: None, icon: None, no_thumb: false, other_desktop: false, no_window: false }
     }
 
     #[test]
@@ -362,6 +370,22 @@ mod tests {
         let mut one = Model::new(Layout::Previews, vec![e(1, "a", "")], 3);
         one.select_initial(false);
         assert_eq!(one.current().unwrap().id, 1);
+    }
+
+    #[test]
+    fn the_flip_skips_apps_without_windows() {
+        let idle = |id| Entry { no_window: true, ..e(id, "tray", "") };
+        let mut m = Model::new(Layout::Previews, vec![e(1, "a", ""), idle(9)], 3);
+        m.select_initial(false);
+        assert_eq!(m.current().unwrap().id, 1);
+        let mut m = Model::new(Layout::Previews, vec![e(1, "a", ""), e(2, "b", ""), idle(9)], 3);
+        m.select_initial(false);
+        assert_eq!(m.current().unwrap().id, 2);
+        m.select_initial(true);
+        assert_eq!(m.current().unwrap().id, 2);
+        let mut only = Model::new(Layout::Icons, vec![idle(9)], 3);
+        only.select_initial(false);
+        assert_eq!(only.current().unwrap().id, 9);
     }
 
     #[test]

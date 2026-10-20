@@ -5,7 +5,7 @@ use std::{ffi::c_void, os::windows::process::CommandExt};
 
 use image::RgbaImage;
 use windows::{
-    core::{w, BOOL, HSTRING},
+    core::{w, BOOL, HSTRING, PCWSTR},
     Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap},
     Media::Ocr::OcrEngine,
     Storage::Streams::DataWriter,
@@ -20,16 +20,18 @@ use windows::{
                 FW_SEMIBOLD, OUT_DEFAULT_PRECIS, ROP_CODE, SRCCOPY, TRANSPARENT,
             },
         },
+        Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS},
         System::{
             Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
             SystemInformation::GetLocalTime,
         },
         UI::{
+            Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW},
             Input::KeyboardAndMouse::{GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT},
             WindowsAndMessaging::{
                 EnumWindows, GetCursorPos, GetSystemMetrics, GetWindowLongW, GetWindowRect, GetWindowTextLengthW, IsIconic,
                 IsWindowVisible, MessageBoxW, SetCursorPos, SetWindowDisplayAffinity, GWL_EXSTYLE, IDYES, MB_ICONQUESTION, MB_SETFOREGROUND,
-                MB_TOPMOST, MB_YESNO, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WDA_EXCLUDEFROMCAPTURE,
+                MB_TOPMOST, MB_YESNO, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WDA_EXCLUDEFROMCAPTURE,
                 WDA_NONE, WS_EX_TOOLWINDOW,
             },
         },
@@ -108,14 +110,14 @@ unsafe fn read_bits(dc: windows::Win32::Graphics::Gdi::HDC, bitmap: windows::Win
 
 struct Walk {
     skip: Vec<isize>,
-    found: Vec<Rect>,
+    found: Vec<(isize, Rect)>,
 }
 
 unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let walk = &mut *(lparam.0 as *mut Walk);
     if !walk.skip.contains(&(hwnd.0 as isize)) {
         if let Some(r) = visible_rect(hwnd) {
-            walk.found.push(r);
+            walk.found.push((hwnd.0 as isize, r));
         }
     }
     true.into()
@@ -143,12 +145,53 @@ unsafe fn visible_rect(hwnd: HWND) -> Option<Rect> {
 }
 
 /// Visible top-level windows, topmost first, leaving out the given handles.
-pub fn top_windows(skip: &[isize]) -> Vec<Rect> {
+pub fn top_windows(skip: &[isize]) -> Vec<(isize, Rect)> {
     let mut walk = Walk { skip: skip.to_vec(), found: Vec::new() };
     unsafe {
         let _ = EnumWindows(Some(collect), LPARAM(&mut walk as *mut Walk as isize));
     }
     walk.found
+}
+
+/// The window's own picture, drawn by the window itself, so windows on top of it stay out.
+/// `frame` is the visible bounds on screen; None when the window cannot draw itself or came out blank.
+pub fn grab_window(hwnd: isize, frame: &Rect) -> Option<RgbaImage> {
+    unsafe {
+        let hwnd = HWND(hwnd as *mut c_void);
+        let mut outer = RECT::default();
+        GetWindowRect(hwnd, &mut outer).ok()?;
+        let (w, h) = (outer.right - outer.left, outer.bottom - outer.top);
+        if w <= 0 || h <= 0 {
+            return None;
+        }
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return None;
+        }
+        let mem = CreateCompatibleDC(Some(screen));
+        let bitmap = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(mem, bitmap.into());
+        let drawn = PrintWindow(hwnd, mem, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        SelectObject(mem, old);
+        let mut out = None;
+        if drawn {
+            let mut pixels = vec![0u8; w as usize * h as usize * 4];
+            if read_bits(screen, bitmap, w, h, &mut pixels) {
+                for p in pixels.chunks_exact_mut(4) {
+                    p.swap(0, 2);
+                    p[3] = 255;
+                }
+                if pixels.chunks_exact(4).any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0) {
+                    let whole = Frame { origin: (outer.left, outer.top), w: w as u32, h: h as u32, rgba: pixels };
+                    out = whole.crop(frame);
+                }
+            }
+        }
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(mem);
+        ReleaseDC(None, screen);
+        out
+    }
 }
 
 /// Keeps a window out of screen grabs (or lets it back in). False when Windows refuses.
@@ -293,6 +336,75 @@ pub fn ocr_lines(img: &RgbaImage, languages: &[String]) -> Result<Vec<String>, S
             None => Ok(Vec::new()),
         }
     })
+}
+
+/// Boxes (x, y, width, height in image pixels) around every word Windows finds in the image.
+pub fn ocr_boxes(img: &RgbaImage, languages: &[String]) -> Result<Vec<[f64; 4]>, String> {
+    let img = img.clone();
+    let languages = languages.to_vec();
+    on_mta(move || {
+        let engines = engines(&languages)?;
+        let max_side = OcrEngine::MaxImageDimension().unwrap_or(2600);
+        let scale = ocr_scale(img.width(), img.height(), max_side);
+        let scaled = if (scale - 1.0).abs() < 0.01 {
+            img.clone()
+        } else {
+            let filter = if scale > 1.0 { image::imageops::FilterType::CatmullRom } else { image::imageops::FilterType::Triangle };
+            image::imageops::resize(&img, ((f64::from(img.width()) * scale).round() as u32).max(1), ((f64::from(img.height()) * scale).round() as u32).max(1), filter)
+        };
+        let mut normalised = scaled.clone();
+        normalise_contrast(&mut normalised);
+        let mut last_error = None;
+        for variant in [&normalised, &scaled] {
+            for engine in &engines {
+                match word_boxes(engine, variant) {
+                    Ok(boxes) if !boxes.is_empty() => return Ok(boxes.into_iter().map(|b| b.map(|v| v / scale)).collect()),
+                    Ok(_) => {}
+                    Err(e) => last_error = Some(e),
+                }
+            }
+        }
+        match last_error {
+            Some(e) => Err(e),
+            None => Ok(Vec::new()),
+        }
+    })
+}
+
+fn word_boxes(engine: &OcrEngine, img: &RgbaImage) -> Result<Vec<[f64; 4]>, String> {
+    let err = |e: windows::core::Error| e.message();
+    let bgra: Vec<u8> = img.pixels().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let writer = DataWriter::new().map_err(err)?;
+    writer.WriteBytes(&bgra).map_err(err)?;
+    let buffer = writer.DetachBuffer().map_err(err)?;
+    let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, img.width() as i32, img.height() as i32).map_err(err)?;
+    let result = engine.RecognizeAsync(&bitmap).and_then(|op| op.join()).map_err(err)?;
+    let mut boxes = Vec::new();
+    for line in result.Lines().map_err(err)? {
+        for word in line.Words().map_err(err)? {
+            let r = word.BoundingRect().map_err(err)?;
+            boxes.push([f64::from(r.X), f64::from(r.Y), f64::from(r.Width), f64::from(r.Height)]);
+        }
+    }
+    Ok(boxes)
+}
+
+/// Moves a file to the Recycle Bin.
+pub fn trash(path: &std::path::Path) -> Result<(), String> {
+    // The list must end with two nulls.
+    let mut from: Vec<u16> = path.to_string_lossy().encode_utf16().collect();
+    from.extend([0, 0]);
+    let mut op = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0 | FOF_NOERRORUI.0 | FOF_SILENT.0) as u16,
+        ..Default::default()
+    };
+    let code = unsafe { SHFileOperationW(&mut op) };
+    if code != 0 || op.fAnyOperationsAborted.as_bool() {
+        return Err(format!("Windows could not move {} to the Recycle Bin.", path.display()));
+    }
+    Ok(())
 }
 
 // ---- Watermark ----

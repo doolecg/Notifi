@@ -1,0 +1,4 @@
+/* For windows whose page must fill the whole window: the root needs a height before percentages inside it mean anything. */
+#app {
+  height: 100%;
+}

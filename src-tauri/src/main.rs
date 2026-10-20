@@ -46,6 +46,7 @@ fn main() {
                 .with_handler(keybinds::handle)
                 .build(),
         )
+        .register_uri_scheme_protocol("capturemedia", |ctx, request| recording::trim::media(ctx.app_handle(), &request))
         .manage(apps::AppsState::default())
         .manage(apps_clean::AppsCleanState::default())
         .manage(keybinds::Registry::default())
@@ -188,6 +189,11 @@ fn main() {
             island::files::island_open_path,
             island::island_claude_usage,
             island::island_claude_usage_refresh,
+            island::watch::watch_area,
+            island::watch::watch_screen,
+            island::watch::watch_set_area,
+            island::watch::watch_clear_area,
+            island::watch::watch_read,
             island::island_focus,
             island::island_media,
             island::lyrics::island_lyrics,
@@ -218,6 +224,11 @@ fn main() {
             recording::recording_window_at,
             recording::recording_open_folder,
             recording::recording_dismiss,
+            recording::recording_trim_open,
+            recording::trim::recording_trim_target,
+            recording::trim::recording_trim_save,
+            recording::trim::recording_trim_reveal,
+            recording::trim::recording_trim_close,
             capture::capture_frame,
             capture::capture_ready,
             capture::capture_cancel,
@@ -233,6 +244,16 @@ fn main() {
             capture::capture_editor_image,
             capture::capture_editor_export,
             capture::capture_close_editor,
+            capture::capture_editor_text_boxes,
+            capture::pin::capture_pin_image,
+            capture::pin::capture_pin_zoom,
+            capture::pin::capture_pin_close,
+            capture::recent::capture_recent_list,
+            capture::recent::capture_recent_thumb,
+            capture::recent::capture_recent_action,
+            capture::recent::capture_recent_clear,
+            capture::recent::capture_recent_close,
+            capture::recent::capture_recent_open,
             media_tools::media_status,
             media_tools::media_run,
             media_tools::media_cancel,

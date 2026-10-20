@@ -118,6 +118,7 @@ fn fold_message(s: &mut Session, data: &str, directory: &str) {
                     done: completed.is_some() && finish != Some("tool-calls"),
                     tool: false,
                     todos: None,
+                    needs_after: None,
                 },
             );
         }

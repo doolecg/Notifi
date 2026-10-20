@@ -1,5 +1,8 @@
 import { mount } from 'svelte';
-import Recording from './Recording.svelte';
 import '../app.css';
+import '../lib/fill.css';
 
-export default mount(Recording, { target: document.getElementById('app')! });
+// The trimmer is a normal window; loading it apart keeps the bar's transparent page style off it.
+const view = location.hash === '#trim' ? (await import('./Trim.svelte')).default : (await import('./Recording.svelte')).default;
+
+export default mount(view, { target: document.getElementById('app')! });

@@ -71,8 +71,8 @@
   let tall = $state(false);
   /** Height of the open menu before it is stretched; taken when it opens. */
   let baseH = $state(236);
-  /** Tallest menu height; matches MAX_H in island/layout.rs. */
-  const TALL_H = 520;
+  /** Tallest menu height; matches DOCK_TALL in island/layout.rs. */
+  const TALL_H = 600;
   let module = $state('nowPlaying');
   let lastModule = $state<string | null>(null);
   let chosenLive = $state<string | null>(null);
@@ -118,12 +118,14 @@
     Math.max(0, items.length - 1) * IDLE_GAP;
   const idleShown = $derived(idleLeft.length + idleRight.length > 0);
   /** The clock/CPU page is one more page to scroll to when something is live. */
-  const infoChosen = $derived(chosenLive === 'info' && idleShown && live.length > 0);
+  const watchChosen = $derived(chosenLive === 'watch' && !!snap?.watch);
+  const infoChosen = $derived(!watchChosen && chosenLive === 'info' && idleShown && live.length > 0);
   const pages = $derived([
     ...live.map((l) => ({ id: l.id, label: l.label, icon: l.icon })),
     ...(idleShown && live.length ? [{ id: 'info', label: 'Info', icon: 'calendar' }] : []),
+    ...(snap?.watch ? [{ id: 'watch', label: 'Watch', icon: 'search' }] : []),
   ]);
-  const selPage = $derived(infoChosen ? 'info' : (selLive?.id ?? ''));
+  const selPage = $derived(watchChosen ? 'watch' : infoChosen ? 'info' : (selLive?.id ?? ''));
   const idleW = $derived(
     idleShown
       ? Math.round(Math.min(IDLE_MAX, Math.max(IDLE_MIN,
@@ -174,6 +176,7 @@
   });
   const rest = $derived(
     island.activity ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
+    : watchChosen ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
     : infoChosen ? { w: idleW, h: pillBar }
     : showLive ? { w: Math.max(liveW, idleW), h: pillBar }
     : thin ? THIN
@@ -517,6 +520,11 @@
         <div class="ends activity" out:fade={{ duration: duration('hoverLift') }}>
           <span style:color={island.activity.color}><Glyph name={island.activity.icon} size={16} /></span>
           <span class="atext">{island.activity.text}</span>
+        </div>
+      {:else if watchChosen && snap.watch}
+        <div class="ends activity live-in" out:fade={{ duration: duration('hoverLift') }}>
+          <Glyph name="search" size={16} />
+          <span class="atext" title={snap.watch.paused || snap.watch.text}>{snap.watch.paused ? `Watching paused: ${snap.watch.paused}` : snap.watch.text || 'Watching…'}</span>
         </div>
       {:else if showLive && selLive && !infoChosen}
         {#key selLive.id}
