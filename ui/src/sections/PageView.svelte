@@ -24,7 +24,9 @@
   const cards = $derived(page.tabs.length ? page.cards.filter((c) => c.tab === (tab || page.tabs[0])) : page.cards);
   const namespaces = $derived([...new Set(page.cards.map((c) => namespaceOf(page, c)))]);
   const resettable = $derived(namespaces.filter((ns) => ['general', 'panel', 'island'].includes(ns) || ns in (store.settings?.features ?? {})));
-  const openable = $derived(page.tool);
+  /** These pages are the tool itself, so there is no separate window to open. */
+  const NO_OPEN = new Set(['uninstaller', 'cleaner', 'displays']);
+  const openable = $derived(page.tool && !NO_OPEN.has(page.id));
 
   $effect(() => {
     void page.id;

@@ -92,6 +92,8 @@ pub struct IslandConfig {
     pub agents_show_activity: bool,
     pub limit_warning: u32,
     pub daily_budget_usd: f64,
+    /// Show questions and permission requests from Claude Code in the Island.
+    pub ask_in_island: bool,
 }
 
 impl Default for IslandConfig {
@@ -144,6 +146,7 @@ impl Default for IslandConfig {
             agents_show_activity: true,
             limit_warning: 80,
             daily_budget_usd: 0.0,
+            ask_in_island: false,
         }
     }
 }

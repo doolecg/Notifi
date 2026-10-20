@@ -312,6 +312,9 @@ fn layout_for(c: &IslandConfig, tall: bool) -> Layout {
             return layout::layout_dock("custom", w, layout::MAX_H, counts);
         }
         layout::layout_dock(&c.size, c.custom_width, c.custom_height, counts)
+    } else if tall {
+        let w = layout::open_size(&c.size, c.custom_width, c.custom_height).0;
+        layout::layout("custom", w, layout::MAX_H, counts)
     } else {
         layout::layout(&c.size, c.custom_width, c.custom_height, counts)
     }

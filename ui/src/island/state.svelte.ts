@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import type { Ask } from './ask';
 import type { Activity, Snapshot } from './types';
 
 class IslandLive {
@@ -12,6 +13,8 @@ class IslandLive {
   /** Island events since the app started, newest first, for the Notifications module. */
   history = $state<{ id: number; icon: string; color: string; text: string; at: number }[]>([]);
   #historyId = 0;
+  /** Questions and permission requests from AI agents waiting for an answer. */
+  asks = $state<Ask[]>([]);
   #activityTimer: ReturnType<typeof setTimeout> | undefined;
 
   async init(onCommand: (cmd: string) => void) {
@@ -19,6 +22,9 @@ class IslandLive {
     await listen<string | null>('island://cover', (e) => (this.cover = e.payload));
     await listen<Activity>('island://activity', (e) => this.#showActivity(e.payload));
     await listen<string>('island://command', (e) => onCommand(e.payload));
+    await listen<Ask>('ask://new', (e) => (this.asks = [...this.asks.filter((a) => a.id !== e.payload.id), e.payload]));
+    await listen<number>('ask://gone', (e) => this.removeAsk(e.payload));
+    invoke<Ask[]>('ask_list').then((l) => (this.asks = l)).catch(() => {});
     setInterval(() => (this.now = Date.now()), 500);
     const [snap, cover] = await Promise.all([
       invoke<Snapshot | null>('island_status'),
@@ -35,6 +41,10 @@ class IslandLive {
 
   clearHistory() {
     this.history = [];
+  }
+
+  removeAsk(id: number) {
+    this.asks = this.asks.filter((a) => a.id !== id);
   }
 
   #showActivity(a: Activity) {

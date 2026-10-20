@@ -133,6 +133,10 @@ pub const PAGES: &[Page] = &[
                 sw("idleCpuRam", "CPU and memory", "", true),
                 sw("idleBattery", "Battery", "Shows CPU instead on computers without a battery.", true),
             ]),
+            tab_card("Content", "AI questions", &[
+                sw("askInIsland", "Show AI questions in the Island", "When Claude Code asks you something or needs permission, it appears in the Island so you can answer there.", false),
+                custom("askHooks", "Claude Code link", "Adds or removes Notifi's hooks in your Claude Code settings. Your other hooks are kept."),
+            ]),
             tab_card("Content", "AI agents", &[
                 custom("claudeUsage", "Claude usage", "Show your real 5 hour and weekly limits from your Claude Code login."),
                 num("claudePlanLimitUsd", "Claude plan limit per session", "API value of one 5-hour session on your plan. 0 shows elapsed time instead.", 0.0, 1000.0, 1.0, "$", 0.0),

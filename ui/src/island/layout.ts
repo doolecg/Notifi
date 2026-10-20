@@ -8,7 +8,7 @@ export const EDGE = 10;
 export const MIN_W = 380;
 export const MAX_W = 900;
 export const MIN_H = 200;
-export const MAX_H = 520;
+export const MAX_H = 600;
 
 export function openSize(size: string, w: number, h: number): [number, number] {
   if (size === 'spacious') return [560, 300];

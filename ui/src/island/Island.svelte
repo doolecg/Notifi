@@ -11,6 +11,7 @@
   import Controls from './modules/Controls.svelte';
   import Grid from './modules/Grid.svelte';
   import NowPlaying from './modules/NowPlaying.svelte';
+  import Ask from './modules/Ask.svelte';
   import Calendar from './modules/Calendar.svelte';
   import Camera from './modules/Camera.svelte';
   import Captures from './modules/Captures.svelte';
@@ -175,7 +176,8 @@
     return LIVE.w;
   });
   const rest = $derived(
-    island.activity ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
+    island.asks.length && !open ? { w: Math.max(ACTIVITY.w + 80, idleW), h: pillBar }
+    : island.activity ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
     : watchChosen ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
     : infoChosen ? { w: idleW, h: pillBar }
     : showLive ? { w: Math.max(liveW, idleW), h: pillBar }
@@ -217,6 +219,7 @@
 
   /** What the open Island shows first: the thing that is live, or the grid when nothing is going on. */
   function autoModule() {
+    if (island.asks.length) return 'ask';
     const lead = live[0]?.id;
     return lead === 'agents' ? 'agents' : lead === 'timer' ? 'timer' : lead === 'music' ? 'nowPlaying' : 'grid';
   }
@@ -226,10 +229,16 @@
     if (id) module = id;
     else if (!open || collapsing) module = autoModule();
     lastModule = module;
+    if (layout && !tall && !open) baseH = layout.open[1];
+    // Questions get the tall menu so options and a reply box fit.
+    if (module === 'ask' && !tall) {
+      await invoke('island_tall', { tall: true }).catch(() => {});
+      tall = true;
+    }
     if (open && !collapsing) return;
     clearTimeout(shrinkTimer);
     collapsing = false;
-    if (layout) baseH = layout.open[1];
+    if (layout && !tall) baseH = layout.open[1];
     if (!open) {
       open = true;
       await invoke('island_shape', { open: true, width: box.w, height: box.h }).catch(() => {});
@@ -325,6 +334,11 @@
       if (dock) collapse();
       return;
     }
+    if (island.asks.length) {
+      invoke('island_focus').catch(() => {});
+      openIsland('ask');
+      return;
+    }
     if (await gotoSession()) return;
     invoke('island_focus').catch(() => {});
     openIsland();
@@ -373,11 +387,11 @@
   const flyH = $derived(tall ? TALL_H : baseH);
   const grown = $derived(expanded && !dock);
   const pillW = $derived(grown && layout ? layout.open[0] : rest.w);
-  const pillH = $derived(grown && layout ? layout.open[1] : rest.h);
+  const pillH = $derived(grown && layout ? (dock ? layout.open[1] : flyH) : rest.h);
   const radius = $derived(grown && layout ? layout.radius : rest.h / 2);
   /** What the pill is telling you, so a change in it can flash the edge. */
   const changeKey = $derived(
-    `${selPage}|${selLive?.status ?? ''}|${selLive?.count ?? ''}|${snap?.media?.title ?? ''}|${island.activity?.text ?? ''}`,
+    `${selPage}|${selLive?.status ?? ''}|${selLive?.count ?? ''}|${snap?.media?.title ?? ''}|${island.activity?.text ?? ''}|${island.asks.length}`,
   );
   let flashing = $state(false);
   let burst = $state(0);
@@ -458,6 +472,8 @@
     <Timer />
   {:else if module === 'agents'}
     <Agents />
+  {:else if module === 'ask'}
+    <Ask onDone={collapse} />
   {:else if module === 'mixer'}
     <Mixer />
   {:else if module === 'system'}
@@ -513,8 +529,18 @@
       onwheel={wheel}
     >
       {#if open && !dock}
-        <div class="content" class:shown={expanded} style:width={`${layout.open[0]}px`} style:height={`${layout.open[1]}px`}>
+        <div class="content" class:shown={expanded} style:width={`${layout.open[0]}px`} style:height={`${flyH}px`}>
           {@render body()}
+        </div>
+        <button class="grab low" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={(e) => { e.stopPropagation(); toggleTall(); }}>
+          <Glyph name={tall ? 'expand' : 'shrink'} size={14} />
+        </button>
+      {:else if island.asks.length}
+        {@const a = island.asks[0]}
+        <div class="ends activity asking" out:fade={{ duration: duration('hoverLift') }}>
+          <Glyph name="bell" size={16} />
+          <span class="atext">{a.kind === 'question' ? (a.questions[0]?.question ?? 'A question') : `Allow ${a.tool}?`}</span>
+          {#if island.asks.length > 1}<small class="more">+{island.asks.length - 1}</small>{/if}
         </div>
       {:else if island.activity}
         <div class="ends activity" out:fade={{ duration: duration('hoverLift') }}>
@@ -754,6 +780,10 @@
     color: var(--i-mut);
     cursor: pointer;
     transform: translateX(-50%);
+  }
+  .grab.low {
+    top: auto;
+    bottom: 4px;
   }
   .grab:hover {
     background: color-mix(in srgb, var(--i-fg), transparent 80%);
@@ -1115,6 +1145,38 @@
     font-size: 11px;
     font-weight: 700;
     color: var(--i-mut);
+  }
+  .asking {
+    color: var(--i-fg);
+    font-weight: 700;
+  }
+  .asking :global(svg) {
+    color: var(--i-agent);
+    animation: ask-ring 1.6s ease-in-out infinite;
+  }
+  .asking .more {
+    margin-left: 8px;
+    color: var(--i-mut);
+  }
+  @keyframes ask-ring {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    10%,
+    30% {
+      transform: rotate(14deg);
+    }
+    20%,
+    40% {
+      transform: rotate(-14deg);
+    }
+    50% {
+      transform: rotate(0);
+    }
+  }
+  :global([data-reduced-motion]) .asking :global(svg) {
+    animation: none;
   }
   .count.sub {
     margin-right: 10px;

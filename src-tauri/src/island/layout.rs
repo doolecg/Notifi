@@ -21,7 +21,7 @@ pub const DOCK_LEFT: f64 = 0.0;
 pub const MIN_W: f64 = 380.0;
 pub const MAX_W: f64 = 900.0;
 pub const MIN_H: f64 = 200.0;
-pub const MAX_H: f64 = 520.0;
+pub const MAX_H: f64 = 600.0;
 
 /// Size of the open island for a size setting.
 pub fn open_size(size: &str, custom_w: f64, custom_h: f64) -> (f64, f64) {

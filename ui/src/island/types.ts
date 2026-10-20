@@ -40,6 +40,7 @@ export interface IslandConfig {
   dock: 'top' | 'bottomLeft';
   claudeUsageConnect: boolean;
   dockDarkness: number;
+  askInIsland: boolean;
 }
 
 /** Mirrors `IslandConfig::default()` in src-tauri/src/island/config.rs. */
@@ -85,6 +86,7 @@ export const DEFAULT_CONFIG: IslandConfig = {
   dock: 'top',
   claudeUsageConnect: false,
   dockDarkness: 25,
+  askInIsland: false,
 };
 
 export const MODULE_LABELS: Record<string, string> = {

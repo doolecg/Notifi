@@ -2,6 +2,7 @@
 
 mod apps;
 mod apps_clean;
+mod ask;
 mod camera;
 mod capture;
 mod catalog;
@@ -24,6 +25,7 @@ mod settings;
 mod sound;
 mod stats;
 mod switcher;
+mod tools;
 mod tray;
 mod updater;
 mod window;
@@ -49,6 +51,7 @@ fn main() {
         )
         .register_uri_scheme_protocol("capturemedia", |ctx, request| recording::trim::media(ctx.app_handle(), &request))
         .manage(apps::AppsState::default())
+        .manage(ask::AskState::default())
         .manage(apps_clean::AppsCleanState::default())
         .manage(keybinds::Registry::default())
         .manage(updater::Updater::default())
@@ -97,6 +100,8 @@ fn main() {
                 panel::show_by_tray(app.handle(), tab);
             }
             apps::start(app.handle());
+            tools::start(app.handle());
+            ask::start(app.handle());
             updater::start(app.handle());
             Ok(())
         })
@@ -180,6 +185,13 @@ fn main() {
             commandbar::commandbar_dragged,
             commandbar::commandbar_recenter,
             commandbar::commandbar_forget,
+            ask::ask_list,
+            ask::ask_answer,
+            ask::ask_decide,
+            ask::ask_skip,
+            ask::ask_hooks_status,
+            ask::ask_hooks_install,
+            ask::ask_hooks_remove,
             island::island_status,
             island::island_cover,
             island::island_shape,

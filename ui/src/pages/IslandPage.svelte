@@ -15,6 +15,30 @@
 
   const cfg = $derived({ ...DEFAULT_CONFIG, ...(values as Partial<IslandConfig>) } as IslandConfig);
 
+  // ---- AI questions ----
+  type HooksStatus = { installed: boolean; port: number; settingsPath: string; otherHooksKept: boolean };
+  let hooksStatus = $state<HooksStatus | null>(null);
+  let hooksBusy = $state(false);
+  let hooksError = $state('');
+  const readHooks = () => invoke<HooksStatus>('ask_hooks_status').then((s) => (hooksStatus = s)).catch((e) => (hooksError = String(e)));
+  async function hooks(command: string) {
+    hooksBusy = true;
+    hooksError = '';
+    try {
+      hooksStatus = await invoke<HooksStatus>(command);
+    } catch (e) {
+      hooksError = String(e);
+    } finally {
+      hooksBusy = false;
+    }
+  }
+  $effect(() => {
+    if (option.id === 'askHooks') readHooks();
+  });
+  const hooksText = $derived(
+    !hooksStatus ? 'Checking…' : hooksStatus.installed ? `Added to ${hooksStatus.settingsPath}.` : 'Not added yet. Questions will stay in the terminal until you add them.',
+  );
+
   // ---- Claude usage ----
   type ClaudeUsage = { status: string; session: { usedPercent: number } | null; week: { usedPercent: number } | null; checked: number };
   let claude = $state<ClaudeUsage | null>(null);
@@ -252,6 +276,18 @@
   {/each}
   {#if !islandActions.length}<p class="hint">Island shortcuts appear here once Notifi has loaded them.</p>{/if}
   <p class="hint">Modules without a shortcut here open from the module grid. {Object.keys(MODULE_ACTIONS).length} modules have their own.</p>
+{:else if option.id === 'askHooks'}
+  <div class="row">
+    <div>
+      <strong>Claude Code hooks</strong>
+      <span class="sub">{hooksText}</span>
+    </div>
+    <span class="acts">
+      <button class="ghost" disabled={hooksBusy} onclick={() => hooks(hooksStatus?.installed ? 'ask_hooks_remove' : 'ask_hooks_install')}>{hooksStatus?.installed ? 'Remove hooks' : 'Add hooks'}</button>
+    </span>
+  </div>
+  {#if hooksError}<p class="hint">{hooksError}</p>{/if}
+  <p class="hint">Works with Claude Code only: it is the one agent that lets another app answer its questions. Codex and OpenCode questions stay in their terminals.</p>
 {:else if option.id === 'claudeUsage'}
   <div class="row">
     <div><strong>Connect Claude usage</strong><span class="sub">Uses the login Claude Code saved on this PC to ask Anthropic for your 5 hour and weekly limits. Nothing is copied or stored, and your login is never refreshed by Notifi.</span></div>
