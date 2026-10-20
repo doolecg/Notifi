@@ -1,18 +1,37 @@
 ﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod apps;
+mod apps_clean;
+mod catalog;
+mod clipboard;
+mod commandbar;
+mod energy;
+mod island;
+mod input;
 mod keepawake;
 mod keybinds;
+mod monitor;
+mod media_tools;
 mod panel;
+mod picker;
+mod quick;
+mod scratchpad;
 mod settings;
+mod sound;
 mod stats;
+mod switcher;
 mod tray;
 mod updater;
 mod window;
+mod windows_mgmt;
 
 use tauri::{Manager, RunEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 fn main() {
+    if apps_clean::elevated_main() {
+        return;
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| match panel_arg(&args) {
             Some(tab) => panel::show_by_tray(app, tab),
@@ -24,11 +43,21 @@ fn main() {
                 .with_handler(keybinds::handle)
                 .build(),
         )
+        .manage(apps::AppsState::default())
+        .manage(apps_clean::AppsCleanState::default())
         .manage(keybinds::Registry::default())
         .manage(updater::Updater::default())
         .manage(notifi_platform::Platform::detect())
         .manage(panel::PanelState::default())
         .manage(keepawake::KeepAwakeState::default())
+        .manage(energy::EnergyState::default())
+        .manage(monitor::speedtest::SpeedTestState::default())
+        .manage(island::IslandState::default())
+        .manage(sound::SoundState::default())
+        .manage(quick::QuickState::default())
+        .manage(scratchpad::ScratchpadState::default())
+        .manage(picker::PickerState::default())
+        .manage(media_tools::MediaState::default())
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("settings.json");
             let store = settings::Store::load(path);
@@ -38,18 +67,72 @@ fn main() {
             keybinds::apply(app.handle(), &current.shortcuts);
             tray::create(app.handle())?;
             panel::create(app.handle())?;
+            island::create(app.handle())?;
+            commandbar::create(app.handle())?;
+            commandbar::open_from_args(app.handle());
+            sound::create(app.handle())?;
+            quick::create(app.handle())?;
+            scratchpad::create(app.handle())?;
+            picker::create(app.handle())?;
+            energy::start(app.handle())?;
+            clipboard::start(app.handle())?;
+            windows_mgmt::start(app.handle())?;
+            input::start(app.handle());
+            apps_clean::start(app.handle());
+            switcher::create(app.handle())?;
             stats::start(app.handle());
             if let Some(tab) = panel_arg(&std::env::args().collect::<Vec<_>>()) {
                 panel::show_by_tray(app.handle(), tab);
             }
+            apps::start(app.handle());
             updater::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            apps_clean::uninstaller_list,
+            apps_clean::uninstaller_scan,
+            apps_clean::uninstaller_remove,
+            apps_clean::uninstaller_retry_elevated,
+            apps_clean::apps_clean_cancel,
+            apps_clean::apps_clean_reveal,
+            apps_clean::cleaner_scan,
+            apps_clean::cleaner_scan_elevated,
+            apps_clean::cleaner_clean,
+            apps_clean::cleaner_clean_system,
+            apps_clean::messaging_scan,
+            apps_clean::messaging_apply,
+            apps_clean::installer_offers,
+            apps_clean::installer_inspect,
+            apps_clean::installer_install,
+            apps_clean::installer_shortcut,
+            apps_clean::installer_trash_download,
+            apps_clean::installer_launch,
+            apps_clean::appimage_install,
+            apps_clean::wallpaper_list,
+            apps_clean::wallpaper_thumb,
+            apps_clean::wallpaper_apply,
+            apps::apps_open,
+            apps::apps_open_url,
+            apps::packages::apps_managers,
+            apps::packages::apps_pkg_installed,
+            apps::packages::apps_pkg_search,
+            apps::jobs::apps_job_run,
+            apps::jobs::apps_job_cancel,
+            apps::updates::apps_updates_check,
+            apps::updates::apps_updates_last,
+            apps::rules::apps_rules,
+            apps::rules::apps_rule_add,
+            apps::rules::apps_rule_remove,
+            apps::ports::apps_ports,
+            apps::process::apps_proc_list,
+            apps::process::apps_proc_end,
             settings::get_settings,
+            windows_mgmt::desktop_info,
             settings::get_catalog,
             settings::set_section,
             settings::reset_section,
+            settings::export_settings,
+            settings::import_settings,
             keybinds::shortcut_status,
             keybinds::pause_shortcuts,
             updater::get_update_status,
@@ -66,15 +149,121 @@ fn main() {
             panel::quit_app,
             keepawake::keep_awake_status,
             keepawake::set_keep_awake,
+            energy::dimming::energy_displays,
+            energy::dimming::energy_set_level,
+            energy::dimming::energy_set_extra_display,
+            energy::cleaning::cleaning_mode_start,
+            energy::cleaning::cleaning_mode_stop,
             stats::eject_volume,
             stats::set_power_profile,
+            stats::eject_all,
+            monitor::speedtest::speed_test_run,
+            monitor::speedtest::speed_test_history,
+            commandbar::commandbar_search,
+            commandbar::commandbar_run,
+            commandbar::commandbar_hide,
+            commandbar::commandbar_resize,
+            commandbar::commandbar_dragged,
+            commandbar::commandbar_recenter,
+            commandbar::commandbar_forget,
+            island::island_status,
+            island::island_cover,
+            island::island_shape,
+            island::island_bar_height,
+            island::island_taskbar_style,
+            island::island_tall,
+            island::island_goto_agent,
+            island::files::island_recent_files,
+            island::files::island_file_thumb,
+            island::files::island_open_path,
+            island::island_claude_usage,
+            island::island_claude_usage_refresh,
+            island::island_focus,
+            island::island_media,
+            island::lyrics::island_lyrics,
+            island::island_timer,
+            island::island_set_volume,
+            island::island_set_brightness,
+            island::island_run,
+            quick::quick_toggles,
+            quick::quick_rows,
+            quick::quick_run,
+            quick::quick_resize,
+            quick::quick_hide,
+            scratchpad::scratchpad_load,
+            scratchpad::scratchpad_save,
+            scratchpad::scratchpad_export,
+            scratchpad::scratchpad_pin,
+            scratchpad::scratchpad_hide,
+            picker::picker_toggle,
+            picker::picker_available,
+            picker::picker_history,
+            picker::picker_copy,
+            picker::picker_close,
+            media_tools::media_status,
+            media_tools::media_run,
+            media_tools::media_cancel,
+            media_tools::media_open,
+            island::island_preview,
+            island::island_agent_stats,
+            island::agents::island_agent_sessions,
+            island::agents::island_agent_log,
+            sound::mixer_state,
+            sound::mixer_set_app,
+            sound::mixer_mute_app,
+            sound::mixer_reset_app,
+            sound::mixer_set_route,
+            sound::reset_routes,
+            sound::mixer_pin,
+            sound::mixer_move,
+            sound::mixer_set_master,
+            sound::mixer_mute_master,
+            sound::mixer_set_mic,
+            sound::mixer_mute_mic,
+            sound::mixer_mute_all_mics,
+            clipboard::clipboard_list,
+            clipboard::clipboard_image,
+            clipboard::clipboard_paste,
+            clipboard::clipboard_copy,
+            clipboard::clipboard_pin,
+            clipboard::clipboard_delete,
+            clipboard::clipboard_clear_count,
+            clipboard::clipboard_clear_unpinned,
+            clipboard::clipboard_hide,
+            clipboard::snippets_get,
+            clipboard::snippets_save,
+            clipboard::snippet_preview,
+            clipboard::snippet_insert,
+            clipboard::snippets_hide,
+            clipboard::snippets_zones,
+            clipboard::shelf::shelf_list,
+            clipboard::shelf::shelf_remove,
+            clipboard::shelf::shelf_clear,
+            clipboard::shelf::shelf_open,
+            clipboard::shelf::shelf_drag_out,
+            clipboard::shelf::shelf_thumb,
+            clipboard::shelf::shelf_hide,
+            switcher::switcher_slots,
+            switcher::switcher_pick,
+            switcher::switcher_hover,
+            switcher::switcher_close_window,
+            switcher::switcher_step,
+            switcher::switcher_cancel,
+            switcher::taskbar::taskbar_slots,
+            switcher::taskbar::taskbar_action,
+            input::input_open_touchpad_settings,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Notifi");
 
     app.run(|app, event| match event {
         RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
-        RunEvent::Exit => updater::on_exit(app),
+        RunEvent::Exit => {
+            windows_mgmt::on_exit();
+            energy::on_exit(app);
+            input::on_exit(app);
+            updater::on_exit(app)
+        }
         _ => {}
     });
 }
@@ -84,9 +273,17 @@ pub fn on_settings_changed(app: &tauri::AppHandle, old: &settings::Settings, new
     if old.general.autostart != new.general.autostart {
         sync_autostart(app, new.general.autostart);
     }
-    if old.shortcuts != new.shortcuts {
+    if old.shortcuts != new.shortcuts || keybinds::feature_shortcuts_changed(old, new) {
         keybinds::apply(app, &new.shortcuts);
     }
+    windows_mgmt::on_settings_changed(app);
+    island::on_settings_changed(app);
+    stats::settings_changed(app);
+    clipboard::on_settings_changed(app, old, new);
+    sound::on_settings_changed(app, old, new);
+    energy::on_settings_changed(app, old, new);
+    switcher::on_settings_changed(app);
+    input::on_settings_changed(app);
 }
 
 /// `--panel` opens the tray panel; `--panel=<tab>` opens it on that tab.

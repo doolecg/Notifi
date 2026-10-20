@@ -79,6 +79,7 @@ pub const PAGES: &[Page] = &[
             Card { title: "Wallpaper gallery", tab: "Wallpaper", feature: "wallpaper", options: &[
                 list("folders", "Folders", "Your Pictures folder is used when empty.", "Folder path"),
                 pick("applyTo", "Apply to", "", &[c("current", "Current display"), c("all", "All displays")], "current"),
+                custom("gallery", "Gallery", "Click a picture to set it as the wallpaper."),
             ], ..CARD },
         ],
         specs: &["energy/displays-brightness.md", "energy/extra-brightness.md", "everyday/osd-overlays.md", "apps/wallpaper-gallery.md"],

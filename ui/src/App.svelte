@@ -1,32 +1,23 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { Spring } from 'svelte/motion';
-  import { applyCssVars, fadeSlide, reducedMotion, setReducedMotion, springOptions } from './lib/motion';
-  import { store } from './lib/settings.svelte';
   import { listen } from '@tauri-apps/api/event';
-  import FeatureGroup from './sections/FeatureGroup.svelte';
-  import General from './sections/General.svelte';
-  import PanelSection from './sections/PanelSection.svelte';
-  import Permissions from './sections/Permissions.svelte';
-  import Shortcuts from './sections/Shortcuts.svelte';
+  import { onMount } from 'svelte';
+  import { applyCssVars, fadeSlide, setReducedMotion } from './lib/motion';
+  import { store } from './lib/settings.svelte';
+  import Icon from './panel/Icon.svelte';
+  import PageView from './sections/PageView.svelte';
+  import Sidebar from './sections/Sidebar.svelte';
 
-  const FIXED = {
-    general: { label: 'General', blurb: 'Startup, appearance and updates.' },
-    panel: { label: 'Tray panel', blurb: 'What the panel shows when you click the tray icon.' },
-    shortcuts: { label: 'Shortcuts', blurb: 'Global keys that work from any app.' },
-    permissions: { label: 'Permissions', blurb: 'What Notifi needs from your system, and why.' },
-  };
+  const LAST_KEY = 'notifi.settings.lastPage';
 
-  let active = $state('general');
+  let history = $state<string[]>([]);
+  let index = $state(-1);
+  /** Option to scroll to, with a counter so the same option can be focused twice. */
+  let focus = $state<{ target: string; n: number } | null>(null);
   let toast = $state<string | null>(null);
   let toastTimer: ReturnType<typeof setTimeout>;
-  const items: Record<string, HTMLElement> = {};
-  const indicator = new Spring({ y: 0, h: 0 }, springOptions('selectionMove'));
 
-  const groups = $derived(store.catalog?.groups ?? []);
-  const group = $derived(groups.find((g) => g.id === active));
-  const title = $derived(group?.label ?? FIXED[active as keyof typeof FIXED]?.label ?? '');
-  const enabled = (id: string) => Object.values(store.settings?.features[id] ?? {}).filter(Boolean).length;
+  const current = $derived(history[index] ?? 'general');
+  const page = $derived(store.page(current) ?? store.page('general'));
 
   $effect(() => {
     const theme = store.settings?.general.theme;
@@ -36,98 +27,99 @@
 
   $effect(() => setReducedMotion(store.settings?.general.reducedMotion ?? false));
 
-  $effect(() => {
-    void active;
-    void groups.length;
-    tick().then(() => {
-      const el = items[active];
-      if (!el) return;
-      const first = indicator.target.h === 0;
-      indicator.set({ y: el.offsetTop, h: el.offsetHeight }, { instant: first || reducedMotion() });
-    });
-  });
+  /** Opens a page (and option, as `namespace.key`), adding it to the history. */
+  function goto(id: string, option?: string) {
+    if (!id) return;
+    if (id !== current || index < 0) {
+      history = [...history.slice(0, index + 1), id];
+      index = history.length - 1;
+      remember(id);
+    }
+    focus = option ? { target: option, n: (focus?.n ?? 0) + 1 } : null;
+  }
 
-  async function resetSection() {
-    await store.reset(active);
+  function step(by: number) {
+    const next = index + by;
+    if (next < 0 || next >= history.length) return;
+    index = next;
+    focus = null;
+    remember(history[index]);
+  }
+
+  function remember(id: string) {
+    try {
+      localStorage.setItem(LAST_KEY, id);
+    } catch {}
+  }
+
+  /** `page`, `page/option` or `page/namespace.option`; old group names fall back to their first page. */
+  function gotoLink(link: string) {
+    const [id, option] = decodeURIComponent(link).split('/');
+    const target = store.page(id) ?? store.catalog?.groups.find((g) => g.id === id)?.pages[0];
+    if (!target) return;
+    goto(target.id, option && (option.includes('.') ? option : `${target.id}.${option}`));
+  }
+
+  function showToast(text: string) {
     clearTimeout(toastTimer);
-    toast = `${title} is back to its defaults`;
+    toast = text;
     toastTimer = setTimeout(() => (toast = null), 2400);
   }
 
-  const goto = (section: string) => {
-    if (section) active = section;
-  };
+  function onkeydown(e: KeyboardEvent) {
+    if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) return;
+    if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+    else return;
+    e.preventDefault();
+  }
+
+  function onmouseup(e: MouseEvent) {
+    if (e.button === 3) step(-1);
+    else if (e.button === 4) step(1);
+  }
 
   onMount(() => {
     applyCssVars();
-    store.init();
-    goto(decodeURIComponent(location.hash.slice(1)));
-    const off = listen<string>('settings://goto', (e) => goto(e.payload));
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(LAST_KEY);
+    } catch {}
+    store.init().then(() => {
+      if (location.hash.length > 1) gotoLink(location.hash.slice(1));
+      else goto(saved && store.page(saved) ? saved : 'general');
+    });
+    const off = listen<string>('settings://goto', (e) => gotoLink(e.payload));
     return () => off.then((f) => f());
   });
 </script>
 
-{#snippet navItem(id: string, label: string, count = 0)}
-  <button class="nav-item" class:active={active === id} bind:this={items[id]} onclick={() => (active = id)}>
-    <span>{label}</span>
-    {#if count}<span class="count">{count}</span>{/if}
-  </button>
-{/snippet}
+<svelte:window {onkeydown} {onmouseup} />
 
 <div class="app">
-  <aside class="sidebar">
-    <div class="brand">
-      <img src="/icon.png" alt="" />
-      <span class="brand-name">Notifi</span>
-      <span class="version">0.1.0</span>
-    </div>
-    <nav>
-      <span class="indicator" style:transform="translateY({indicator.current.y}px)" style:height="{indicator.current.h}px"></span>
-      {@render navItem('general', 'General')}
-      {@render navItem('panel', 'Tray panel')}
-      <p class="nav-label">Features</p>
-      {#each groups as g (g.id)}
-        {@render navItem(g.id, g.label, enabled(g.id))}
-      {/each}
-      <p class="nav-label">Setup</p>
-      {@render navItem('shortcuts', 'Shortcuts')}
-      {@render navItem('permissions', 'Permissions')}
-    </nav>
-  </aside>
+  <Sidebar active={current} {goto} />
 
   <main>
-    {#if store.settings && store.catalog}
-      {#key active}
-        <div class="page" in:fadeSlide={{ token: 'tabSwitch' }}>
-          <header>
-            <div>
-              <h1>{title}</h1>
-              <p>
-                {#if group}
-                  {enabled(group.id)} of {group.features.length} on. Turn on only what you use; features that are off don't run.
-                {:else}
-                  {FIXED[active as keyof typeof FIXED].blurb}
-                {/if}
-              </p>
-            </div>
-            {#if active !== 'permissions'}
-              <button class="ghost" onclick={resetSection}>Reset section</button>
-            {/if}
-          </header>
-          {#if group}
-            <FeatureGroup {group} />
-          {:else if active === 'general'}
-            <General />
-          {:else if active === 'panel'}
-            <PanelSection />
-          {:else if active === 'shortcuts'}
-            <Shortcuts />
-          {:else}
-            <Permissions />
-          {/if}
-        </div>
-      {/key}
-    {/if}
+    <div class="topbar">
+      <button class="nav" aria-label="Back" title="Back (Alt+Left)" disabled={index <= 0} onclick={() => step(-1)}>
+        <span class="flip"><Icon name="chevron" size={16} /></span>
+      </button>
+      <button class="nav" aria-label="Forward" title="Forward (Alt+Right)" disabled={index >= history.length - 1} onclick={() => step(1)}>
+        <Icon name="chevron" size={16} />
+      </button>
+      <span class="title">{page?.label ?? ''}</span>
+    </div>
+    <div class="scroll">
+      {#if store.settings && store.catalog && page}
+        {#key page.id}
+          <div class="page" in:fadeSlide={{ token: 'tabSwitch' }}>
+            {#key focus?.n}
+              <PageView {page} focus={focus?.target ?? null} {goto} onreset={() => showToast(`${page.label} is back to its defaults`)} />
+            {/key}
+          </div>
+        {/key}
+      {/if}
+    </div>
   </main>
 
   {#if toast}
@@ -138,121 +130,60 @@
 <style>
   .app {
     display: grid;
-    grid-template-columns: 232px 1fr;
+    grid-template-columns: 230px 1fr;
     height: 100vh;
   }
-  .sidebar {
+  main {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 18px 12px;
-    border-right: 1px solid var(--line);
-    background: var(--sidebar);
-    overflow-y: auto;
+    min-width: 0;
+    min-height: 0;
   }
-  .brand {
+  .topbar {
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 10px;
-    padding: 0 8px 4px;
+    gap: 4px;
+    height: 46px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
   }
-  .brand img {
-    width: 28px;
+  .nav {
+    display: grid;
+    place-items: center;
+    width: 30px;
     height: 28px;
-  }
-  .brand-name {
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-  .version {
-    margin-left: auto;
-    color: var(--mut);
-    font: 11px var(--mono);
-  }
-  nav {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .indicator {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    border-radius: 8px;
-    background: var(--acc-soft);
-    box-shadow: inset 3px 0 0 var(--acc);
-    pointer-events: none;
-  }
-  .nav-label {
-    margin: 14px 10px 4px;
-    color: var(--mut);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .nav-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 10px 7px 14px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 7px;
     background: none;
     color: var(--fg-soft);
-    font: inherit;
-    font-size: 13.5px;
-    text-align: left;
     cursor: pointer;
     transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
   }
-  .nav-item:hover:not(.active) {
+  .nav:hover:not(:disabled) {
     background: var(--hover);
   }
-  .nav-item.active {
-    color: var(--fg);
+  .nav:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .flip {
+    display: inline-flex;
+    transform: scaleX(-1);
+  }
+  .title {
+    margin-left: 8px;
+    font-size: 13.5px;
     font-weight: 600;
   }
-  .count {
-    min-width: 20px;
-    padding: 0 6px;
-    border-radius: 99px;
-    background: var(--acc);
-    color: var(--acc-fg);
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 18px;
-    text-align: center;
-  }
-  main {
+  .scroll {
+    flex: 1;
     overflow-y: auto;
   }
   .page {
-    max-width: 720px;
+    max-width: 760px;
     margin: 0 auto;
-    padding: 30px 32px 48px;
-  }
-  header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 20px;
-  }
-  h1 {
-    margin: 0 0 4px;
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-  header p {
-    margin: 0;
-    color: var(--mut);
-    font-size: 13.5px;
+    padding: 26px 32px 48px;
   }
   .toast {
     position: fixed;

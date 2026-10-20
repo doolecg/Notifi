@@ -32,8 +32,8 @@ pub enum Control {
     Slider { min: f64, max: f64, step: f64, unit: &'static str, default: f64 },
     Number { min: f64, max: f64, step: f64, unit: &'static str, default: f64 },
     Text { placeholder: &'static str, default: &'static str },
-    /// A list of strings (apps, folders, rules), empty by default.
-    List { placeholder: &'static str },
+    /// A list of strings (apps, folders, rules).
+    List { placeholder: &'static str, default: &'static [&'static str] },
     Shortcut { default: &'static str },
     /// Drawn by the page's own component; listed here so search can find it.
     Custom,
@@ -140,7 +140,12 @@ pub const fn text(id: &'static str, label: &'static str, hint: &'static str, pla
 }
 
 pub const fn list(id: &'static str, label: &'static str, hint: &'static str, placeholder: &'static str) -> Opt {
-    opt(id, label, hint, Control::List { placeholder })
+    opt(id, label, hint, Control::List { placeholder, default: &[] })
+}
+
+/// A list that starts with `default` instead of empty.
+pub const fn list_of(id: &'static str, label: &'static str, hint: &'static str, placeholder: &'static str, default: &'static [&'static str]) -> Opt {
+    opt(id, label, hint, Control::List { placeholder, default })
 }
 
 pub const fn key(id: &'static str, label: &'static str, hint: &'static str, default: &'static str) -> Opt {
@@ -178,6 +183,7 @@ pub fn pages() -> impl Iterator<Item = &'static Page> {
     GROUPS.iter().flat_map(|g| g.pages.iter())
 }
 
+#[allow(dead_code)]
 pub fn page(id: &str) -> Option<&'static Page> {
     pages().find(|p| p.id == id)
 }
@@ -200,7 +206,7 @@ impl Control {
             Control::Picker { default, .. } | Control::Tiles { default, .. } => default.into(),
             Control::Slider { default, .. } | Control::Number { default, .. } => number(default),
             Control::Text { default, .. } | Control::Shortcut { default } => default.into(),
-            Control::List { .. } => Value::Array(Vec::new()),
+            Control::List { default, .. } => Value::Array(default.iter().map(|s| Value::from(*s)).collect()),
             Control::Custom => return None,
         })
     }

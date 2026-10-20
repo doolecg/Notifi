@@ -10,7 +10,7 @@
   let coresOpen = $state(false);
   const sys = $derived(live.system);
   const temps = $derived.by(() => {
-    if (!sys || !store.featureOn('system.temperatures')) return [];
+    if (!sys || !store.featureOn('temperatures')) return [];
     const t = sys.temps;
     return [
       { label: 'CPU', value: t.cpu },

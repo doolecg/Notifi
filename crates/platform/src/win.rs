@@ -36,15 +36,33 @@ pub(crate) fn capabilities() -> Capabilities {
         .set(Feature::DarkModeRead, Support::Supported)
         .set(Feature::SensorsBattery, Support::Supported)
         .set(Feature::PowerProfile, Support::Supported)
-        .set(Feature::Eject, Support::Supported);
+        .set(Feature::Eject, Support::Supported)
+        .set(Feature::AudioSessions, Support::Supported)
+        .set(
+            Feature::AudioPerAppOutput,
+            Support::Partial("uses an undocumented Windows interface that may change in a future build".into()),
+        )
+        .set(Feature::AudioDevices, Support::Supported)
+        .set(Feature::AudioMicrophone, Support::Supported)
+        .set(Feature::AudioEvents, Support::Supported)
+        .set(
+            Feature::AudioBoost,
+            Support::Unsupported("boost past 100% needs a system audio driver (APO) such as Equalizer APO".into()),
+        )
+        .set(Feature::WindowList, Support::Supported)
+        .set(Feature::WindowControl, Support::Supported)
+        .set(Feature::WindowEvents, Support::Supported)
+        .set(Feature::DisplayList, Support::Supported)
+        .set(
+            Feature::DisplayBrightness,
+            Support::Partial("external monitors need DDC/CI switched on in the monitor's menu".into()),
+        )
+        .set(Feature::DisplayDdc, Support::Partial("only monitors that answer DDC/CI".into()));
     caps
 }
 
-impl Audio for Win {}
-impl WindowManager for Win {}
 impl Input for Win {}
 impl Clipboard for Win {}
-impl Display for Win {}
 impl Capture for Win {}
 impl Packages for Win {}
 
@@ -438,8 +456,8 @@ mod tests {
     #[test]
     fn unimplemented_is_unsupported() {
         assert!(matches!(
-            WindowManager::list(&Win).unwrap_err(),
-            PlatformError::Unsupported { feature: Feature::WindowList, .. }
+            Input::hook(&Win).unwrap_err(),
+            PlatformError::Unsupported { feature: Feature::InputHook, .. }
         ));
     }
 }

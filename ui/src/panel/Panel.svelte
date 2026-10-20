@@ -34,7 +34,11 @@
     if (tab.feature && !store.featureOn(tab.feature)) return false;
     return tab.id !== 'power' || live.hasBattery;
   };
-  const tabs = $derived((store.catalog?.panelTabs ?? []).filter(shown));
+  const tabs = $derived.by(() => {
+    const order = store.settings?.panel.order ?? [];
+    const rank = (id: string) => (order.indexOf(id) + order.length + 1) % (order.length + 1);
+    return (store.catalog?.panelTabs ?? []).filter(shown).sort((a, b) => rank(a.id) - rank(b.id));
+  });
   const active = $derived.by(() => {
     const valid = (id: string | null | undefined) => tabs.find((t) => t.id === id);
     return valid(chosen) ?? valid(store.settings?.panel.lastTab) ?? tabs[0];

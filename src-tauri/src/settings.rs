@@ -1,181 +1,37 @@
 use std::{collections::BTreeMap, fs, path::PathBuf, sync::Mutex};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{Map, Value};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::keybinds;
+use crate::{catalog, island::config::IslandConfig, keybinds};
 
 pub const CHANGED_EVENT: &str = "settings://changed";
-
-#[derive(Serialize, Clone, Copy)]
-pub struct Feature {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub blurb: &'static str,
-    /// Something the user opens (listed under Utilities) rather than a background behaviour.
-    pub tool: bool,
-}
-
-#[derive(Serialize, Clone, Copy)]
-pub struct FeatureGroup {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub features: &'static [Feature],
-}
-
-const fn f(id: &'static str, label: &'static str, blurb: &'static str) -> Feature {
-    Feature { id, label, blurb, tool: false }
-}
-
-const fn t(id: &'static str, label: &'static str, blurb: &'static str) -> Feature {
-    Feature { id, label, blurb, tool: true }
-}
-
-pub const FEATURE_GROUPS: &[FeatureGroup] = &[
-    FeatureGroup {
-        id: "sound",
-        label: "Sound",
-        features: &[
-            f("volumeMixer", "Volume mixer", "Set the volume of each app on its own"),
-            f("perAppOutput", "Per-app output", "Send each app to a different speaker or headset"),
-            f("outputSwitcher", "Output switcher", "Change the default output in one click"),
-            f("microphoneTools", "Microphone tools", "Mic level and a mute-all key"),
-            f("mediaKeyBlocker", "Media key app blocker", "Stop media keys from starting a chosen app"),
-        ],
-    },
-    FeatureGroup {
-        id: "system",
-        label: "System",
-        features: &[
-            f("systemStats", "CPU, memory, battery and power", "Live usage in the tray panel"),
-            f("gpu", "GPU", "Graphics usage and memory"),
-            f("temperatures", "Temperatures", "CPU, GPU and battery heat where readable"),
-            f("fanControl", "Fan control (beta)", "Set fan curves where the hardware allows"),
-            f("trayReadouts", "Tray readouts", "Show numbers in the tray icon"),
-            f("network", "Network and speed test", "Live speeds, totals and a speed test"),
-            f("alerts", "Alerts", "Get told when a value crosses a limit"),
-        ],
-    },
-    FeatureGroup {
-        id: "windows",
-        label: "Windows",
-        features: &[
-            f("appSwitcher", "App switcher with live previews", "A switcher with a picture of every window"),
-            f("layouts", "Window layouts and snapping", "Drag or press keys to tile windows"),
-            f("quitOnClose", "Quit on close", "Closing an app's last window ends the app"),
-            f("closeProtection", "Quit and close protection", "Hold the key to close, so slips do nothing"),
-            f("panelPreview", "Panel preview strip (Linux)", "Window previews over the desktop panel"),
-            f("panelClicks", "Minimise on panel click (Linux)", "Click a running app in the panel to hide it"),
-        ],
-    },
-    FeatureGroup {
-        id: "input",
-        label: "Keyboard & Mouse",
-        features: &[
-            t("textSnippets", "Text snippets", "Type a short word, get a whole phrase"),
-            f("smoothScrolling", "Smooth scrolling", "Even, gliding mouse wheel scrolling"),
-            f("pointerAcceleration", "Pointer acceleration", "Turn pointer speed-up on or off"),
-            f("focusFollowsMouse", "Focus follows mouse", "The window under the pointer gets the keys"),
-            f("scrollDirection", "Scroll direction (mouse only)", "Flip the wheel without touching the touchpad"),
-            f("sidewaysScroll", "Hold key to scroll sideways", "Hold a key to make the wheel scroll across"),
-            f("mouseButtons", "Mouse buttons and drag gestures", "Give extra buttons and drags their own jobs"),
-            f("touchpadMiddleClick", "Middle click from touchpad", "Tap with three fingers to middle click"),
-            f("appExclusions", "Apps to leave alone", "Turn input changes off in chosen apps"),
-            f("clickFilter", "Extra click filter and key debounce", "Ignore double clicks and repeats from worn parts"),
-            f("superKey", "Super key", "Use Caps Lock as an extra modifier"),
-        ],
-    },
-    FeatureGroup {
-        id: "clipboard",
-        label: "Clipboard",
-        features: &[
-            t("clipboardHistory", "Clipboard history", "Everything you copied, searchable"),
-            f("autoClear", "Auto clear clipboard", "Wipe the clipboard after a while or on lock"),
-            f("plainTextPaste", "Paste as plain text", "Paste without the formatting"),
-            t("shelf", "Shelf", "A place to park files while you drag"),
-            f("pasteImageAsFile", "Paste image as file", "Paste a copied image into a folder as a PNG"),
-            f("cleanUrl", "Clean URL", "Strip tracking bits from copied links"),
-            f("appImageInstaller", "AppImage installer (Linux)", "Install a downloaded AppImage with a menu entry"),
-        ],
-    },
-    FeatureGroup {
-        id: "everyday",
-        label: "Everyday",
-        features: &[
-            t("commandBar", "Command Bar", "Search apps, files, windows and commands"),
-            t("quickPanel", "Quick panel", "A small floating palette of actions"),
-            f("quickToggles", "Quick toggles", "Dark mode, desktop icons, eject and more"),
-            t("radialMenu", "Radial menu", "A ring of actions at the pointer"),
-            t("scratchpad", "Scratchpad", "Quick notes with Markdown"),
-            t("cleaningMode", "Cleaning Mode", "Lock the keyboard while you wipe it"),
-            f("topPill", "Top Pill", "Media, timers and notices at the top of the screen"),
-            t("aiAgents", "AI agents panel", "Token use and status of coding agents"),
-        ],
-    },
-    FeatureGroup {
-        id: "capture",
-        label: "Capture",
-        features: &[
-            t("captureSelector", "Capture selector and magnifier", "Pick an area, window or screen to grab"),
-            t("screenshotEditor", "Screenshot editor", "Mark up, crop and blur screenshots"),
-            t("scrollingCapture", "Scrolling capture", "Grab a whole long page in one image"),
-            t("screenRecording", "Screen recording", "Record the screen with sound"),
-            t("textFromScreen", "Copy text from screen and QR", "Read text or a QR code off the screen"),
-            t("colorPicker", "Color picker", "Pick any colour on screen"),
-            t("cameraPreview", "Camera preview", "Your webcam in a floating window"),
-            t("mediaTools", "Media tools", "Convert and trim video, audio and images"),
-        ],
-    },
-    FeatureGroup {
-        id: "apps",
-        label: "Apps",
-        features: &[
-            t("appUpdates", "App updates", "See and install updates for your apps"),
-            t("packageManager", "Package manager", "Search, install and remove apps"),
-            t("uninstaller", "Uninstaller and leftovers", "Remove apps and the files they leave"),
-            t("cleaner", "Cleaner", "Clear caches, temp files and logs"),
-            f("messagingDownloads", "Messaging downloads", "Tidy chat app download folders"),
-            t("portManager", "Port manager", "See which app holds a port and end it"),
-        ],
-    },
-    FeatureGroup {
-        id: "energy",
-        label: "Energy & Display",
-        features: &[
-            f("keepAwake", "Keep awake", "Stop the computer from sleeping"),
-            f("lidClosedAwake", "Keep awake with lid closed", "Keep running with the laptop lid shut"),
-            t("displays", "Displays and brightness", "Brightness for every screen, in fine steps"),
-            f("softwareDim", "Extra dimming", "Go darker than the lowest brightness"),
-            f("bluetoothSleep", "Bluetooth off during sleep", "Turn Bluetooth off while asleep"),
-        ],
-    },
-];
 
 #[derive(Serialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub struct PanelTab {
     pub id: &'static str,
     pub label: &'static str,
-    /// `group.feature` that must be on for the tab to show; `None` means always available.
+    /// Feature namespace whose `enabled` switch must be on for the tab to show; `None` means always available.
     pub feature: Option<&'static str>,
-    /// Settings section the tab's customise button opens.
+    /// Settings page the tab's customise button opens.
     pub section: Option<&'static str>,
     /// False until the tab's backend ships; the tab stays hidden.
     pub ready: bool,
 }
 
 pub const PANEL_TABS: &[PanelTab] = &[
-    PanelTab { id: "keepAwake", label: "Keep awake", feature: Some("energy.keepAwake"), section: Some("energy"), ready: true },
-    PanelTab { id: "displays", label: "Displays", feature: Some("energy.displays"), section: Some("energy"), ready: false },
-    PanelTab { id: "mixer", label: "Mixer", feature: Some("sound.volumeMixer"), section: Some("sound"), ready: true },
-    PanelTab { id: "system", label: "System", feature: Some("system.systemStats"), section: Some("system"), ready: true },
-    PanelTab { id: "network", label: "Network", feature: Some("system.network"), section: Some("system"), ready: true },
+    PanelTab { id: "keepAwake", label: "Keep awake", feature: Some("keepAwake"), section: Some("keepAwake"), ready: true },
+    PanelTab { id: "displays", label: "Displays", feature: Some("displays"), section: Some("displays"), ready: false },
+    PanelTab { id: "mixer", label: "Mixer", feature: Some("volumeMixer"), section: Some("volumeMixer"), ready: true },
+    PanelTab { id: "system", label: "System", feature: Some("monitor"), section: Some("monitor"), ready: true },
+    PanelTab { id: "network", label: "Network", feature: Some("network"), section: Some("monitor"), ready: true },
     PanelTab { id: "storage", label: "Storage", feature: None, section: Some("panel"), ready: true },
-    PanelTab { id: "power", label: "Power", feature: Some("system.systemStats"), section: Some("energy"), ready: true },
-    PanelTab { id: "utilities", label: "Utilities", feature: None, section: Some("everyday"), ready: true },
+    PanelTab { id: "power", label: "Power", feature: Some("monitor"), section: Some("monitor"), ready: true },
+    PanelTab { id: "utilities", label: "Utilities", feature: None, section: Some("features"), ready: true },
     PanelTab { id: "controls", label: "Controls", feature: None, section: Some("panel"), ready: true },
-    PanelTab { id: "about", label: "About", feature: None, section: Some("general"), ready: true },
+    PanelTab { id: "about", label: "About", feature: None, section: Some("about"), ready: true },
 ];
 
 pub const KEEP_AWAKE_CHOICES: &[u32] = &[15, 60, 120, 0];
@@ -186,8 +42,14 @@ pub struct Panel {
     pub last_tab: String,
     /// Tabs the user wants in the panel; a tab also needs its feature on.
     pub tabs: BTreeMap<String, bool>,
+    /// Tab ids in the order the panel shows them.
+    pub order: Vec<String>,
     /// Keep awake duration in minutes, 0 = until turned off.
     pub keep_awake_minutes: u32,
+    pub tray_icon: String,
+    pub hide_icon_with_readouts: bool,
+    pub left_click: String,
+    pub compact: bool,
 }
 
 impl Default for Panel {
@@ -195,7 +57,12 @@ impl Default for Panel {
         Self {
             last_tab: "controls".into(),
             tabs: PANEL_TABS.iter().map(|t| (t.id.to_string(), true)).collect(),
+            order: PANEL_TABS.iter().map(|t| t.id.to_string()).collect(),
             keep_awake_minutes: 60,
+            tray_icon: "default".into(),
+            hide_icon_with_readouts: false,
+            left_click: "panel".into(),
+            compact: false,
         }
     }
 }
@@ -214,10 +81,17 @@ pub enum Theme {
 pub struct General {
     pub autostart: bool,
     pub theme: Theme,
+    pub translucent: bool,
     pub reduced_motion: bool,
+    pub language: String,
     pub auto_update: bool,
     pub update_check_hours: u32,
     pub install_on_quit: bool,
+    pub beta_channel: bool,
+    pub preview_notes: bool,
+    pub whats_new: bool,
+    pub show_tour: bool,
+    pub haptics: bool,
 }
 
 impl Default for General {
@@ -225,21 +99,32 @@ impl Default for General {
         Self {
             autostart: false,
             theme: Theme::System,
+            translucent: false,
             reduced_motion: false,
+            language: "system".into(),
             auto_update: true,
             update_check_hours: 3,
             install_on_quit: true,
+            beta_channel: false,
+            preview_notes: true,
+            whats_new: true,
+            show_tour: true,
+            haptics: false,
         }
     }
 }
+
+/// Option values of every catalog namespace that is not a typed section, keyed by namespace.
+pub type Features = BTreeMap<String, Map<String, Value>>;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct Settings {
     pub general: General,
     pub shortcuts: BTreeMap<String, String>,
-    pub features: BTreeMap<String, BTreeMap<String, bool>>,
+    pub features: Features,
     pub panel: Panel,
+    pub island: IslandConfig,
 }
 
 impl Default for Settings {
@@ -247,64 +132,88 @@ impl Default for Settings {
         Self {
             general: General::default(),
             shortcuts: keybinds::defaults(),
-            features: FEATURE_GROUPS
-                .iter()
-                .map(|g| {
-                    let features = g.features.iter().map(|f| (f.id.to_string(), false)).collect();
-                    (g.id.to_string(), features)
-                })
-                .collect(),
+            features: catalog::feature_defaults().into_iter().collect(),
             panel: Panel::default(),
+            island: IslandConfig::default(),
         }
     }
 }
 
 impl Settings {
-    /// Fills in missing keys from the defaults and drops unknown ones.
+    /// Whether the feature (or sub-feature) namespace is switched on.
+    #[allow(dead_code)]
+    pub fn enabled(&self, namespace: &str) -> bool {
+        self.option(namespace, "enabled").and_then(Value::as_bool).unwrap_or(false)
+    }
+
+    /// The stored value of `namespace.key` in the features map.
+    pub fn option(&self, namespace: &str, key: &str) -> Option<&Value> {
+        self.features.get(namespace)?.get(key)
+    }
+
+    /// Fills in missing keys from the defaults, drops unknown ones and fixes values that don't fit.
     fn normalized(self) -> Self {
         let mut out = Self::default();
-        out.general = self.general;
-        out.general.update_check_hours = out.general.update_check_hours.clamp(0, 24);
-        if PANEL_TABS.iter().any(|t| t.id == self.panel.last_tab) {
-            out.panel.last_tab = self.panel.last_tab;
+        out.general = fit_typed("general", &self.general);
+        let mut panel: Panel = fit_typed("panel", &self.panel);
+        if !PANEL_TABS.iter().any(|t| t.id == panel.last_tab) {
+            panel.last_tab = out.panel.last_tab.clone();
         }
         for (id, on) in out.panel.tabs.iter_mut() {
-            if let Some(saved) = self.panel.tabs.get(id) {
+            if let Some(saved) = panel.tabs.get(id) {
                 *on = *saved;
             }
         }
-        if KEEP_AWAKE_CHOICES.contains(&self.panel.keep_awake_minutes) {
-            out.panel.keep_awake_minutes = self.panel.keep_awake_minutes;
+        panel.tabs = std::mem::take(&mut out.panel.tabs);
+        let mut order: Vec<String> = Vec::new();
+        for id in panel.order.iter().chain(out.panel.order.iter()) {
+            if PANEL_TABS.iter().any(|t| t.id == id) && !order.contains(id) {
+                order.push(id.clone());
+            }
         }
+        panel.order = order;
+        if !KEEP_AWAKE_CHOICES.contains(&panel.keep_awake_minutes) {
+            panel.keep_awake_minutes = out.panel.keep_awake_minutes;
+        }
+        out.panel = panel;
+        out.island = fit_typed("island", &self.island);
         for (id, accel) in out.shortcuts.iter_mut() {
             if let Some(saved) = self.shortcuts.get(id) {
                 *accel = saved.clone();
             }
         }
-        for (group, features) in out.features.iter_mut() {
-            let Some(saved) = self.features.get(group) else { continue };
-            for (id, on) in features.iter_mut() {
-                if let Some(saved) = saved.get(id) {
-                    *on = *saved;
-                }
+        for field in catalog::fields().filter(|f| !catalog::TYPED.contains(&f.namespace)) {
+            let saved = self.option(field.namespace, field.key).and_then(|v| accept(&field.control, v));
+            if let (Some(value), Some(map)) = (saved, out.features.get_mut(field.namespace)) {
+                map.insert(field.key.to_string(), value);
             }
         }
         out
     }
 
+    /// Merges `value` (an object holding some or all keys) into a section.
     fn set_section(&mut self, section: &str, value: Value) -> Result<(), String> {
         let mut next = self.clone();
         match section {
-            "general" => next.general = serde_json::from_value(value).map_err(|e| e.to_string())?,
-            "panel" => next.panel = serde_json::from_value(value).map_err(|e| e.to_string())?,
+            "general" => next.general = merge_typed(&self.general, value)?,
+            "panel" => next.panel = merge_typed(&self.panel, value)?,
+            "island" => next.island = merge_typed(&self.island, value)?,
             "shortcuts" => {
-                let map: BTreeMap<String, String> = serde_json::from_value(value).map_err(|e| e.to_string())?;
+                let mut map = self.shortcuts.clone();
+                let patch: BTreeMap<String, String> = serde_json::from_value(value).map_err(|e| e.to_string())?;
+                map.extend(patch);
                 validate_shortcuts(&map)?;
                 next.shortcuts = map;
             }
-            group if self.features.contains_key(group) => {
-                let map = serde_json::from_value(value).map_err(|e| e.to_string())?;
-                next.features.insert(group.to_string(), map);
+            ns if self.features.contains_key(ns) => {
+                let Value::Object(patch) = value else { return Err(format!("`{ns}` expects an object")) };
+                for (key, v) in &patch {
+                    let control = catalog::control(ns, key).ok_or_else(|| format!("unknown option `{ns}.{key}`"))?;
+                    if accept(&control, v).is_none() {
+                        return Err(format!("`{v}` does not fit `{ns}.{key}`"));
+                    }
+                }
+                next.features.get_mut(ns).unwrap().extend(patch);
             }
             _ => return Err(format!("unknown settings section `{section}`")),
         }
@@ -312,19 +221,91 @@ impl Settings {
         Ok(())
     }
 
+    /// Resets one section, or everything with `all`.
     fn reset_section(&mut self, section: &str) -> Result<(), String> {
         let defaults = Self::default();
         match section {
+            "all" => *self = defaults,
             "general" => self.general = defaults.general,
             "panel" => self.panel = defaults.panel,
+            "island" => self.island = defaults.island,
             "shortcuts" => self.shortcuts = defaults.shortcuts,
-            group if defaults.features.contains_key(group) => {
-                self.features.insert(group.to_string(), defaults.features[group].clone());
+            ns if defaults.features.contains_key(ns) => {
+                self.features.insert(ns.to_string(), defaults.features[ns].clone());
             }
             _ => return Err(format!("unknown settings section `{section}`")),
         }
         Ok(())
     }
+
+    /// A copy without machine-specific values (folders and paths), for backups.
+    fn exported(&self) -> Self {
+        let mut out = self.clone();
+        for map in out.features.values_mut() {
+            map.retain(|key, _| !is_local(key));
+        }
+        out
+    }
+
+    /// `backup` applied over these settings, keeping this machine's folders and paths.
+    fn imported(&self, backup: Settings) -> Self {
+        let mut out = backup;
+        for (ns, map) in &self.features {
+            for (key, value) in map.iter().filter(|(k, _)| is_local(k)) {
+                out.features.entry(ns.clone()).or_default().insert(key.clone(), value.clone());
+            }
+        }
+        out.normalized()
+    }
+}
+
+/// A saved file; before the Island had its own section, its switch was `features.everyday.topPill`.
+fn from_saved(saved: Value) -> Settings {
+    let legacy = saved.get("island").is_none() && saved.pointer("/features/everyday/topPill") == Some(&Value::Bool(true));
+    let mut settings: Settings = serde_json::from_value(saved).unwrap_or_default();
+    if legacy {
+        settings.island.enabled = true;
+    }
+    settings
+}
+
+fn is_local(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    key.contains("folder") || key.contains("path")
+}
+
+/// The catalog's check, plus shortcuts must be ones the OS can register.
+fn accept(control: &catalog::Control, value: &Value) -> Option<Value> {
+    let value = control.accept(value)?;
+    if let (catalog::Control::Shortcut { .. }, Some(accel)) = (control, value.as_str()) {
+        if !accel.is_empty() && keybinds::parse(accel).is_err() {
+            return None;
+        }
+    }
+    Some(value)
+}
+
+fn merge_typed<T: Serialize + DeserializeOwned>(current: &T, patch: Value) -> Result<T, String> {
+    let mut value = serde_json::to_value(current).map_err(|e| e.to_string())?;
+    match (&mut value, patch) {
+        (Value::Object(map), Value::Object(patch)) => map.extend(patch),
+        (_, other) => value = other,
+    }
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+/// Runs a typed section's values through its catalog controls (clamping numbers, dropping bad choices).
+fn fit_typed<T: Serialize + DeserializeOwned + Default>(namespace: &str, section: &T) -> T {
+    let Ok(Value::Object(mut map)) = serde_json::to_value(section) else { return T::default() };
+    let Ok(Value::Object(defaults)) = serde_json::to_value(T::default()) else { return T::default() };
+    for field in catalog::fields().filter(|f| f.namespace == namespace) {
+        let fitted = map.get(field.key).and_then(|v| accept(&field.control, v));
+        match fitted.or_else(|| defaults.get(field.key).cloned()) {
+            Some(v) => map.insert(field.key.to_string(), v),
+            None => map.remove(field.key),
+        };
+    }
+    serde_json::from_value(Value::Object(map)).unwrap_or_default()
 }
 
 fn validate_shortcuts(map: &BTreeMap<String, String>) -> Result<(), String> {
@@ -347,7 +328,8 @@ impl Store {
     pub fn load(path: PathBuf) -> Self {
         let settings = fs::read_to_string(&path)
             .ok()
-            .and_then(|text| serde_json::from_str::<Settings>(&text).ok())
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .map(from_saved)
             .unwrap_or_default()
             .normalized();
         Self { path, settings: Mutex::new(settings) }
@@ -384,7 +366,7 @@ impl Store {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Catalog {
-    groups: &'static [FeatureGroup],
+    groups: &'static [catalog::Group],
     actions: &'static [keybinds::Action],
     reserved: &'static [keybinds::Reserved],
     panel_tabs: &'static [PanelTab],
@@ -399,7 +381,7 @@ pub fn get_settings(store: State<Store>) -> Settings {
 #[tauri::command]
 pub fn get_catalog() -> Catalog {
     Catalog {
-        groups: FEATURE_GROUPS,
+        groups: catalog::GROUPS,
         actions: keybinds::ACTIONS,
         reserved: keybinds::RESERVED,
         panel_tabs: PANEL_TABS,
@@ -417,9 +399,32 @@ pub fn reset_section(app: AppHandle, store: State<Store>, section: String) -> Re
     store.update(&app, |s| s.reset_section(&section))
 }
 
+/// Writes a backup to the Downloads folder and returns its path.
+#[tauri::command]
+pub fn export_settings(app: AppHandle, store: State<Store>) -> Result<String, String> {
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let path = dir.join("notifi-settings.json");
+    let text = serde_json::to_string_pretty(&store.get().exported()).map_err(|e| e.to_string())?;
+    fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Applies a backup's text (as written by `export_settings`).
+#[tauri::command]
+pub fn import_settings(app: AppHandle, store: State<Store>, text: String) -> Result<Settings, String> {
+    let backup: Settings = serde_json::from_str(&text).map_err(|e| format!("Not a Notifi backup: {e}"))?;
+    store.update(&app, |s| {
+        let next = s.imported(backup);
+        validate_shortcuts(&next.shortcuts)?;
+        *s = next;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn panel_settings_normalize() {
@@ -428,21 +433,114 @@ mod tests {
         s.panel.keep_awake_minutes = 7;
         s.panel.tabs.insert("storage".into(), false);
         s.panel.tabs.insert("unknown".into(), true);
+        s.panel.order = vec!["about".into(), "nope".into()];
+        s.panel.left_click = "nope".into();
         let n = s.normalized();
         assert_eq!(n.panel.last_tab, Panel::default().last_tab);
         assert_eq!(n.panel.keep_awake_minutes, 60);
         assert_eq!(n.panel.tabs.get("storage"), Some(&false));
         assert!(!n.panel.tabs.contains_key("unknown"));
         assert_eq!(n.panel.tabs.len(), PANEL_TABS.len());
+        assert_eq!(n.panel.order.first().map(String::as_str), Some("about"));
+        assert_eq!(n.panel.order.len(), PANEL_TABS.len());
+        assert_eq!(n.panel.left_click, "panel");
     }
 
     #[test]
     fn panel_section_round_trips() {
         let mut s = Settings::default();
-        s.set_section("panel", serde_json::json!({ "lastTab": "system", "keepAwakeMinutes": 0 })).unwrap();
+        s.set_section("panel", json!({ "lastTab": "system", "keepAwakeMinutes": 0 })).unwrap();
         assert_eq!(s.panel.last_tab, "system");
         assert_eq!(s.panel.keep_awake_minutes, 0);
         s.reset_section("panel").unwrap();
         assert_eq!(s.panel, Panel::default());
+    }
+
+    #[test]
+    fn general_is_clamped_by_the_catalog() {
+        let mut s = Settings::default();
+        s.set_section("general", json!({ "updateCheckHours": 99, "language": "xx" })).unwrap();
+        assert_eq!(s.general.update_check_hours, 24);
+        assert_eq!(s.general.language, "system");
+    }
+
+    /// Every catalog option on a typed page is a field of that section, with the same default.
+    #[test]
+    fn typed_sections_match_the_catalog() {
+        let defaults = serde_json::to_value(Settings::default()).unwrap();
+        for f in catalog::fields().filter(|f| catalog::TYPED.contains(&f.namespace)) {
+            let value = defaults[f.namespace].get(f.key).cloned();
+            let expected = f.control.default_value();
+            let same = match (&value, &expected) {
+                (Some(Value::Number(a)), Some(Value::Number(b))) => a.as_f64() == b.as_f64(),
+                _ => value == expected,
+            };
+            assert!(same, "{}.{}: {value:?} vs {expected:?}", f.namespace, f.key);
+        }
+    }
+
+    #[test]
+    fn feature_options_merge_and_validate() {
+        let mut s = Settings::default();
+        assert!(!s.enabled("appSwitcher"));
+        s.set_section("appSwitcher", json!({ "enabled": true, "layout": "icons" })).unwrap();
+        assert!(s.enabled("appSwitcher"));
+        assert_eq!(s.option("appSwitcher", "layout"), Some(&json!("icons")));
+        assert_eq!(s.option("appSwitcher", "thumbnailSize"), Some(&json!("normal")));
+        assert!(s.set_section("appSwitcher", json!({ "layout": "huge" })).is_err());
+        assert!(s.set_section("appSwitcher", json!({ "nope": 1 })).is_err());
+        assert!(s.set_section("appSwitcher", json!({ "trigger": "not a key" })).is_err());
+        s.set_section("appSwitcher", json!({ "appearDelay": 99999 })).unwrap();
+        assert_eq!(s.option("appSwitcher", "appearDelay"), Some(&json!(1000)));
+        s.reset_section("appSwitcher").unwrap();
+        assert!(!s.enabled("appSwitcher"));
+    }
+
+    #[test]
+    fn every_default_shortcut_parses() {
+        for f in catalog::fields() {
+            if let catalog::Control::Shortcut { default } = f.control {
+                assert!(default.is_empty() || keybinds::parse(default).is_ok(), "{}.{}: {default}", f.namespace, f.key);
+            }
+        }
+    }
+
+    #[test]
+    fn old_files_load() {
+        let old = json!({ "features": { "sound": { "volumeMixer": true } }, "general": { "theme": "dark" } });
+        let s: Settings = serde_json::from_value(old).unwrap();
+        let s = s.normalized();
+        assert_eq!(s.general.theme, Theme::Dark);
+        assert!(!s.features.contains_key("sound"));
+        assert!(s.features.contains_key("volumeMixer"));
+    }
+
+    #[test]
+    fn island_section() {
+        let mut s = Settings::default();
+        s.set_section("island", json!({ "enabled": true, "size": "spacious", "display": "DELL U2720Q" })).unwrap();
+        assert!(s.island.enabled);
+        assert_eq!(s.island.size, "spacious");
+        assert_eq!(s.island.display, "DELL U2720Q");
+        s.set_section("island", json!({ "size": "huge", "hoverDelayMs": 99999 })).unwrap();
+        assert_eq!(s.island.size, "compact");
+        assert_eq!(s.island.hover_delay_ms, 1500);
+        s.reset_section("island").unwrap();
+        assert_eq!(s.island, IslandConfig::default());
+        let legacy = from_saved(json!({ "features": { "everyday": { "topPill": true } } })).normalized();
+        assert!(legacy.island.enabled);
+    }
+
+    #[test]
+    fn backups_keep_local_paths() {
+        let mut here = Settings::default();
+        here.set_section("installerHelper", json!({ "portableFolder": "D:\\Apps" })).unwrap();
+        here.set_section("autoClear", json!({ "delaySeconds": 30 })).unwrap();
+        let mut there = Settings::default();
+        there.set_section("installerHelper", json!({ "portableFolder": "E:\\Other" })).unwrap();
+        let backup: Settings = serde_json::from_str(&serde_json::to_string(&here.exported()).unwrap()).unwrap();
+        let merged = there.imported(backup);
+        assert_eq!(merged.option("installerHelper", "portableFolder"), Some(&json!("E:\\Other")));
+        assert_eq!(merged.option("autoClear", "delaySeconds"), Some(&json!(30)));
     }
 }

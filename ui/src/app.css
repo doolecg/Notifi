@@ -158,3 +158,47 @@ button.ghost:disabled {
   opacity: 0.45;
   cursor: default;
 }
+
+/* Shared polish: every control eases between states and presses in like a physical key. */
+button,
+select,
+input,
+textarea,
+summary,
+a,
+[role='button'],
+[role='tab'],
+[role='switch'],
+[role='menuitem'] {
+  transition:
+    background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+    color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+    border-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+    box-shadow var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+    opacity var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+    transform var(--m-toggleSwitch-dur) var(--m-toggleSwitch-ease);
+}
+
+button:not(:disabled):active,
+[role='button']:not([aria-disabled='true']):active,
+[role='tab']:active {
+  transform: scale(0.96);
+  transition-duration: 90ms;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--acc), transparent 35%);
+  outline-offset: 2px;
+  transition: outline-offset var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mut), transparent 60%) transparent;
+}
+
+.scroll,
+main,
+[class*='scroll'] {
+  scroll-behavior: smooth;
+}

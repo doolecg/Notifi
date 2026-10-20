@@ -89,7 +89,7 @@ impl PanelState {
         self.wake_rx.lock().unwrap().take()
     }
 
-    fn wake(&self) {
+    pub fn wake(&self) {
         let _ = self.wake.lock().unwrap().send(());
     }
 }

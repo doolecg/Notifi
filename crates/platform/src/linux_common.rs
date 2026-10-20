@@ -35,14 +35,110 @@ pub(crate) fn capabilities(backend: Backend) -> Capabilities {
         _ => Support::Supported,
     };
     caps.set(Feature::DarkModeRead, dark);
+    caps.set(Feature::AudioSessions, Support::Partial("no level meters through pactl".into()))
+        .set(Feature::AudioPerAppOutput, Support::Supported)
+        .set(Feature::AudioDevices, Support::Supported)
+        .set(Feature::AudioMicrophone, Support::Supported)
+        .set(Feature::AudioEvents, Support::Supported)
+        .set(Feature::AudioBoost, Support::Supported)
+        .set(Feature::DisplayBrightness, Support::Partial("external monitors need ddcutil and i2c access".into()))
+        .set(Feature::DisplayDdc, Support::Partial("needs ddcutil and i2c-dev access".into()));
+    if backend.is_wayland() {
+        caps.set(Feature::DisplayList, Support::Partial("no positions on Wayland yet".into())).set(
+            Feature::WindowList,
+            Support::Unsupported("Wayland window list needs the KWin script / GNOME extension (later phase)".into()),
+        );
+    } else {
+        caps.set(Feature::DisplayList, Support::Supported)
+            .set(Feature::WindowList, Support::Supported)
+            .set(Feature::WindowControl, Support::Supported)
+            .set(Feature::WindowEvents, Support::Partial("no move/size start events on X11".into()));
+    }
     caps
 }
 
-impl Audio for Linux {}
-impl WindowManager for Linux {}
+impl WindowManager for Linux {
+    fn list(&self) -> Result<Vec<WindowInfo>> {
+        x11::windows(self.backend)
+    }
+    fn foreground(&self) -> Result<Option<WindowInfo>> {
+        x11::foreground(self.backend)
+    }
+    fn foreground_fullscreen(&self, monitor: crate::common::Rect) -> Result<bool> {
+        x11::foreground_fullscreen(self.backend, monitor)
+    }
+    fn focus(&self, id: WindowId) -> Result<()> {
+        x11::control::focus(self.backend, id)
+    }
+    fn set_bounds(&self, id: WindowId, bounds: crate::common::Rect) -> Result<()> {
+        x11::control::set_bounds(self.backend, id, bounds)
+    }
+    fn minimize(&self, id: WindowId) -> Result<()> {
+        x11::control::minimize(self.backend, id)
+    }
+    fn close(&self, id: WindowId) -> Result<()> {
+        x11::control::close(self.backend, id)
+    }
+    fn maximize(&self, id: WindowId) -> Result<()> {
+        x11::control::maximize(self.backend, id)
+    }
+    fn restore(&self, id: WindowId) -> Result<()> {
+        x11::control::restore(self.backend, id)
+    }
+    fn set_decorations(&self, id: WindowId, on: bool) -> Result<()> {
+        x11::control::set_decorations(self.backend, id, on)
+    }
+    fn window_state(&self, id: WindowId) -> Result<crate::window_control::WindowState> {
+        x11::control::window_state(self.backend, id)
+    }
+    fn work_areas(&self) -> Result<Vec<crate::window_control::WorkArea>> {
+        x11::control::work_areas(self.backend)
+    }
+    fn pointer(&self) -> Result<crate::window_control::PointerState> {
+        x11::control::pointer(self.backend)
+    }
+    fn quit_process(&self, pid: u32) -> Result<()> {
+        x11::control::quit_process(self.backend, pid)
+    }
+    fn desktop_state(&self) -> Result<crate::window_control::DesktopState> {
+        x11::control::desktop_state(self.backend)
+    }
+    fn switch_desktop(&self, n: u32) -> Result<()> {
+        x11::control::switch_desktop(self.backend, n)
+    }
+    fn create_desktop(&self) -> Result<()> {
+        x11::control::create_desktop(self.backend)
+    }
+    fn move_to_desktop(&self, id: WindowId, n: u32) -> Result<()> {
+        x11::control::move_to_desktop(self.backend, id, n)
+    }
+    fn thumbnail(&self, _source: WindowId, _host: WindowId, _dest: crate::common::Rect) -> Result<Guard> {
+        Err(x11::wm_unsupported(self.backend, Feature::WindowThumbnails))
+    }
+    fn events(&self) -> Result<crate::common::EventStream<WindowEvent>> {
+        x11::control::events(self.backend)
+    }
+}
 impl Input for Linux {}
 impl Clipboard for Linux {}
-impl Display for Linux {}
+#[async_trait]
+impl Display for Linux {
+    async fn list(&self) -> Result<Vec<DisplayInfo>> {
+        Ok(crate::linux_display::list(self.backend))
+    }
+    async fn brightness(&self, display_id: &str) -> Result<u8> {
+        crate::linux_display::brightness(display_id)
+    }
+    async fn set_brightness(&self, display_id: &str, percent: u8) -> Result<()> {
+        crate::linux_display::set_brightness(display_id, percent).await
+    }
+    async fn ddc_get(&self, display_id: &str, vcp: u8) -> Result<VcpValue> {
+        crate::linux_display::ddc_get(display_id, vcp)
+    }
+    async fn ddc_set(&self, display_id: &str, vcp: u8, value: u16) -> Result<()> {
+        crate::linux_display::ddc_set(display_id, vcp, value)
+    }
+}
 impl Capture for Linux {}
 impl Packages for Linux {}
 

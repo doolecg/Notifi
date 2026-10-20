@@ -133,6 +133,7 @@ fn now_playing_of(s: &Session) -> Result<NowPlaying> {
         can_prev: flag(controls.IsPreviousEnabled()),
         can_next: flag(controls.IsNextEnabled()),
         can_seek: flag(controls.IsPlaybackPositionEnabled()),
+        next_title: None,
     })
 }
 

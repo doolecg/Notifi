@@ -28,6 +28,9 @@ pub const PAGES: &[Page] = &[
                 pick("showApps", "Show", "", &[c("active", "Only apps playing now"), c("recent", "Playing now and the last 5 minutes")], "recent"),
                 list("pinnedApps", "Pinned apps", "Always shown at the top, in this order.", "App name"),
             ]),
+            card("Overlay", &[
+                sw("showVolumeOsd", "Show the volume overlay", "A small level display when the volume changes.", true),
+            ]),
             card("Shortcut", &[
                 key("openMixer", "Open the mixer", "", "Ctrl+Alt+M"),
             ]),
@@ -84,6 +87,7 @@ pub const PAGES: &[Page] = &[
             ]),
             card("Notices", &[
                 sw("showMuteNotices", "Show mute and unmute notices", "", true),
+                sw("mutedIndicator", "Show a muted-microphone indicator", "A small crossed-out microphone near the tray while the microphones are muted.", true),
             ]),
         ],
         specs: &["sound/microphone-tools.md"],

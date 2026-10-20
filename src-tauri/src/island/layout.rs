@@ -12,6 +12,11 @@ pub const TOP_PAD: f64 = 8.0;
 /// Room around everything for shadows.
 pub const EDGE: f64 = 10.0;
 pub const OPEN_RADIUS: f64 = 24.0;
+/// Docked bottom-left: the bar fills the taskbar, so no gap under it or from the screen's left edge.
+pub const DOCK_GAP: f64 = 0.0;
+/// Docked and open: space between the taskbar and the island, like the Start menu.
+pub const FLY_GAP: f64 = 12.0;
+pub const DOCK_LEFT: f64 = 0.0;
 
 pub const MIN_W: f64 = 380.0;
 pub const MAX_W: f64 = 900.0;
@@ -34,6 +39,11 @@ pub fn open_size(size: &str, custom_w: f64, custom_h: f64) -> (f64, f64) {
 pub fn window_size(open: (f64, f64)) -> (f64, f64) {
     let side = SIDE_GAP + ORBIT_D + EDGE;
     (open.0 + 2.0 * side, open.1 + SIDE_GAP + ORBIT_D + EDGE)
+}
+
+/// Window size that holds a docked open island and its right column.
+pub fn dock_window_size(open: (f64, f64)) -> (f64, f64) {
+    (open.0 + SIDE_GAP + ORBIT_D + EDGE, open.1 + EDGE + DOCK_GAP)
 }
 
 /// How many buttons fit in a side column next to an island `h` tall.
@@ -72,11 +82,27 @@ pub fn orbit_centres(side: Side, count: usize, island: (f64, f64)) -> Vec<(f64, 
     }
 }
 
+/// Button centres for a docked island, relative to its left edge and top (x right, y down, so the row above is negative).
+pub fn dock_orbit_centres(side: Side, count: usize, island: (f64, f64)) -> Vec<(f64, f64)> {
+    let (w, h) = island;
+    let step = ORBIT_D + ORBIT_GAP;
+    let r = ORBIT_D / 2.0;
+    match side {
+        // One column holds every button; the window has room below the island for one more than fits beside it.
+        Side::Left | Side::Right => (0..count.min(max_side(h) + 1)).map(|i| (w + SIDE_GAP + r, TOP_PAD + r + i as f64 * step)).collect(),
+        Side::Bottom => (0..count.min(max_bottom(w))).map(|i| (r + i as f64 * step, -(SIDE_GAP + r))).collect(),
+    }
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
+    /// Docked bottom-left: buttons are placed from the island's left edge and top, and `left` is empty.
+    pub dock: bool,
     pub window: (f64, f64),
     pub open: (f64, f64),
+    /// Bottom corner radius of the open island.
+    pub radius: f64,
     pub max_left: usize,
     pub max_right: usize,
     pub max_bottom: usize,
@@ -89,14 +115,33 @@ pub struct Layout {
 pub fn layout(size: &str, custom_w: f64, custom_h: f64, counts: (usize, usize, usize)) -> Layout {
     let open = open_size(size, custom_w, custom_h);
     Layout {
+        dock: false,
         window: window_size(open),
         open,
+        radius: OPEN_RADIUS,
         max_left: max_side(open.1),
         max_right: max_side(open.1),
         max_bottom: max_bottom(open.0),
         left: orbit_centres(Side::Left, counts.0, open),
         right: orbit_centres(Side::Right, counts.1, open),
         bottom: orbit_centres(Side::Bottom, counts.2, open),
+    }
+}
+
+/// Layout for the bottom-left dock: every button goes in one column to the right of the menu.
+pub fn layout_dock(size: &str, custom_w: f64, custom_h: f64, counts: (usize, usize, usize)) -> Layout {
+    let open = open_size(size, custom_w, custom_h);
+    Layout {
+        dock: true,
+        window: dock_window_size(open),
+        open,
+        radius: OPEN_RADIUS,
+        max_left: 0,
+        max_right: max_side(open.1),
+        max_bottom: max_bottom(open.0),
+        left: vec![],
+        right: dock_orbit_centres(Side::Right, counts.0 + counts.1 + counts.2, open),
+        bottom: vec![],
     }
 }
 
@@ -178,6 +223,17 @@ mod tests {
         assert_eq!(two[1].0, 25.0);
         assert_eq!(orbit_centres(Side::Bottom, 50, (440.0, 236.0)).len(), 9);
         assert_eq!(orbit_centres(Side::Left, 50, (440.0, 236.0)).len(), 4);
+    }
+
+    #[test]
+    fn dock_puts_every_button_in_one_right_column() {
+        let l = layout_dock("compact", 0.0, 0.0, (2, 2, 1));
+        assert!(l.dock && l.left.is_empty());
+        assert_eq!(l.right.len(), 5);
+        assert_eq!(l.right[0], (440.0 + SIDE_GAP + 20.0, 28.0));
+        assert_eq!(l.right[4], (440.0 + SIDE_GAP + 20.0, 28.0 + 4.0 * 50.0));
+        assert!(l.bottom.is_empty());
+        assert_eq!(l.window, (440.0 + SIDE_GAP + ORBIT_D + EDGE, 236.0 + EDGE + DOCK_GAP));
     }
 
     #[test]

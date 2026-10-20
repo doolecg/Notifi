@@ -61,3 +61,41 @@ pub(crate) fn system_watts(on_ac: bool, charging: bool, battery_watts: Option<f3
     let charge = if charging { battery_watts? } else { 0.0 };
     adapter_watts.map(|a| (a - charge).max(0.0))
 }
+
+/// `outer` covers all of `inner`.
+pub fn covers(outer: Rect, inner: Rect) -> bool {
+    inner.width > 0
+        && inner.height > 0
+        && outer.x <= inner.x
+        && outer.y <= inner.y
+        && outer.x as i64 + outer.width as i64 >= inner.x as i64 + inner.width as i64
+        && outer.y as i64 + outer.height as i64 >= inner.y as i64 + inner.height as i64
+}
+
+/// Area of the overlap of two rectangles.
+pub fn overlap(a: Rect, b: Rect) -> u64 {
+    let w = (a.x as i64 + a.width as i64).min(b.x as i64 + b.width as i64) - (a.x as i64).max(b.x as i64);
+    let h = (a.y as i64 + a.height as i64).min(b.y as i64 + b.height as i64) - (a.y as i64).max(b.y as i64);
+    if w > 0 && h > 0 { (w * h) as u64 } else { 0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(x: i32, y: i32, w: u32, h: u32) -> Rect {
+        Rect { x, y, width: w, height: h }
+    }
+
+    #[test]
+    fn covers_and_overlap() {
+        let mon = r(1920, 0, 2560, 1440);
+        assert!(covers(r(1920, 0, 2560, 1440), mon));
+        assert!(covers(r(1910, -10, 2580, 1460), mon));
+        assert!(!covers(r(1920, 0, 2560, 1400), mon));
+        assert!(!covers(r(0, 0, 1920, 1080), mon));
+        assert!(!covers(r(0, 0, 10, 10), r(0, 0, 0, 0)));
+        assert_eq!(overlap(r(0, 0, 100, 100), r(50, 50, 100, 100)), 2500);
+        assert_eq!(overlap(r(0, 0, 10, 10), r(10, 0, 10, 10)), 0);
+    }
+}

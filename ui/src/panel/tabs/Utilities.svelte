@@ -7,7 +7,7 @@
 
   const tools = $derived(
     (store.catalog?.groups ?? []).flatMap((g) =>
-      g.features.filter((f) => f.tool && store.settings?.features[g.id]?.[f.id]).map((f) => ({ ...f, group: g.id })),
+      g.pages.filter((p) => p.tool && store.featureOn(p.id)).map((p) => ({ ...p, group: g.id })),
     ),
   );
 </script>
@@ -15,7 +15,7 @@
 <div class="list">
   {#each tools as tool (tool.id)}
     {@const accel = store.settings?.shortcuts[tool.id]}
-    <button class="p-card tool" onclick={() => openSettings(tool.group)}>
+    <button class="p-card tool" onclick={() => openSettings(tool.id)}>
       <span class="p-glyph"><Icon name={tool.group as IconName} size={15} /></span>
       <span class="p-main">
         <span class="p-label name">{tool.label}</span>
@@ -25,7 +25,7 @@
       <span class="chev"><Icon name="chevron" size={14} /></span>
     </button>
   {/each}
-  <button class="p-card tool add" onclick={() => openSettings('everyday')}>
+  <button class="p-card tool add" onclick={() => openSettings('features')}>
     <span class="p-glyph"><Icon name="plus" size={15} /></span>
     <span class="p-main">
       <span class="name">Add tools…</span>

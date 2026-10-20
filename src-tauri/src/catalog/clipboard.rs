@@ -87,7 +87,7 @@ pub const PAGES: &[Page] = &[
         icon: "package",
         blurb: "Offer to install an AppImage you download: move it to your applications folder, make it runnable and add a menu entry.",
         platform: "linux",
-        cards: &[card("Installing", &[
+        cards: &[card("Found in Downloads", &[custom("offers", "AppImages to install", "")]), card("Installing", &[
             sw("offerOnOpen", "Offer when an AppImage is opened", "", true),
             sw("rememberAnswers", "Remember my answers", "Reuse the choices about deleting the download and showing the app.", false),
         ])],
@@ -101,6 +101,7 @@ pub const PAGES: &[Page] = &[
         blurb: "When an installer or portable zip lands in Downloads, offer to install it and tidy up afterwards.",
         platform: "windows",
         cards: &[
+            card("Found in Downloads", &[custom("offers", "Installers to run", "")]),
             card("Installing", &[
                 sw("silentInstall", "Allow silent install", "Used only for installers known to support it.", true),
                 text("portableFolder", "Folder for portable apps", "Leave empty for the folder Notifi manages.", "C:\\Apps", ""),

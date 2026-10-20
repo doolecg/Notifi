@@ -1,0 +1,64 @@
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import type { Activity, Snapshot } from './types';
+
+class IslandLive {
+  snap = $state<Snapshot | null>(null);
+  cover = $state<string | null>(null);
+  /** When the last snapshot arrived, for moving the media position on between snapshots. */
+  received = $state(0);
+  now = $state(Date.now());
+  activity = $state<Activity | null>(null);
+  /** Island events since the app started, newest first, for the Notifications module. */
+  history = $state<{ id: number; icon: string; color: string; text: string; at: number }[]>([]);
+  #historyId = 0;
+  #activityTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async init(onCommand: (cmd: string) => void) {
+    await listen<Snapshot>('island://state', (e) => this.#set(e.payload));
+    await listen<string | null>('island://cover', (e) => (this.cover = e.payload));
+    await listen<Activity>('island://activity', (e) => this.#showActivity(e.payload));
+    await listen<string>('island://command', (e) => onCommand(e.payload));
+    setInterval(() => (this.now = Date.now()), 500);
+    const [snap, cover] = await Promise.all([
+      invoke<Snapshot | null>('island_status'),
+      invoke<string | null>('island_cover'),
+    ]);
+    if (snap) this.#set(snap);
+    this.cover = cover;
+  }
+
+  #set(snap: Snapshot) {
+    this.snap = snap;
+    this.received = Date.now();
+  }
+
+  clearHistory() {
+    this.history = [];
+  }
+
+  #showActivity(a: Activity) {
+    this.activity = a;
+    this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now() }, ...this.history].slice(0, 40);
+    clearTimeout(this.#activityTimer);
+    this.#activityTimer = setTimeout(() => (this.activity = null), a.ms);
+  }
+
+  /** Media position now, moved on from the last snapshot while playing. */
+  get position() {
+    const m = this.snap?.media;
+    if (!m) return 0;
+    const moved = m.playing ? Math.max(0, this.now - this.received) : 0;
+    const pos = m.positionMs + moved;
+    return m.durationMs ? Math.min(pos, m.durationMs) : pos;
+  }
+}
+
+export const island = new IslandLive();
+
+export const media = (action: string, extra: Record<string, unknown> = {}) =>
+  invoke('island_media', { action, value: null, player: null, ...extra }).catch(() => {});
+
+export const timer = (action: string, ms?: number) => invoke('island_timer', { action, ms: ms ?? null }).catch(() => {});
+
+export const runOutside = (action: string) => invoke('island_run', { action }).catch(() => {});

@@ -6,7 +6,7 @@ use std::sync::mpsc;
 
 use zbus::blocking::fdo::DBusProxy;
 use zbus::blocking::{Connection, MessageIterator, Proxy};
-use zbus::zvariant::{OwnedValue, Value};
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{message::Type as MsgType, MatchRule};
 
 use crate::common::EventStream;
@@ -19,6 +19,7 @@ const PREFIX: &str = "org.mpris.MediaPlayer2.";
 const OBJECT: &str = "/org/mpris/MediaPlayer2";
 const ROOT_IFACE: &str = "org.mpris.MediaPlayer2";
 const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
+const TRACKLIST_IFACE: &str = "org.mpris.MediaPlayer2.TrackList";
 const MAX_COVER_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Default, PartialEq)]
@@ -28,11 +29,13 @@ pub(crate) struct Metadata {
     pub album: String,
     pub art_url: Option<String>,
     pub length_ms: Option<u64>,
+    pub track_id: Option<String>,
 }
 
 fn value_str(v: &Value<'_>) -> Option<String> {
     match v {
         Value::Str(s) => Some(s.as_str().to_owned()),
+        Value::ObjectPath(p) => Some(p.as_str().to_owned()),
         Value::Value(inner) => value_str(inner),
         _ => None,
     }
@@ -67,6 +70,7 @@ pub(crate) fn parse_metadata(m: &HashMap<String, OwnedValue>) -> Metadata {
         artist: get("xesam:artist").map(value_strings).unwrap_or_default(),
         album: get("xesam:album").map(value_strings).unwrap_or_default(),
         art_url: get("mpris:artUrl").and_then(value_str).filter(|s| !s.is_empty()),
+        track_id: get("mpris:trackid").and_then(value_str),
         length_ms: get("mpris:length").and_then(value_micros).filter(|l| *l > 0).map(|us| us / 1000),
     }
 }
@@ -131,6 +135,16 @@ fn read_cover(url: &str) -> Option<Cover> {
     Some(Cover { bytes, mime })
 }
 
+/// The track after the current one, for players that implement the optional TrackList interface.
+fn next_title_of(conn: &Connection, bus: &str, current: Option<&str>) -> Option<String> {
+    let list = proxy(conn, bus, TRACKLIST_IFACE).ok()?;
+    let tracks: Vec<OwnedObjectPath> = list.get_property("Tracks").ok()?;
+    let at = tracks.iter().position(|t| Some(t.as_str()) == current)?;
+    let next = tracks.get(at + 1)?.clone();
+    let found: Vec<HashMap<String, OwnedValue>> = list.call("GetTracksMetadata", &vec![next]).ok()?;
+    Some(parse_metadata(found.first()?).title).filter(|t| !t.is_empty())
+}
+
 fn now_playing_of(conn: &Connection, bus: &str) -> Result<NowPlaying> {
     let player = proxy(conn, bus, PLAYER_IFACE)?;
     let meta = player
@@ -152,6 +166,7 @@ fn now_playing_of(conn: &Connection, bus: &str) -> Result<NowPlaying> {
         can_prev: flag("CanGoPrevious", false),
         can_next: flag("CanGoNext", false),
         can_seek: flag("CanSeek", false),
+        next_title: next_title_of(conn, bus, meta.track_id.as_deref()),
     })
 }
 

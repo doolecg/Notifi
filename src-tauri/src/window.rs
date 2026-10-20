@@ -35,7 +35,7 @@ pub fn open_settings_at(app: &AppHandle, section: Option<&str>) {
         let _ = WebviewWindowBuilder::new(&app, SETTINGS, WebviewUrl::App(url.into()))
             .title("Notifi Settings")
             .inner_size(980.0, 680.0)
-            .min_inner_size(760.0, 520.0)
+            .min_inner_size(900.0, 640.0)
             .center()
             .focused(!no_focus())
             .build();

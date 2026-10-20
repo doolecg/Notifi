@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::caps::Feature;
 use crate::common::{EventStream, Guard, Image, Rect};
 use crate::error::{PlatformError, Result};
+use crate::window_control::{DesktopState, PointerState, WindowState, WorkArea};
 
 fn ni<T>(feature: Feature) -> Result<T> {
     Err(PlatformError::not_implemented(feature))
@@ -22,25 +23,48 @@ pub enum DeviceDirection {
     Input,
 }
 
+/// What the device is, for its icon and the headphone rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeviceKind {
+    Speakers,
+    Headphones,
+    Headset,
+    /// HDMI / DisplayPort audio on a monitor or TV.
+    Display,
+    Microphone,
+    Other,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AudioDevice {
     pub id: String,
     pub name: String,
     pub direction: DeviceDirection,
+    pub kind: DeviceKind,
     pub is_default: bool,
-    /// 0.0..=1.0
+    /// 0.0..=1.0, above 1.0 only where boost is available; 0.0 when `has_volume` is false.
     pub volume: f32,
     pub muted: bool,
+    /// False when the device has no usable volume control; hide its slider.
+    pub has_volume: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AudioSession {
     pub id: String,
     pub pid: Option<u32>,
+    /// Stable per app across restarts (executable or binary name), for saved levels and routes.
+    pub app_id: Option<String>,
     pub app_name: String,
+    /// An image file, an executable to take the icon from, or an icon theme name (Linux).
+    pub icon_path: Option<String>,
     /// 0.0..=1.0, may go above 1.0 where boost is available.
     pub volume: f32,
     pub muted: bool,
+    /// Current output level, 0.0..=1.0; always 0.0 where meters are unavailable.
+    pub peak: f32,
+    /// The output picked for this app; `None` follows the system default.
     pub device_id: Option<String>,
 }
 
@@ -49,6 +73,8 @@ pub enum AudioEvent {
     DeviceAdded(String),
     DeviceRemoved(String),
     DefaultChanged { direction: DeviceDirection, device_id: String },
+    /// Volume or mute of a device changed (by anyone, including Notifi).
+    VolumeChanged { device_id: String, volume: f32, muted: bool },
     SessionsChanged,
 }
 
@@ -62,6 +88,7 @@ pub trait Audio: Send + Sync {
     fn set_session_mute(&self, _session_id: &str, _muted: bool) -> Result<()> {
         ni(Feature::AudioSessions)
     }
+    /// An empty `device_id` sends the app back to the system default.
     fn set_session_output(&self, _session_id: &str, _device_id: &str) -> Result<()> {
         ni(Feature::AudioPerAppOutput)
     }
@@ -80,6 +107,7 @@ pub trait Audio: Send + Sync {
     fn set_device_mute(&self, _device_id: &str, _muted: bool) -> Result<()> {
         ni(Feature::AudioDevices)
     }
+    /// Mutes or unmutes every capture device; fails with the devices that refused when only some did.
     fn mute_all_microphones(&self, _muted: bool) -> Result<()> {
         ni(Feature::AudioMicrophone)
     }
@@ -101,6 +129,8 @@ pub struct WindowInfo {
     pub app_id: Option<String>,
     pub pid: Option<u32>,
     pub bounds: Rect,
+    /// The [`DisplayInfo::id`] of the display holding most of the window.
+    pub monitor: Option<String>,
     pub minimized: bool,
     pub focused: bool,
 }
@@ -112,11 +142,22 @@ pub enum WindowEvent {
     Focused(WindowId),
     Moved(WindowId, Rect),
     TitleChanged(WindowId),
+    /// The user began dragging or resizing the window with the pointer (Windows only; X11 has no such event).
+    MoveSizeStarted(WindowId),
+    MoveSizeEnded(WindowId),
 }
 
 pub trait WindowManager: Send + Sync {
+    /// Visible top-level app windows, front to back.
     fn list(&self) -> Result<Vec<WindowInfo>> {
         ni(Feature::WindowList)
+    }
+    fn foreground(&self) -> Result<Option<WindowInfo>> {
+        Ok(self.list()?.into_iter().find(|w| w.focused))
+    }
+    /// True when the foreground app window fills `monitor` (physical pixels) and isn't the desktop.
+    fn foreground_fullscreen(&self, monitor: Rect) -> Result<bool> {
+        Ok(self.foreground()?.is_some_and(|w| !w.minimized && crate::common::covers(w.bounds, monitor)))
     }
     fn focus(&self, _id: WindowId) -> Result<()> {
         ni(Feature::WindowControl)
@@ -128,6 +169,55 @@ pub trait WindowManager: Send + Sync {
         ni(Feature::WindowControl)
     }
     fn close(&self, _id: WindowId) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    /// Maximises with the OS's own maximise.
+    fn maximize(&self, _id: WindowId) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    /// Undoes a maximise or minimise.
+    fn restore(&self, _id: WindowId) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    /// Shows or removes the title bar and border.
+    fn set_decorations(&self, _id: WindowId, _on: bool) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    fn window_state(&self, _id: WindowId) -> Result<WindowState> {
+        ni(Feature::WindowControl)
+    }
+    /// Every display with the area apps may use (without taskbars and panels), in physical pixels.
+    fn work_areas(&self) -> Result<Vec<WorkArea>> {
+        ni(Feature::WindowControl)
+    }
+    fn pointer(&self) -> Result<PointerState> {
+        ni(Feature::WindowControl)
+    }
+    /// The frontmost app window under a point.
+    fn window_at(&self, x: i32, y: i32) -> Result<Option<WindowInfo>> {
+        Ok(self.list()?.into_iter().find(|w| !w.minimized && crate::window_control::contains(w.bounds, x, y)))
+    }
+    /// Every visible top-level window of a process, including tool windows and floating bars.
+    fn windows_of_pid(&self, pid: u32) -> Result<Vec<WindowInfo>> {
+        Ok(self.list()?.into_iter().filter(|w| w.pid == Some(pid)).collect())
+    }
+    /// Asks the process to close, and ends it if it has not after a few seconds.
+    fn quit_process(&self, _pid: u32) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    fn desktop_state(&self) -> Result<DesktopState> {
+        ni(Feature::WindowControl)
+    }
+    /// Switches to desktop `n` (1-based).
+    fn switch_desktop(&self, _n: u32) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    /// Adds one desktop at the end.
+    fn create_desktop(&self) -> Result<()> {
+        ni(Feature::WindowControl)
+    }
+    /// Sends a window to desktop `n` (1-based).
+    fn move_to_desktop(&self, _id: WindowId, _n: u32) -> Result<()> {
         ni(Feature::WindowControl)
     }
     /// Draws a live thumbnail of `source` into `host` (one of our windows) at `dest`, until the guard drops.
@@ -585,6 +675,8 @@ pub struct NowPlaying {
     pub can_prev: bool,
     pub can_next: bool,
     pub can_seek: bool,
+    /// Title of the next track, only where the player publishes its queue (MPRIS TrackList).
+    pub next_title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

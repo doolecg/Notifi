@@ -1,37 +1,50 @@
 <script lang="ts">
   import { store } from '../../lib/settings.svelte';
   import Switch from '../../lib/Switch.svelte';
+  import QuickToggles from '../../quick/QuickToggles.svelte';
   import Icon from '../Icon.svelte';
   import type { IconName } from '../icons';
 
-  const GROUPS = ['windows', 'input', 'clipboard', 'everyday'];
+  const GROUPS = ['windows', 'input', 'clipboard', 'utilities'];
   const groups = $derived((store.catalog?.groups ?? []).filter((g) => GROUPS.includes(g.id)));
   let open = $state<Record<string, boolean>>({ windows: true });
 
-  function toggle(group: string, id: string, on: boolean) {
-    store.set(group, { ...store.settings!.features[group], [id]: on });
+  function toggle(id: string, on: boolean) {
+    store.setOption(id, 'enabled', on);
   }
 </script>
 
+<div class="p-head"><span>Quick toggles</span></div>
+{#if store.featureOn('quickToggles')}
+  <QuickToggles />
+{:else}
+  <div class="p-card item">
+    <span class="p-main">
+      <span class="p-label name">Quick toggles</span>
+      <span class="p-sub">Dark mode, desktop icons, do not disturb and more in one place.</span>
+    </span>
+    <Switch checked={false} label="Quick toggles" onchange={(on) => toggle('quickToggles', on)} />
+  </div>
+{/if}
+
 {#each groups as group (group.id)}
-  {@const values = store.settings?.features[group.id] ?? {}}
-  {@const count = group.features.filter((f) => values[f.id]).length}
+  {@const count = group.pages.filter((p) => store.featureOn(p.id)).length}
   <section class="group">
     <button class="head" aria-expanded={!!open[group.id]} onclick={() => (open[group.id] = !open[group.id])}>
       <span class="chev" class:open={open[group.id]}><Icon name="chevron" size={13} /></span>
       <span class="label">{group.label}</span>
-      <span class="count" class:some={count > 0}>{count}/{group.features.length} on</span>
+      <span class="count" class:some={count > 0}>{count}/{group.pages.length} on</span>
     </button>
     {#if open[group.id]}
       <div class="items">
-        {#each group.features as feature (feature.id)}
+        {#each group.pages as feature (feature.id)}
           <div class="p-card item">
-            <span class="p-glyph" class:off={!values[feature.id]}><Icon name={group.id as IconName} size={15} /></span>
+            <span class="p-glyph" class:off={!store.featureOn(feature.id)}><Icon name={group.id as IconName} size={15} /></span>
             <span class="p-main">
               <span class="p-label name">{feature.label}</span>
               <span class="p-sub">{feature.blurb}</span>
             </span>
-            <Switch checked={values[feature.id] ?? false} label={feature.label} onchange={(on) => toggle(group.id, feature.id, on)} />
+            <Switch checked={store.featureOn(feature.id)} label={feature.label} onchange={(on) => toggle(feature.id, on)} />
           </div>
         {/each}
       </div>
@@ -40,6 +53,7 @@
 {/each}
 
 <style>
+  :global(.p-card) + .group,
   .group + .group {
     margin-top: 6px;
   }

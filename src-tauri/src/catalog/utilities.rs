@@ -108,7 +108,7 @@ pub const PAGES: &[Page] = &[
         tool: true,
         cards: &[
             card("Writing", &[
-                key("shortcut", "Shortcut to open and close", "", "Ctrl+Alt+N"),
+                key("shortcut", "Shortcut to open and close", "", "Ctrl+Alt+Shift+N"),
                 num("textSize", "Text size", "", 8.0, 32.0, 1.0, "pt", 14.0),
                 sw("preview", "Show Markdown preview", "", false),
                 sw("spellCheck", "Spell check", "", true),

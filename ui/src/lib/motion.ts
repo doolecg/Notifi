@@ -1,4 +1,5 @@
-import { cubicOut } from 'svelte/easing';
+/** Apple-style ease-out: fast start, long soft landing. */
+const expoOut = (t: number) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t));
 import type { TransitionConfig } from 'svelte/transition';
 
 // Values from spec/motion.md. Springs: Svelte `Spring` params are per 60 fps frame,
@@ -27,6 +28,13 @@ const LINEAR = 'linear';
 const S_SNAP = { stiffness: 0.1167, damping: 0.5667 };
 const S_SOFT = { stiffness: 0.0833, damping: 0.4167 };
 const S_LIVELY = { stiffness: 0.0722, damping: 0.3333 };
+/** Softer, longer springs for the Apple-like feel: k 230 c 24, k 380 c 32, k 300 c 20, k 240 c 20, k 260 c 19. */
+const A_SOFT = { stiffness: 0.0639, damping: 0.4000 };
+const A_SNAP = { stiffness: 0.1056, damping: 0.5333 };
+const A_BOUNCE = { stiffness: 0.0833, damping: 0.3333 };
+const A_TOAST = { stiffness: 0.0667, damping: 0.3333 };
+const A_LIVELY = { stiffness: 0.0722, damping: 0.3167 };
+const APPLE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 const curve = (duration: number, ease: string, reduced = 80, spring = S_SNAP): MotionToken => ({
   duration,
@@ -45,35 +53,40 @@ const holdToQuitProgress = curve(900, LINEAR, 900);
 const captureSelector = curve(100, LINEAR, 0);
 
 export const motion = {
-  panelOpen: sprung(180, 'linear(0, 0.016, 0.058, 0.117, 0.188, 0.265, 0.344, 0.423, 0.499, 0.571, 0.638, 0.699, 0.754, 0.802, 0.845, 0.883, 0.915, 0.942, 0.965, 0.984, 1)', S_SNAP),
-  panelClose: curve(120, EASE_OUT),
-  tabSwitch: curve(160, EASE_OUT),
-  switcherShow: curve(60, EASE_OUT, 0),
-  switcherHide: curve(300, EASE_IN_OUT),
-  windowRaise: curve(150, EASE_OUT, 0),
-  selectionMove: curve(70, EASE_OUT, 0),
-  pillExpand: sprung(320, 'linear(0, 0.033, 0.114, 0.222, 0.342, 0.463, 0.575, 0.676, 0.762, 0.833, 0.89, 0.933, 0.965, 0.987, 1, 1.008, 1.011, 1.011, 1.008, 1.004, 1)', S_SOFT),
-  pillCollapse: sprung(260, 'linear(0, 0.03, 0.105, 0.203, 0.311, 0.419, 0.522, 0.614, 0.695, 0.764, 0.821, 0.868, 0.905, 0.933, 0.955, 0.971, 0.982, 0.99, 0.995, 0.998, 1)', S_SNAP),
-  toastIn: sprung(220, 'linear(0, 0.016, 0.059, 0.12, 0.194, 0.275, 0.358, 0.442, 0.522, 0.597, 0.666, 0.728, 0.783, 0.831, 0.873, 0.907, 0.936, 0.958, 0.976, 0.99, 1)', S_SOFT),
-  toastOut: curve(180, EASE_OUT),
-  commandBarOpen: sprung(220, 'linear(0, 0.016, 0.059, 0.12, 0.194, 0.275, 0.358, 0.442, 0.522, 0.597, 0.666, 0.728, 0.783, 0.831, 0.873, 0.907, 0.936, 0.958, 0.976, 0.99, 1)', S_SOFT),
-  radialOpen: sprung(200, 'linear(0, 0.012, 0.043, 0.09, 0.149, 0.217, 0.289, 0.364, 0.439, 0.513, 0.583, 0.65, 0.711, 0.767, 0.818, 0.862, 0.9, 0.933, 0.96, 0.983, 1)', S_LIVELY),
-  radialItemStagger: sprung(180, 'linear(0, 0.01, 0.037, 0.078, 0.13, 0.19, 0.255, 0.324, 0.394, 0.465, 0.534, 0.6, 0.663, 0.722, 0.776, 0.826, 0.871, 0.91, 0.945, 0.975, 1)', S_LIVELY, { stagger: 20 }),
-  shelfIn: curve(120, EASE_OUT),
-  shelfOut: curve(160, EASE_OUT),
-  shelfDropHighlight: curve(80, EASE_OUT, 0),
-  snapPreview: sprung(160, 'linear(0, 0.013, 0.049, 0.1, 0.162, 0.231, 0.303, 0.377, 0.45, 0.52, 0.587, 0.649, 0.707, 0.76, 0.808, 0.851, 0.889, 0.923, 0.953, 0.978, 1)', S_SNAP, { reduced: 0 }),
+  panelOpen: sprung(420, 'linear(0, 0.038, 0.125, 0.238, 0.359, 0.478, 0.59, 0.685, 0.766, 0.831, 0.884, 0.924, 0.954, 0.975, 0.989, 0.998, 1.004, 1.006, 1.006, 1.006, 1.004, 1.002, 1)', A_SOFT),
+  panelClose: curve(240, APPLE),
+  tabSwitch: curve(340, APPLE),
+  switcherShow: curve(140, EASE_OUT, 0),
+  switcherHide: curve(320, EASE_IN_OUT),
+  windowRaise: curve(220, APPLE, 0),
+  selectionMove: curve(170, APPLE, 0),
+  pillExpand: sprung(560, 'linear(0, 0.062, 0.2, 0.363, 0.521, 0.66, 0.773, 0.859, 0.921, 0.963, 0.99, 1.005, 1.013, 1.016, 1.015, 1.013, 1.011, 1.008, 1.006, 1.004, 1.002, 1.001, 1)', A_SOFT),
+  pillCollapse: sprung(380, 'linear(0, 0.05, 0.162, 0.296, 0.436, 0.562, 0.675, 0.765, 0.838, 0.893, 0.934, 0.962, 0.982, 0.994, 1.001, 1.005, 1.006, 1.006, 1.005, 1.004, 1.003, 1.001, 1)', A_SNAP),
+  /** Island liquid-glass feel: k 210 c 17 (about 11% overshoot), and a calmer k 260 c 26 for the way back. */
+  pillDrop: sprung(620, 'linear(0, 0.063, 0.21, 0.391, 0.58, 0.749, 0.885, 0.987, 1.055, 1.093, 1.108, 1.105, 1.093, 1.075, 1.056, 1.038, 1.023, 1.011, 1.003, 0.998, 0.996, 0.995, 0.996, 0.998, 1)', { stiffness: 0.0583, damping: 0.2833 }, { reduced: 80 }),
+  pillRise: sprung(420, 'linear(0, 0.049, 0.16, 0.297, 0.438, 0.568, 0.68, 0.773, 0.845, 0.9, 0.94, 0.968, 0.986, 0.997, 1.003, 1.006, 1.006, 1.005, 1.004, 1.002, 1)', { stiffness: 0.0722, damping: 0.4333 }),
+  /** Content melting in: blur to sharp. */
+  glassIn: curve(480, 'cubic-bezier(0.16, 1, 0.3, 1)'),
+  toastIn: sprung(480, 'linear(0, 0.051, 0.173, 0.325, 0.489, 0.641, 0.771, 0.878, 0.958, 1.013, 1.048, 1.066, 1.072, 1.07, 1.062, 1.052, 1.04, 1.03, 1.02, 1.013, 1.007, 1.003, 1)', A_TOAST),
+  toastOut: curve(260, APPLE),
+  commandBarOpen: sprung(420, 'linear(0, 0.038, 0.125, 0.238, 0.359, 0.478, 0.59, 0.685, 0.766, 0.831, 0.884, 0.924, 0.954, 0.975, 0.989, 0.998, 1.004, 1.006, 1.006, 1.006, 1.004, 1.002, 1)', A_SOFT),
+  radialOpen: sprung(360, 'linear(0, 0.032, 0.113, 0.224, 0.347, 0.478, 0.603, 0.717, 0.814, 0.896, 0.961, 1.009, 1.042, 1.063, 1.073, 1.074, 1.07, 1.06, 1.049, 1.036, 1.023, 1.011, 1)', A_LIVELY),
+  radialItemStagger: sprung(320, 'linear(0, 0.026, 0.09, 0.179, 0.284, 0.395, 0.506, 0.611, 0.707, 0.791, 0.862, 0.921, 0.967, 1.001, 1.024, 1.037, 1.044, 1.044, 1.039, 1.032, 1.022, 1.011, 1)', A_LIVELY, { stagger: 20 }),
+  shelfIn: sprung(380, 'linear(0, 0.031, 0.106, 0.203, 0.313, 0.421, 0.526, 0.619, 0.703, 0.772, 0.831, 0.878, 0.915, 0.944, 0.965, 0.98, 0.99, 0.997, 1, 1.002, 1.002, 1.001, 1)', A_SOFT),
+  shelfOut: curve(260, APPLE),
+  shelfDropHighlight: curve(160, APPLE, 0),
+  snapPreview: sprung(280, 'linear(0, 0.029, 0.095, 0.187, 0.286, 0.39, 0.487, 0.579, 0.659, 0.73, 0.789, 0.838, 0.88, 0.912, 0.938, 0.957, 0.972, 0.983, 0.99, 0.995, 0.998, 0.999, 1)', A_SNAP, { reduced: 0 }),
   captureSelector,
   /** Fill is linear for the hold time (900 ms default); release drains back in 150 ms with easeOut. */
   holdToQuitProgress,
   holdDrain: curve(150, EASE_OUT, 150),
-  listReorder: sprung(220, 'linear(0, 0.016, 0.059, 0.12, 0.194, 0.275, 0.358, 0.442, 0.522, 0.597, 0.666, 0.728, 0.783, 0.831, 0.873, 0.907, 0.936, 0.958, 0.976, 0.99, 1)', S_SOFT, { reduced: 0 }),
-  toggleSwitch: sprung(160, 'linear(0, 0.013, 0.049, 0.1, 0.162, 0.231, 0.303, 0.377, 0.45, 0.52, 0.587, 0.649, 0.707, 0.76, 0.808, 0.851, 0.889, 0.923, 0.953, 0.978, 1)', S_SNAP, { reduced: 0 }),
-  hoverLift: curve(120, EASE_OUT),
+  listReorder: sprung(420, 'linear(0, 0.038, 0.125, 0.238, 0.359, 0.478, 0.59, 0.685, 0.766, 0.831, 0.884, 0.924, 0.954, 0.975, 0.989, 0.998, 1.004, 1.006, 1.006, 1.006, 1.004, 1.002, 1)', A_SOFT, { reduced: 0 }),
+  toggleSwitch: sprung(340, 'linear(0, 0.033, 0.116, 0.23, 0.36, 0.493, 0.621, 0.737, 0.837, 0.919, 0.983, 1.029, 1.06, 1.078, 1.086, 1.085, 1.077, 1.066, 1.052, 1.038, 1.024, 1.011, 1)', A_BOUNCE, { reduced: 0 }),
+  hoverLift: curve(200, APPLE),
   /** Fade time after a 400 ms dwell. */
-  tooltipIn: curve(120, EASE_OUT),
+  tooltipIn: curve(200, APPLE),
   // Names kept from the earlier API (not separate tokens in the spec).
-  commandBarClose: curve(140, EASE_OUT),
+  commandBarClose: curve(240, APPLE),
   captureSelect: captureSelector,
   holdProgress: holdToQuitProgress,
 } satisfies Record<string, MotionToken>;
@@ -107,6 +120,7 @@ export function springOptions(name: MotionName) {
 /** Writes every token as `--m-<name>-dur` and `--m-<name>-ease` on :root. */
 export function applyCssVars() {
   const style = document.documentElement.style;
+  document.documentElement.toggleAttribute('data-reduced-motion', reducedMotion());
   for (const name of Object.keys(motion) as MotionName[]) {
     style.setProperty(`--m-${name}-dur`, `${duration(name)}ms`);
     style.setProperty(`--m-${name}-ease`, reducedMotion() ? LINEAR : motion[name].ease);
@@ -117,13 +131,14 @@ osQuery?.addEventListener('change', applyCssVars);
 
 export function fadeSlide(
   _node: Element,
-  { token, y = 6, delay = 0 }: { token: MotionName; y?: number; delay?: number },
+  { token, y = 10, delay = 0 }: { token: MotionName; y?: number; delay?: number },
 ): TransitionConfig {
   const reduced = reducedMotion();
   return {
     delay: reduced ? 0 : delay,
     duration: duration(token),
-    easing: cubicOut,
-    css: (t, u) => (reduced ? `opacity:${t}` : `opacity:${t};transform:translateY(${u * y}px)`),
+    easing: expoOut,
+    css: (t, u) =>
+      reduced ? `opacity:${t}` : `opacity:${t};transform:translateY(${u * y}px) scale(${1 - u * 0.02});filter:blur(${u * 4}px)`,
   };
 }

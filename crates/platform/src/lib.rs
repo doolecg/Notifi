@@ -6,31 +6,57 @@ mod caps;
 mod common;
 mod error;
 mod media;
+mod observe;
 mod traits;
+mod window_control;
 
 #[cfg(windows)]
 mod win;
 #[cfg(windows)]
+mod win_audio;
+#[cfg(windows)]
+mod win_display;
+#[cfg(windows)]
 mod win_media;
+#[cfg(windows)]
+mod win_windows;
+#[cfg(windows)]
+mod win_observe;
+#[cfg(windows)]
+pub mod win_drag;
+#[cfg(windows)]
+pub mod win_taskbar;
+#[cfg(windows)]
+pub mod win_thumbnail;
 
 #[cfg(target_os = "linux")]
 mod gnome;
 #[cfg(target_os = "linux")]
 mod kde;
 #[cfg(target_os = "linux")]
+mod linux_audio;
+#[cfg(target_os = "linux")]
 mod linux_common;
+#[cfg(target_os = "linux")]
+mod linux_display;
 #[cfg(target_os = "linux")]
 mod linux_media;
 #[cfg(target_os = "linux")]
 mod x11;
+#[cfg(target_os = "linux")]
+pub mod x11_switcher;
+#[cfg(target_os = "linux")]
+mod x11_observe;
 
 use std::sync::Arc;
 
 pub use backend::{Backend, SessionEnv};
 pub use caps::{Capabilities, Feature, Support};
-pub use common::{EventStream, Guard, Image, Rect};
+pub use common::{covers, overlap, EventStream, Guard, Image, Rect};
 pub use error::{PlatformError, Result};
+pub use observe::{focused_field, observe, Field, Observed, Watch};
 pub use traits::*;
+pub use window_control::{contains, DesktopState, PointerState, WindowState, WorkArea};
 
 trait AllCapabilities:
     Audio + WindowManager + Input + Clipboard + Display + Power + Capture + Packages + Sensors + Session + Media + 'static

@@ -1,0 +1,185 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.toolbar .grow {
+  flex: 1;
+}
+.toolbar input[type='search'],
+.toolbar input[type='text'] {
+  min-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.toolbar input:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.t th {
+  position: sticky;
+  top: 0;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--mut);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.t th.sort {
+  cursor: pointer;
+  user-select: none;
+}
+.t td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.t tr:last-child td {
+  border-bottom: 0;
+}
+.t tbody tr:hover {
+  background: var(--hover);
+}
+.t .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.t .mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.t .name {
+  display: block;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t .name small {
+  display: block;
+  color: var(--mut);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.t .act {
+  text-align: right;
+  white-space: nowrap;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--inset);
+  color: var(--fg-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.badge.warn {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.badge.acc {
+  background: var(--acc-soft);
+  color: var(--acc);
+}
+.empty,
+.note {
+  padding: 28px 16px;
+  color: var(--mut);
+  font-size: 13px;
+  text-align: center;
+}
+.note {
+  padding: 8px 4px;
+  text-align: left;
+  font-size: 12.5px;
+}
+.note.err {
+  color: var(--warn);
+}
+button.ghost.primary {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-fg);
+}
+button.ghost.primary:hover:not(:disabled) {
+  background: var(--acc);
+  filter: brightness(1.08);
+}
+button.ghost.small {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+.progress {
+  display: inline-block;
+  width: 90px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  background: var(--acc);
+  transition: width var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+}
+.menu {
+  position: fixed;
+  z-index: 15;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.22);
+}
+.menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu button:hover {
+  background: var(--hover);
+}
