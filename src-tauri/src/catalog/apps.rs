@@ -110,25 +110,4 @@ pub const PAGES: &[Page] = &[
         specs: &["apps/messaging-downloads.md"],
         ..PAGE
     },
-    Page {
-        id: "portManager",
-        label: "Port manager",
-        icon: "network",
-        blurb: "See which app holds each port, and end it.",
-        tool: true,
-        cards: &[
-            card("List", &[
-                num("refresh", "Refresh every", "", 1.0, 60.0, 1.0, "s", 3.0),
-                sw("showUdp", "Show UDP listeners", "", true),
-                sw("allInterfacesOnly", "Only listeners reachable from other machines", "", false),
-                sw("confirmStop", "Ask before stopping", "Always asked for system processes.", true),
-            ]),
-            Card { title: "Kill process", feature: "killProcess", options: &[
-                sw("confirm", "Ask before ending a process", "", true),
-                sw("protectSystem", "Protect system processes", "", true),
-            ], ..CARD },
-        ],
-        specs: &["apps/port-manager.md", "apps/kill-process.md"],
-        ..PAGE
-    },
 ];

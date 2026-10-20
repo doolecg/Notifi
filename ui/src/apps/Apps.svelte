@@ -5,16 +5,12 @@
   import { store } from '../lib/settings.svelte';
   import { jobs } from './jobs.svelte';
   import Packages from './Packages.svelte';
-  import Ports from './Ports.svelte';
-  import Processes from './Processes.svelte';
   import Updates from './Updates.svelte';
   import './view.css';
 
   const TABS = [
     { id: 'updates', label: 'App updates' },
     { id: 'packages', label: 'Package manager' },
-    { id: 'ports', label: 'Ports' },
-    { id: 'processes', label: 'Processes' },
   ];
 
   let view = $state(location.hash.slice(1) || 'updates');
@@ -57,10 +53,6 @@
           <Updates />
         {:else if active === 'packages'}
           <Packages />
-        {:else if active === 'ports'}
-          <Ports />
-        {:else}
-          <Processes />
         {/if}
       </div>
     {/key}

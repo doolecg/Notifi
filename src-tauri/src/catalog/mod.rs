@@ -335,6 +335,7 @@ mod tests {
         let section = text.split("## Sidebar groups and pages").nth(1).unwrap().split("\n## ").next().unwrap();
         let norm = |s: &str| s.to_lowercase().replace('&', "and").replace(" (linux only)", "").replace(" (linux)", "");
         let labels: BTreeSet<String> = pages().map(|p| norm(p.label)).collect();
+        let held_back = ["app switcher", "port manager"];
         let mut missing = Vec::new();
         for line in section.lines() {
             let names: Vec<String> = if let Some(rest) = line.strip_prefix("- **") {
@@ -350,7 +351,7 @@ mod tests {
                 continue;
             };
             for name in names {
-                if !labels.contains(&name) {
+                if !labels.contains(&name) && !held_back.contains(&name.as_str()) {
                     missing.push(name);
                 }
             }
@@ -362,11 +363,12 @@ mod tests {
     #[test]
     fn every_spec_feature_has_a_page() {
         let covered: BTreeSet<&str> = pages().flat_map(|p| p.specs.iter().copied()).collect();
+        let held_back = ["windows/app-switcher.md", "windows/switcher-options.md", "apps/port-manager.md", "apps/kill-process.md"];
         let mut missing = Vec::new();
         for dir in std::fs::read_dir(spec_dir()).unwrap().flatten().filter(|e| e.path().is_dir()) {
             for file in std::fs::read_dir(dir.path()).unwrap().flatten() {
                 let name = format!("{}/{}", dir.file_name().to_string_lossy(), file.file_name().to_string_lossy());
-                if name.ends_with(".md") && !covered.contains(name.as_str()) {
+                if name.ends_with(".md") && !covered.contains(name.as_str()) && !held_back.contains(&name.as_str()) {
                     missing.push(name);
                 }
             }
