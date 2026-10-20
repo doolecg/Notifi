@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifi Plan</title>
+<style>
+:root{--bg:#fbfbfa;--fg:#1d1d1f;--mut:#6b6b70;--line:#e3e3e0;--card:#fff;--acc:#2f6fdb;--ok:#1f8a4c;--warn:#b26a00;--bad:#c0392b;--na:#8a8a8f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--fg:#ececee;--mut:#9a9aa0;--line:#2b2b30;--card:#1c1c20;--acc:#6b9cff;--ok:#4cc27e;--warn:#e0a040;--bad:#ff6b5e;--na:#77777d}}
+:root[data-theme="dark"]{--bg:#141416;--fg:#ececee;--mut:#9a9aa0;--line:#2b2b30;--card:#1c1c20;--acc:#6b9cff;--ok:#4cc27e;--warn:#e0a040;--bad:#ff6b5e;--na:#77777d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:32px 16px 80px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:40px 0 10px;padding-top:12px;border-top:1px solid var(--line)}h3{font-size:16px;margin:24px 0 8px}
+.sub{color:var(--mut);margin:0 0 24px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:600;white-space:nowrap}
+.t{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.na{color:var(--na)}
+code{font:12.5px ui-monospace,Consolas,monospace;background:color-mix(in srgb,var(--fg) 7%,transparent);padding:1px 4px;border-radius:4px}
+ul.check{list-style:none;padding-left:0}ul.check li{padding:3px 0 3px 26px;position:relative}
+ul.check li::before{content:"";position:absolute;left:2px;top:7px;width:13px;height:13px;border:1.5px solid var(--mut);border-radius:3px}
+ul.check li.done::before{background:var(--ok);border-color:var(--ok)}
+.legend span{margin-right:14px}
+</style>
+</head>
+<body><main>
+
+<h1>Notifi: plan</h1>
+<p class="sub">A clean-room Windows and Linux version of the Vorssaint Mac utilities. Tauri 2 + Rust. Covers all ~70 features, built in phases. Draft, 2026-10-20.</p>
+
+<div class="box">
+<h3 style="margin-top:0">Read this first</h3>
+<ol>
+<li><b>Clean room:</b> builders never see Vorssaint's source code. They work only from the spec in <code>spec/</code>, written from Vorssaint's README, docs and screenshots. Notifi gets its own name, icon and look.</li>
+<li><b>Licence:</b> MIT, since no GPL code is copied. Each spec file names where its facts came from.</li>
+<li><b>Stack:</b> one Rust core with a <code>platform</code> layer (Windows, X11, KDE Wayland, GNOME Wayland). The UI is a web front end inside Tauri windows.</li>
+<li><b>GNOME on Wayland needs a small GNOME Shell extension</b> (shipped with Notifi) for window moves, switcher thumbnails and focus-follows-mouse. KDE gets KWin scripts over D-Bus.</li>
+<li><b>Every Vorssaint feature is built. Nothing is dropped.</b> Where a feature depends on something only Macs have (Dock, Spaces, notch, HDR headroom), Notifi builds the closest Windows/Linux version, marked ADAPT below. A parity checklist (<code>spec/parity.md</code>) tracks every Vorssaint feature against its Notifi spec.</li>
+<li><b>Same animation style as Vorssaint:</b> Notifi copies the motion (timings, springs, how panels open, close and move) measured from Vorssaint running or from its videos. Name, icon, colours and branding stay Notifi's own. See section 2b.</li>
+<li><b>Two features are risky:</b> fan control and temperatures on Windows need a kernel driver, and volume boost past 100% on Windows needs an audio driver (APO). Both are planned last and marked beta.</li>
+</ol>
+</div>
+
+<h2>1. Clean-room process</h2>
+<ul>
+<li><b>Spec side</b> (one agent plus you): reads Vorssaint's README, <code>docs/*.md</code>, changelog and screenshots, and watches the app run if you have a Mac. It writes one behaviour spec per feature in <code>spec/&lt;group&gt;/&lt;feature&gt;.md</code>: what the user sees, the settings, the shortcuts and the edge cases. No code, no file or type names from Vorssaint.</li>
+<li><b>Build side</b> (other agents): gets only <code>spec/</code> and this plan. Every builder brief says: "Do not open or search github.com/vorssaint or any copy of its source."</li>
+<li><b>Identity:</b> Notifi has its own name, icon, colours and branding. No Vorssaint names, art or wording in the UI. Vorssaint's <code>TRADEMARKS.md</code> reserves its name, logo, icon and trade dress. Motion is behaviour, so it is matched (section 2b).</li>
+<li><b>Record:</b> each spec file has a <code>Sources:</code> line listing the public docs it came from.</li>
+</ul>
+
+<h2>2. Architecture</h2>
+<div class="tw"><table>
+<tr><th>Part</th><th>What it does</th></tr>
+<tr><td>notifi (Tauri app)</td><td>Tray icon and menu, windows (settings, command bar, overlays, island), updater, settings store, keybind registry.</td></tr>
+<tr><td>crates/core</td><td>Feature logic shared by every platform: clipboard store, snippet engine, layouts, alert rules, cleaner rules, agent-log parsers.</td></tr>
+<tr><td>crates/platform</td><td>One trait per OS capability (audio, windows, input, display, power, capture, packages). Backends: <code>win</code>, <code>x11</code>, <code>kde</code>, <code>gnome</code>, <code>linux-common</code>. Chosen at runtime from <code>XDG_SESSION_TYPE</code> and <code>XDG_CURRENT_DESKTOP</code>.</td></tr>
+<tr><td>notifi-helper</td><td>Small privileged helper. Linux: polkit-run, for fan PWM, DDC i2c and lid handling. Windows: a service only for the driver-backed sensors. Optional; features that need it say so.</td></tr>
+<tr><td>gnome-extension/</td><td>GNOME Shell extension (JS) giving window list, move/resize, thumbnails and focus over D-Bus. Wayland only.</td></tr>
+<tr><td>kwin-scripts/</td><td>KWin scripts loaded over D-Bus for the same jobs on KDE Wayland.</td></tr>
+<tr><td>Input on Wayland</td><td>Global shortcuts through the <code>GlobalShortcuts</code> portal (KDE, GNOME 48+). Mouse and key remaps through an evdev grab plus a <code>uinput</code> virtual device (user must be in the <code>input</code> group; the permissions page explains it).</td></tr>
+<tr><td>Permissions page</td><td>Like Vorssaint's: each OS permission or group, which features use it, and whether it is still needed.</td></tr>
+</table></div>
+
+<h2>2b. Motion: same animation style</h2>
+<ul>
+<li><b>Where it comes from:</b> the spec agent records Vorssaint in use (on a Mac, or from <code>window-switcher.gif</code>, the site and release videos) and steps through it frame by frame. Nobody reads its source for this.</li>
+<li><b>What it writes:</b> <code>spec/motion.md</code>, one row per animation: what moves (opacity, scale, position, blur, height), how long it takes, the curve (spring stiffness and damping, or the easing), any overshoot, and the stagger between items. It covers the tray panel opening and closing, panel tab switches, the app switcher showing and moving its selection, the Top Pill growing and shrinking, toasts, the command bar, the radial menu, the shelf, snap previews, the capture selector, hold-to-quit progress, list reorder and toggle switches.</li>
+<li><b>How it is built:</b> one motion token file (<code>ui/motion.ts</code>) holds every duration and spring, named by role (<code>panelOpen</code>, <code>selectionMove</code> …). Components only use tokens. Springs use Svelte's built-in <code>spring</code> and <code>tweened</code> stores (no extra library). CSS transitions use <code>linear()</code> easing generated from the same springs, so CSS and JS feel the same.</li>
+<li><b>Windows that animate:</b> our own overlay windows are transparent and frameless, and they animate their contents, not the OS window, so motion stays smooth on Windows, X11 and Wayland. Moving other apps' windows (snapping) follows the OS's own animation. Notifi draws an animated snap preview overlay to match the style.</li>
+<li><b>Reduced motion:</b> follows the OS setting (Windows "Animation effects", GNOME/KDE reduce-animation), and has its own switch on the settings page.</li>
+<li><b>Check:</b> each phase records Notifi's animations at 60 fps and compares them side by side with the Vorssaint reference clips before release.</li>
+</ul>
+
+<h2>3. Feature map</h2>
+<p class="legend"><span><span class="t ok">PORT</span> works on both</span><span><span class="t warn">PARTIAL</span> limits on some platform</span><span><span class="t bad">RISKY</span> needs a driver</span><span><span class="t na">ADAPT / DROP</span> Mac-only idea</span></p>
+
+<h3>3.1 Sound (phase 2)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Volume mixer</td><td>WASAPI <code>IAudioSessionManager2</code> / <code>ISimpleAudioVolume</code>. Boost past 100% needs an APO driver.</td><td>PipeWire/Pulse sink inputs; boost past 100% built in.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Per-app output</td><td><code>IAudioPolicyConfigFactory</code> (undocumented, the same one Windows' own settings use)</td><td>Move the sink input to another sink</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Output switcher</td><td><code>IPolicyConfig</code> default endpoint, device-change events</td><td>Default sink, sink-removed event</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Microphone tools</td><td>Endpoint volume, mute all capture endpoints</td><td>Sources: volume and mute</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Music app blocker</td><td colspan="2">Adapt: stop a chosen app from starting when a media key is pressed (e.g. Media Player, Spotify)</td><td><span class="t na">ADAPT</span></td></tr>
+</table></div>
+
+<h3>3.2 System monitor (phase 1, sensors in phase 8)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>CPU, memory, battery, power</td><td><code>sysinfo</code> crate, battery WMI</td><td><code>sysinfo</code>, <code>/sys/class/power_supply</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>GPU</td><td>D3DKMT / PDH GPU counters</td><td>amdgpu/i915 sysfs; NVIDIA through <code>nvidia-smi</code> when present</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Temperatures</td><td>Needs a kernel driver (as LibreHardwareMonitor does); ACPI thermal zone as a rough fallback</td><td>hwmon sysfs</td><td><span class="t bad">RISKY</span> on Win</td></tr>
+<tr><td>Fan control (beta)</td><td>Driver needed, vendor-specific</td><td>hwmon <code>pwm*</code> through the helper</td><td><span class="t bad">RISKY</span></td></tr>
+<tr><td>Tray readouts</td><td>Text drawn into the tray icon (Windows tray can't show text)</td><td>AppIndicator label (KDE yes, GNOME needs the extension)</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Network + speed test</td><td colspan="2">Interface counters, local IP; speed test against a free open endpoint (e.g. LibreSpeed)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Alerts</td><td colspan="2">Rules in core, OS notifications</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h3>3.3 Windows and taskbar (phase 3)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>App switcher with live previews</td><td>Low-level keyboard hook, DWM thumbnails</td><td>X11: XComposite. KDE: KWin script. GNOME: extension.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Window layouts and snapping</td><td><code>SetWindowPos</code>, edge and modifier-drag via mouse hook</td><td>X11: EWMH. KDE/GNOME Wayland: script/extension.</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Quit on close</td><td>Win event hook on window destroy, end process</td><td>Window-closed signal, then end process</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Quit/close protection</td><td>Keyboard hook on Alt+F4 / Ctrl+W / Ctrl+Q</td><td>X11 key grab; Wayland: evdev grab</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Taskbar preview</td><td colspan="2">Our own preview on hover over taskbar buttons, across all desktops. From the preview you can switch to, close, move or snap a window. Windows: UI Automation to find the hovered taskbar button. KDE/GNOME: the panel task list through script/extension.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Taskbar clicks</td><td colspan="2">Clicking the active app's taskbar button can minimise it, hide it, or cycle through its windows (Windows normally shows a thumbnail list instead). Mouse hook plus UI Automation on Windows; panel settings or the script/extension on Linux.</td><td><span class="t na">ADAPT</span></td></tr>
+<tr><td>Maximize without Space</td><td colspan="2">Adapt: a "fill screen" toggle for any window. It goes borderless over the work area, or the whole display if chosen, with gaps, and restores on a second press. It can also take over the maximize button through the window hook.</td><td><span class="t na">ADAPT</span></td></tr>
+<tr><td>Fixed Space order</td><td colspan="2">Adapt: virtual desktop tools. Switch to desktop N and move the window to desktop N with shortcuts, keep desktop names, and show a desktop indicator. Windows: the virtual desktop COM interfaces. KDE: KWin D-Bus. GNOME: the extension. X11: EWMH.</td><td><span class="t na">ADAPT</span></td></tr>
+</table></div>
+
+<h3>3.4 Keyboard and mouse (phase 4)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Text snippets</td><td>Keyboard hook + <code>SendInput</code></td><td>X11: XRecord + XTest. Wayland: evdev + uinput.</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Smooth / linear scrolling</td><td>Mouse hook, swallow wheel, send small steps</td><td>evdev grab, uinput high-res wheel events</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Pointer acceleration</td><td><code>SPI_SETMOUSE</code>, restore on off</td><td>libinput flat profile: gsettings (GNOME), kcminputrc/D-Bus (KDE), xinput (X11)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Focus follows mouse</td><td><code>SPI_SETACTIVEWINDOWTRACKING</code> + delay</td><td>Native setting on KDE/GNOME/most X11 WMs; Notifi just toggles it</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Scroll direction (mouse only)</td><td>Mouse hook inverts the wheel</td><td>libinput natural scroll per device</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Hold key to scroll sideways</td><td>Mouse hook to <code>WM_MOUSEHWHEEL</code></td><td>uinput <code>REL_HWHEEL</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Mouse buttons to shortcuts, drag gestures</td><td>Mouse hook</td><td>evdev + uinput</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Side buttons</td><td colspan="2">Already work on both in most apps; fold into button remapping</td><td><span class="t na">ADAPT</span></td></tr>
+<tr><td>Middle click from touchpad</td><td>Built into Precision Touchpad settings; open that page</td><td>libinput tap button map</td><td><span class="t na">ADAPT</span></td></tr>
+<tr><td>Apps to leave alone</td><td colspan="2">Foreground-app check before each remap</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Extra click filter, key debounce</td><td>Hooks drop repeats under the threshold</td><td>evdev grab drops repeats</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Super key (Caps Lock as a modifier, tap action)</td><td>Keyboard hook</td><td>evdev + uinput (X11: XRecord)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Shortcuts manager</td><td colspan="2">Keybind registry page; shows clashes with OS shortcuts</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h3>3.5 Clipboard, files and links (phase 1)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Clipboard history (text, images, files)</td><td><code>AddClipboardFormatListener</code></td><td>X11: XFixes. Wayland: <code>wlr-data-control</code> / <code>ext-data-control</code> (KDE yes); GNOME needs the extension</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Auto clear clipboard</td><td colspan="2">Timer, and on lock/sleep (session events)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Paste as plain text</td><td colspan="2">Set plain text, send Ctrl+V, put back the original</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Shelf</td><td colspan="2">Floating drop window that shows during drags</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Explorer/file manager shortcuts</td><td colspan="2">Cut/paste and F2 already exist; keep only "paste image as PNG file" for Explorer, Dolphin and Nautilus</td><td><span class="t na">ADAPT</span></td></tr>
+<tr><td>Clean URL</td><td colspan="2">Rules in core, run on copy</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Disk image installer</td><td>Adapt: an installer helper. Run a downloaded .msi/.exe silently where it supports that, or unpack a portable .zip into a chosen apps folder with a Start menu shortcut, then optionally clean up the download.</td><td>Adapt: AppImage installer (move to <code>~/Applications</code>, add a menu entry, clean up the download)</td><td><span class="t na">ADAPT</span></td></tr>
+</table></div>
+
+<h3>3.6 Everyday tools (phases 1 and 6)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Command Bar</td><td colspan="2">Apps (Start menu / .desktop), windows, files, clipboard, snippets, calculator, units, emoji, scripts. App menu commands: Windows UI Automation; Linux only for apps that export menus over D-Bus.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Quick panel</td><td colspan="2">Floating palette window</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Quick toggles</td><td>Dark mode (registry), hide desktop icons, eject, empty Recycle Bin, lock</td><td>Same through gsettings/KDE D-Bus, udisks2, trash spec, logind</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Radial menu</td><td colspan="2">Transparent overlay window at the pointer</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Scratchpad</td><td colspan="2">Tabbed notes, Markdown preview, export</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Cleaning Mode</td><td>Hooks swallow all keys</td><td>evdev grab (X11: XGrabKeyboard)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Dynamic Island</td><td colspan="2">Adapt as the <b>Top Pill</b>: an always-on-top bar at the top centre of the screen. Media: SMTC (Win) / MPRIS (Linux). Notifications: Windows <code>UserNotificationListener</code> through a sparse package (app identity for the normal installer, free) / Linux D-Bus monitor. Calendar: local ICS or CalDAV. Timers, downloads folder watch, camera.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>AI agents panel</td><td colspan="2">Read local session logs: Claude Code (<code>~/.claude/projects</code>), Codex (<code>~/.codex</code>, extra <code>CODEX_HOME</code>s), OpenCode, Copilot CLI. Tokens, models, projects, "long task done" notice. Plan limits only where the tool writes them locally.</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h3>3.7 Capture and create (phase 5)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Capture selector + magnifier</td><td>Windows.Graphics.Capture / DXGI duplication</td><td>X11: XShm. Wayland: Screenshot/ScreenCast portal (the portal shows its own picker)</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Screenshot + editor (annotate, crop, redact, background, pin)</td><td colspan="2">Editor is shared web UI</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Scrolling capture</td><td colspan="2">Send scroll, grab frames, stitch in core</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Screen recording, trim, zooms, blur, GIF</td><td>WGC + WASAPI loopback, mic track</td><td>ScreenCast portal + PipeWire</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Expiring share links</td><td colspan="2">Notifi ships a tiny open-source share server (Docker image, self-hosted, for example on Coolify). The user sets its URL in settings. Uploads get an expiry and are deleted after it. No public service is built in.</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Copy text from screen, QR</td><td colspan="2">Offline OCR with Tesseract on both (open source, same results everywhere); QR with <code>rxing</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Color picker</td><td colspan="2">HEX, RGB, HSL, plus CSS/Qt/WinUI snippets instead of SwiftUI</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Camera preview</td><td colspan="2">Webcam in a floating window or the Top Pill (<code>getUserMedia</code> in the webview)</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Media tools</td><td colspan="2">FFmpeg (open source) bundled or found on PATH; images through the <code>image</code> crate</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h3>3.8 App management (phase 7)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>App updates</td><td><code>winget upgrade</code>, Scoop, Store link</td><td>PackageKit (apt/dnf/zypper/pacman), Flatpak, Snap</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Package manager (in place of Homebrew)</td><td>winget + Scoop search/install/remove</td><td>PackageKit + Flatpak</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Uninstaller + leftovers</td><td>Uninstall registry keys, then scan AppData/ProgramData</td><td>Package remove, then scan <code>~/.config</code>, <code>~/.cache</code>, <code>~/.local/share</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Cleaner (scheduled)</td><td>Temp, caches, logs, crash dumps</td><td><code>~/.cache</code>, journald size, old Flatpak runtimes</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Messaging downloads</td><td colspan="2">Retention rules on WhatsApp/Telegram/Discord download folders, to Recycle Bin / trash</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Port manager</td><td colspan="2">Listening sockets with their process, end process</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h3>3.9 Energy and display (phase 8)</h3>
+<div class="tw"><table>
+<tr><th>Feature</th><th>Windows</th><th>Linux</th><th>Status</th></tr>
+<tr><td>Keep awake (timer, apps, power, displays)</td><td><code>SetThreadExecutionState</code></td><td>logind inhibitor / <code>org.freedesktop.ScreenSaver.Inhibit</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Keep awake with lid closed</td><td>Change the lid action through the power API, restore after</td><td>logind <code>handle-lid-switch</code> inhibitor</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Displays + brightness, half/quarter steps</td><td>DDC/CI through the Monitor Configuration API; laptop panel through WMI</td><td><code>ddcutil</code>/i2c-dev through the helper; backlight through logind <code>SetBrightness</code></td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Extra dimming / software dim</td><td colspan="2">Click-through black overlay per display; gamma ramp on X11/Windows</td><td><span class="t ok">PORT</span></td></tr>
+<tr><td>Extra brightness (HDR)</td><td>On HDR displays, raise the SDR content brightness (DisplayConfig SDR white level)</td><td>KDE Wayland HDR brightness through KWin; elsewhere not possible</td><td><span class="t warn">PARTIAL</span></td></tr>
+<tr><td>Bluetooth off during sleep</td><td><code>Windows.Devices.Radios</code></td><td>BlueZ D-Bus</td><td><span class="t ok">PORT</span></td></tr>
+</table></div>
+
+<h2>4. Phases and checklist</h2>
+
+<h3>Phase 0: Foundation</h3>
+<ul class="check">
+<li class="done">git init, <code>main</code> branch, MIT <code>LICENSE</code>, <code>README.md</code>, <code>RELEASE_NOTES.md</code></li>
+<li class="done">Tauri 2 shell: tray icon and menu, single instance, autostart, no focus steal in test runs</li>
+<li class="done">Settings store (defaults, JSON, change events) and settings page; one section per feature, each with an on/off switch ("install only what you use")</li>
+<li class="done">Keybind registry with a capture widget; global hotkeys (Win: <code>RegisterHotKey</code>; Linux: X11 grab or GlobalShortcuts portal)</li>
+<li class="done">Updater: GitHub <code>releases/latest</code> at startup and every 3 h, background download, SHA-256 check, install on click or quit</li>
+<li class="done"><code>platform</code> crate with runtime backend choice; empty traits for every capability</li>
+<li>Tray panel (<code>spec/panel.md</code>): tabs for Keep awake, Mixer, System, Network, Storage, Power, Utilities and Controls, with Settings and Quit at the bottom</li>
+<li>Island (<code>spec/everyday/island.md</code>), moved up from Phase 6: resting pill, live activities, Now Playing, module grid, Controls, orbit buttons, settings page with a layout editor</li>
+<li>Permissions page</li>
+<li>CI: Windows <code>.msi</code>, Linux <code>.AppImage</code> + <code>.deb</code> + <code>.rpm</code></li>
+<li class="done"><code>.run/Main Run.run.xml</code> and <code>.run/Dev Run.run.xml</code></li>
+<li class="done">Spec agent writes <code>spec/</code> for every feature</li>
+<li class="done">Spec agent writes <code>spec/motion.md</code> from recordings; <code>ui/motion.ts</code> token file built from it</li>
+</ul>
+
+<h3>Phase 1: Daily core</h3>
+<ul class="check">
+<li>Clipboard history, auto clear, paste as plain text, Clean URL</li>
+<li>Text snippets (searchable menu first, typed triggers in phase 4)</li>
+<li>Command Bar (apps, windows, files, clipboard, calculator, units, emoji, scripts)</li>
+<li>Quick toggles, quick panel, scratchpad</li>
+<li>System monitor (CPU, memory, battery, network, GPU basics), tray readouts, alerts</li>
+<li>Keep awake (basic)</li>
+</ul>
+
+<h3>Phase 2: Sound</h3>
+<ul class="check"><li>Volume mixer, per-app output, output switcher, microphone tools, media-key app blocker</li></ul>
+
+<h3>Phase 3: Windows</h3>
+<ul class="check"><li>GNOME extension and KWin scripts</li><li>Window layouts and snapping, app switcher, quit on close, quit/close protection</li></ul>
+
+<h3>Phase 4: Keyboard and mouse</h3>
+<ul class="check"><li>Input layer (hooks / evdev + uinput)</li><li>Scrolling features, acceleration, focus follows mouse, button remaps, click filter, key debounce, Super key, typed snippet triggers, app exclusions</li></ul>
+
+<h3>Phase 5: Capture</h3>
+<ul class="check"><li>Capture selector, screenshot + editor, pin, scrolling capture, OCR, QR, color picker</li><li>Recording + editor, media tools, camera preview</li></ul>
+
+<h3>Phase 6: Top Pill and extras</h3>
+<ul class="check"><li>Top Pill (media, timers, downloads, calendar, notifications where possible)</li><li>AI agents panel</li><li>Radial menu, Cleaning Mode, shelf</li></ul>
+
+<h3>Phase 7: App management</h3>
+<ul class="check"><li>App updates, package manager, uninstaller, cleaner, messaging downloads, port manager, AppImage installer</li></ul>
+
+<h3>Phase 8: Energy, display and sensors</h3>
+<ul class="check"><li>Displays and DDC brightness, software dimming, lid-closed keep awake, Bluetooth on sleep</li><li>Privileged helper; temperatures and fan control (Linux first, Windows beta)</li></ul>
+
+<h2>5. Risks</h2>
+<ul>
+<li><b>Windows sensors and fans:</b> the usual free driver (WinRing0) is now flagged by Defender. Plan: Linux first; on Windows, show sensors only if the user already runs LibreHardwareMonitor (read its data), never ship a driver ourselves.</li>
+<li><b>Volume boost past 100% on Windows:</b> needs an APO such as Equalizer APO. Plan: support boost only when one is installed.</li>
+<li><b>Wayland:</b> global input needs the <code>input</code> group, and window control needs our extension/scripts. The permissions page walks the user through it. Other compositors (Sway, Hyprland) are best effort.</li>
+<li><b>Windows notification mirroring</b> needs a packaged (MSIX) app identity. Skipped unless we ship MSIX as well.</li>
+<li><b>Size:</b> ~60 features to build. Each phase is its own release.</li>
+</ul>
+
+<h2>6. New dependencies to approve</h2>
+<p>All free and open source: Tauri 2, <code>windows</code> crate, <code>sysinfo</code>, <code>zbus</code> (D-Bus), <code>libpulse</code>/<code>pipewire</code> bindings, <code>evdev</code>, <code>x11rb</code>, <code>rxing</code>, Tesseract, FFmpeg, <code>image</code>, a front-end framework (Svelte recommended, it's small).</p>
+
+</main></body>
+</html>

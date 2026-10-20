@@ -1,0 +1,27 @@
+{
+  "name": "notifi",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "ui:dev": "vite --config ui/vite.config.ts",
+    "ui:build": "vite build --config ui/vite.config.ts",
+    "check": "svelte-check --tsconfig ui/tsconfig.json",
+    "tauri": "tauri",
+    "main": "node scripts/run-main.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tauri-apps/cli": "^2.12.3",
+    "@tsconfig/svelte": "^5.0.8",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.4.7",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4"
+  }
+}

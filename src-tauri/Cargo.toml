@@ -1,0 +1,21 @@
+[package]
+name = "notifi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+notifi-core = { path = "../crates/core" }
+notifi-platform = { path = "../crates/platform" }
+sysinfo = { version = "0.39", default-features = false, features = ["component", "disk", "network", "system"] }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-http = "2"
+sha2 = "0.10"

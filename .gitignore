@@ -1,0 +1,6 @@
+target/
+node_modules/
+build/
+dist/
+src-tauri/gen/
+target-install/
