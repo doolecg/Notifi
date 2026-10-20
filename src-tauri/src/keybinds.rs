@@ -69,6 +69,11 @@ pub const FEATURE_SHORTCUTS: &[FeatureShortcut] = &[
     FeatureShortcut { namespace: "quickPanel", key: "shortcut", action: "quickPanel" },
     FeatureShortcut { namespace: "scratchpad", key: "shortcut", action: "scratchpadToggle" },
     FeatureShortcut { namespace: "colorPicker", key: "shortcut", action: crate::picker::ACTION },
+    FeatureShortcut { namespace: "screenRecording", key: "shortcut", action: crate::recording::TOGGLE },
+    FeatureShortcut { namespace: "screenRecording", key: "pauseShortcut", action: crate::recording::PAUSE },
+    FeatureShortcut { namespace: "screenshot", key: "shortcut", action: "captureScreenshot" },
+    FeatureShortcut { namespace: "textFromScreen", key: "shortcut", action: "captureText" },
+    FeatureShortcut { namespace: "radialMenu", key: "shortcut", action: crate::radial::ACTION },
 ];
 
 /// Whether a settings change touches a feature shortcut or its feature switch.
@@ -78,6 +83,7 @@ pub fn feature_shortcuts_changed(old: &Settings, new: &Settings) -> bool {
         .chain(crate::windows_mgmt::SHORTCUTS)
         .chain(crate::energy::SHORTCUTS)
         .any(|f| old.enabled(f.namespace) != new.enabled(f.namespace) || old.option(f.namespace, f.key) != new.option(f.namespace, f.key))
+        || crate::commandbar::shortcut_bindings(old) != crate::commandbar::shortcut_bindings(new)
 }
 
 /// Shortcuts the OS already uses, shown as clashes in the capture widget.
@@ -124,7 +130,7 @@ pub fn parse(accel: &str) -> Result<Shortcut, String> {
 
 #[derive(Default)]
 pub struct Registry {
-    bound: Mutex<HashMap<u32, &'static str>>,
+    bound: Mutex<HashMap<u32, String>>,
     failed: Mutex<BTreeMap<String, String>>,
 }
 
@@ -145,7 +151,7 @@ pub fn apply(app: &AppHandle, shortcuts: &BTreeMap<String, String>) {
         }
         match parse(accel).and_then(|s| global.register(s).map(|_| s).map_err(|e| e.to_string())) {
             Ok(shortcut) => {
-                bound.insert(shortcut.id(), action.id);
+                bound.insert(shortcut.id(), action.id.to_string());
             }
             Err(err) => {
                 failed.insert(action.id.to_string(), err);
@@ -165,10 +171,22 @@ pub fn apply(app: &AppHandle, shortcuts: &BTreeMap<String, String>) {
             }
             match parse(accel).and_then(|s| global.register(s).map(|_| s).map_err(|e| e.to_string())) {
                 Ok(shortcut) => {
-                    bound.insert(shortcut.id(), f.action);
+                    bound.insert(shortcut.id(), f.action.to_string());
                 }
                 Err(err) => {
                     failed.insert(format!("{}.{}", f.namespace, f.key), err);
+                }
+            }
+        }
+    }
+    if let Some(settings) = app.try_state::<Store>().map(|s| s.get()) {
+        for (accel, action, key) in crate::commandbar::shortcut_bindings(&settings) {
+            match parse(&accel).and_then(|s| global.register(s).map(|_| s).map_err(|e| e.to_string())) {
+                Ok(shortcut) => {
+                    bound.insert(shortcut.id(), action);
+                }
+                Err(err) => {
+                    failed.insert(key, err);
                 }
             }
         }
@@ -180,22 +198,32 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state() != ShortcutState::Pressed {
         return;
     }
-    let action = app.state::<Registry>().bound.lock().unwrap().get(&shortcut.id()).copied();
+    let action = app.state::<Registry>().bound.lock().unwrap().get(&shortcut.id()).cloned();
     if let Some(action) = action {
-        run(app, action);
+        run(app, &action);
     }
 }
 
-fn run(app: &AppHandle, action: &str) {
+pub fn run(app: &AppHandle, action: &str) {
     match action {
         "openSettings" => window::open_settings(app),
         media if media.starts_with("media") => crate::island::run_media_key(app, media),
         island if island.starts_with("island") => crate::island::run_action(app, island),
         sound if crate::sound::ACTIONS.contains(&sound) => crate::sound::run_action(app, sound),
         crate::commandbar::ACTION => crate::commandbar::toggle(app),
+        cb if crate::commandbar::is_shortcut_action(cb) => crate::commandbar::run_shortcut(app, cb),
         clip if crate::clipboard::ACTIONS.contains(&clip) => crate::clipboard::run_action(app, clip),
         "scratchpadToggle" => crate::scratchpad::toggle(app),
         crate::picker::ACTION => crate::picker::toggle(app),
+        rec if crate::recording::ACTIONS.contains(&rec) => crate::recording::run_action(app, rec),
+        capture if crate::capture::ACTIONS.contains(&capture) => crate::capture::run_action(app, capture),
+        crate::radial::ACTION => crate::radial::open_from_shortcut(app),
+        "quickToggleLockScreen" => {
+            let handle = app.clone();
+            if !crate::island::lock::notice_then(app, move || crate::quick::run_action(&handle, "quickToggleLockScreen")) {
+                crate::quick::run_action(app, "quickToggleLockScreen");
+            }
+        }
         quick if quick.starts_with("quick") => crate::quick::run_action(app, quick),
         sw if crate::switcher::ACTIONS.contains(&sw) => crate::switcher::run_action(app, sw),
         wm if wm.starts_with("wm.") => crate::windows_mgmt::run_action(app, wm),

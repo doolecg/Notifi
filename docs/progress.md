@@ -1,11 +1,11 @@
 # Notifi progress notes
 
-Last saved: 2026-10-20 (end of the Island and wave 1 session).
+Last saved: 2026-10-20 (after wave 2 was built and tested).
 
 ## Where things stand
 - Branch `dev-0.2.0`, local only, nothing pushed. Version 0.2.0 in `package.json`.
 - Run it: `npm run dev` (tauri dev) from the repo root. The Island is enabled and docked bottom-left in the user's settings at `%APPDATA%\io.notifi.app\settings.json` (`island.dock = bottomLeft`, `island.claudeUsageConnect = true`).
-- Checks last run: `cargo test -p notifi` 378 passed; `npx svelte-check --tsconfig ui/tsconfig.json` 0 errors.
+- Checks last run: `cargo test --workspace` app crate 453 passed + platform 46 passed; `npx svelte-check --tsconfig ui/tsconfig.json` 0 errors. The app launches on this code.
 
 ## Island (done and seen on screen)
 - Docked bar sits flush on the taskbar's left, full taskbar height, rounded right end, colour sampled from the taskbar and made darker by `island.dockDarkness`.
@@ -22,6 +22,13 @@ Last saved: 2026-10-20 (end of the Island and wave 1 session).
 - Energy: Keep awake options, displays, extra dimming, Bluetooth off at sleep, cleaning mode. Code in `src-tauri/src/energy` and `keepawake.rs`.
 - Tools: colour picker (`src-tauri/src/picker`), media tools (`src-tauri/src/media_tools`), AI agent settings, tray tooltip for latest clipboard entry, update alerts.
 - Try first: click filter, scroll direction, smooth scrolling, Keep awake triggers, colour picker.
+
+## Wave 2 (written, compiled, tests pass, not yet tried live)
+- Screenshot and text from screen: `src-tauri/src/capture`, UI in `ui/src/capture`. Area/window/screen, selector, scrolling capture, editor (pen, arrow, rectangle, blur, text), OCR via Windows.Media.Ocr, QR via `rqrr`.
+- Screen recording: `src-tauri/src/recording`. DXGI capture, Media Foundation MP4 (H.264 + AAC) or GIF (`gif` crate), cursor effects, typing zoom.
+- Radial menu: `src-tauri/src/radial`, plus Monitor, Command bar, App switcher (mergeTabs), Island lock notice/sounds, backup tests, cleaning mode suspends click filter and debounce.
+- Island pill now shows "sessions" = terminals open (counted from running claude/codex/opencode programs) and "subagents" running; subagent logs no longer count as sessions, and a turn waiting on subagents no longer reads "Needs you".
+- Not built: share links (expiry, recordingLimit), screenshot editor extras (spotlight, ellipse, crop, layers), WebM, post-recording editor, fan curves (no Windows API), app switcher other-desktop lists, browser tabs, Island pickArea/hideWhenIdle.
 
 ## Known gaps
 - Cannot be built on Windows: keyboard backlight, extra brightness (SDR white level), Bluetooth connect notices.

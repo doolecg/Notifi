@@ -227,8 +227,20 @@ async fn run(app: &AppHandle) -> Result<SpeedResult, String> {
     Ok(SpeedResult { server: server.name.clone(), download, upload, ping_ms: median(pings.clone()), jitter_ms: jitter(&pings), at })
 }
 
+/// The error `speed_test_run` returns when "Ask before running a speed test" is on and the caller has not asked yet.
+pub const NEEDS_CONFIRMATION: &str = "confirm";
+
+fn needs_confirmation(ask: bool, confirmed: Option<bool>) -> bool {
+    ask && confirmed != Some(true)
+}
+
+/// Runs the test. With "Ask before running a speed test" on, the caller must ask first and pass `confirmed: true`.
 #[tauri::command]
-pub async fn speed_test_run(app: AppHandle) -> Result<SpeedResult, String> {
+pub async fn speed_test_run(app: AppHandle, confirmed: Option<bool>) -> Result<SpeedResult, String> {
+    let ask = app.state::<Store>().get().option("network", "askBeforeTest").and_then(Value::as_bool).unwrap_or(false);
+    if needs_confirmation(ask, confirmed) {
+        return Err(NEEDS_CONFIRMATION.into());
+    }
     let state = app.state::<SpeedTestState>();
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A speed test is already running.".into());
@@ -250,6 +262,14 @@ pub fn speed_test_history(app: AppHandle) -> Vec<SpeedResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asking_first_only_blocks_unconfirmed_runs() {
+        assert!(!needs_confirmation(false, None));
+        assert!(needs_confirmation(true, None));
+        assert!(needs_confirmation(true, Some(false)));
+        assert!(!needs_confirmation(true, Some(true)));
+    }
 
     #[test]
     fn joins_server_urls() {

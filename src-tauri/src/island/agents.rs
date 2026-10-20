@@ -367,6 +367,10 @@ pub struct AgentSnap {
     pub count: u32,
     /// A working session is waiting on the user.
     pub needs_you: bool,
+    /// Subagents running right now.
+    pub subagents: u32,
+    /// Terminals open for this agent (filled in by the Island loop from the process list).
+    pub terminals: u32,
     /// A session finished a moment ago and none is working.
     pub done: bool,
     pub elapsed_ms: u64,
@@ -465,6 +469,9 @@ impl Tracker {
         let mut finished = Vec::new();
         let mut working = HashMap::new();
         for (path, f) in &self.files {
+            if is_sub(path) {
+                continue;
+            }
             if f.session.working(now) {
                 working.insert(path.clone(), f.session.turn_start.unwrap_or(now));
             } else if let Some(&start) = self.working.get(path) {
@@ -493,8 +500,10 @@ impl Tracker {
             .iter()
             .filter(|k| k.root(home).exists())
             .map(|&kind| {
-                let sessions: Vec<&Session> =
-                    self.files.iter().filter(|(p, _)| kind_of(home, p) == kind).map(|(_, f)| &f.session).collect();
+                let of_kind = self.files.iter().filter(|(p, _)| kind_of(home, p) == kind);
+                let (subs, mains): (Vec<_>, Vec<_>) = of_kind.partition(|(p, _)| is_sub(p));
+                let sessions: Vec<&Session> = mains.iter().map(|(_, f)| &f.session).collect();
+                let subagents = subs.iter().filter(|(_, f)| f.session.working(now)).count() as u32;
                 // The working session with the longest turn, else the most recent one.
                 let main = sessions
                     .iter()
@@ -511,7 +520,10 @@ impl Tracker {
                     supported: kind.parsed(),
                     working: main.is_some_and(|s| s.working(now)),
                     count,
-                    needs_you: sessions.iter().any(|s| s.needs_you(now)),
+                    // A turn waiting on its subagents is working, not waiting for you.
+                    needs_you: sessions.iter().any(|s| s.needs_you(now)) && subagents == 0,
+                    subagents,
+                    terminals: 0,
                     done: count == 0 && self.ended.keys().any(|p| kind_of(home, p) == kind),
                     elapsed_ms: main.filter(|s| s.working(now)).map_or(0, |s| s.elapsed(now)),
                     model: main.and_then(|s| s.model.clone()),
@@ -525,6 +537,11 @@ impl Tracker {
             })
             .collect()
     }
+}
+
+/// A subagent's own log (`<session>/subagents/*.jsonl`): part of a session, never a session itself.
+pub(crate) fn is_sub(path: &Path) -> bool {
+    path.components().any(|c| c.as_os_str() == "subagents")
 }
 
 fn kind_of(home: &Path, path: &Path) -> Kind {

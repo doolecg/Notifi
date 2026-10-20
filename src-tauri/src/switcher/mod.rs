@@ -106,6 +106,19 @@ pub(crate) fn listed(list: &[String], app: &str) -> bool {
     })
 }
 
+/// "Merge tabs": windows of one app at exactly the same place and size are tabs of one window, so only
+/// the front-most is kept. Minimised windows have no real position and are never merged.
+fn merge_tabs(list: Vec<WindowInfo>) -> Vec<WindowInfo> {
+    let mut kept: Vec<WindowInfo> = Vec::with_capacity(list.len());
+    for w in list {
+        let twin = !w.minimized && w.app_id.is_some() && kept.iter().any(|k| !k.minimized && k.app_id == w.app_id && k.bounds == w.bounds);
+        if !twin {
+            kept.push(w);
+        }
+    }
+    kept
+}
+
 /// The effective hold triggers: the system Alt+Tab only when replacing it.
 fn bindings(s: &Settings) -> Bindings {
     let replace = opt_bool(s, NS, "replaceSystem", true);
@@ -230,6 +243,7 @@ fn collect(app: &AppHandle, s: &Settings, same_app: bool, mru: &[u64], kind: Kin
         .filter(|w| display.as_ref().is_none_or(|d| w.monitor.as_ref() == Some(d)))
         .filter(|w| !same_app || (fg_app.is_some() && w.app_id == fg_app))
         .collect();
+    let list = if opt_bool(s, NS, "mergeTabs", false) { merge_tabs(list) } else { list };
     let zorder: Vec<u64> = list.iter().map(|w| w.id.0).collect();
     let order = model::mru_order(&zorder, mru);
     let state = app.state::<SwitcherState>();
@@ -743,6 +757,26 @@ mod linux {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn win(id: u64, app: &str, x: i32, minimized: bool) -> WindowInfo {
+        WindowInfo {
+            id: WindowId(id),
+            title: "t".into(),
+            app_id: Some(app.into()),
+            pid: None,
+            bounds: notifi_platform::Rect { x, y: 0, width: 800, height: 600 },
+            monitor: None,
+            minimized,
+            focused: false,
+        }
+    }
+
+    #[test]
+    fn merging_tabs_keeps_the_front_window_of_each_stack() {
+        let list = vec![win(1, "a.exe", 0, false), win(2, "a.exe", 0, false), win(3, "a.exe", 50, false), win(4, "b.exe", 0, false), win(5, "a.exe", 0, true), win(6, "a.exe", 0, true)];
+        let ids: Vec<u64> = merge_tabs(list).iter().map(|w| w.id.0).collect();
+        assert_eq!(ids, vec![1, 3, 4, 5, 6]);
+    }
 
     #[test]
     fn app_names_and_lists() {

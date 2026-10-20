@@ -560,7 +560,8 @@
                 {#each workingAgents as a (a.id)}
                   <span class="ag" title={`${a.name}: ${a.count} working`}><Logo id={a.id} size={15} />{#if a.count > 1}<small>{a.count}</small>{/if}</span>
                 {/each}
-                <span class="count">{selLive.count ? `${selLive.count} ${selLive.count === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
+                {#if selLive.subagents > 0}<span class="count sub">{selLive.subagents} {selLive.subagents === 1 ? 'subagent' : 'subagents'}</span>{/if}
+                <span class="count">{selLive.terminals ? `${selLive.terminals} ${selLive.terminals === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
               {/if}
               {#if selLive.id === 'agents'}
                 <!-- elapsed time is left out on purpose -->
@@ -1105,6 +1106,10 @@
   .ag small {
     font-size: 11px;
     font-weight: 700;
+    color: var(--i-mut);
+  }
+  .count.sub {
+    margin-right: 10px;
     color: var(--i-mut);
   }
   .count {

@@ -215,7 +215,7 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
-fn add(app: &AppHandle, paths: &[PathBuf]) {
+pub fn add(app: &AppHandle, paths: &[PathBuf]) {
     let state = app.state::<ShelfState>();
     {
         let mut items = state.items.lock().unwrap();

@@ -9,8 +9,10 @@ pub mod config;
 pub mod files;
 pub mod idle;
 pub mod layout;
+pub mod lock;
 pub mod opencode;
 pub mod lyrics;
+pub mod terminals;
 pub mod timer;
 pub mod usage;
 
@@ -90,6 +92,8 @@ struct Inner {
     rest: (f64, f64),
     visible: bool,
     fullscreen: bool,
+    /// The session is locked.
+    locked: bool,
     cover: Option<String>,
     last: Option<Value>,
     /// Docked and open: the menu is stretched up to its tallest size.
@@ -195,6 +199,10 @@ pub struct Live {
     pub week_pct: Option<f64>,
     /// Project folder of the agent session shown, for jumping to its window.
     pub project: Option<String>,
+    /// Terminals open for the agent shown ("sessions" on the pill).
+    pub terminals: u32,
+    /// Subagents running for the agent shown.
+    pub subagents: u32,
 }
 
 /// `m:ss`, or `h:mm:ss` from an hour up.
@@ -229,20 +237,20 @@ pub fn live(playing: bool, timer: &Timer, hide_countdown: bool, agents: &[AgentS
             "done"
         };
         let value = if a.working { clock(a.elapsed_ms) } else { String::new() };
-        out.push(Live { id: "agents", label: "AI Agents", icon, color, value, status, count, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone() });
+        out.push(Live { id: "agents", label: "AI Agents", icon, color, value, status, count, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents });
     }
     if matches!(timer.phase, Phase::Running | Phase::Paused) {
         let value = if hide_countdown { String::new() } else { clock(timer.remaining(now).div_ceil(1000) * 1000) };
-        out.push(Live { id: "timer", label: "Timer", icon: "timer", color: TIMER_COLOR, value, status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None });
+        out.push(Live { id: "timer", label: "Timer", icon: "timer", color: TIMER_COLOR, value, status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0 });
     }
     if playing {
-        out.push(Live { id: "music", label: "Music", icon: "music", color: MUSIC_COLOR, value: String::new(), status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None });
+        out.push(Live { id: "music", label: "Music", icon: "music", color: MUSIC_COLOR, value: String::new(), status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0 });
     }
     // With nothing running, the agent that was used last still shows its limits, after the other items.
     if lead.is_none() {
         if let Some(a) = agents.iter().filter(|a| a.supported && a.last_active > 0).max_by_key(|a| a.last_active) {
             let (icon, color) = look(a);
-            out.push(Live { id: "agents", label: "AI Agents", icon, color, value: String::new(), status: "idle", count: 0, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone() });
+            out.push(Live { id: "agents", label: "AI Agents", icon, color, value: String::new(), status: "idle", count: 0, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents });
         }
     }
     out
@@ -500,6 +508,19 @@ fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'stat
     let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms });
 }
 
+/// Records that the session locked or unlocked and wakes the worker so the Island hides or returns.
+pub(crate) fn set_locked(app: &AppHandle, locked: bool) {
+    let state = app.state::<IslandState>();
+    state.inner.lock().unwrap().locked = locked;
+    state.wake();
+}
+
+/// How far down the screen the resting pill reaches, in logical pixels, when the Island is on and hangs from the top.
+pub fn pill_bottom(app: &AppHandle) -> Option<f64> {
+    let c = config(app);
+    (c.enabled && c.dock == "top").then(|| app.state::<IslandState>().inner.lock().unwrap().rest.1)
+}
+
 /// A short notice on the pill from another feature; nothing shows while the Island is off.
 pub fn notice(app: &AppHandle, text: String) {
     let c = config(app);
@@ -658,6 +679,7 @@ fn start_usage(app: &AppHandle) {
 fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
     let home = agents::home();
     let mut tracker = Tracker::default();
+    let mut terminal_counter = terminals::Counter::new();
     let mut agent_snaps: Vec<AgentSnap> = Vec::new();
     let mut next_agents = Instant::now();
     let mut next_fullscreen = Instant::now();
@@ -690,7 +712,8 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             state.inner.lock().unwrap().fullscreen = fs;
         }
         let fullscreen = state.inner.lock().unwrap().fullscreen;
-        set_visible(&app, !fullscreen);
+        let paused = lock::overlays_paused(&app.state::<Store>().get(), state.inner.lock().unwrap().locked);
+        set_visible(&app, !fullscreen && !paused);
 
         let timer_done = state.inner.lock().unwrap().timer.tick(now);
         if timer_done && c.activity_timer {
@@ -732,6 +755,10 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             }
             agent_snaps = tracker.snapshot(home, now);
             agent_snaps.retain(|a| config::follows(&c.agents_follow, a.id));
+            let open = terminal_counter.tick();
+            for a in &mut agent_snaps {
+                a.terminals = open[terminals::index(a.id)];
+            }
             if c.claude_usage_connect {
                 let cl = state.claude.lock().unwrap().clone();
                 if cl.status == "ok" || cl.session.is_some() {
@@ -1189,6 +1216,8 @@ mod tests {
             working,
             count: u32::from(working),
             needs_you: false,
+            subagents: 0,
+            terminals: 0,
             done: false,
             elapsed_ms,
             model: None,

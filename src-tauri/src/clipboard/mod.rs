@@ -87,6 +87,11 @@ pub fn set_text(text: &str) -> Result<(), String> {
     sys::write(&Payload::text(text)).map(|_| ())
 }
 
+/// Puts a PNG image on the system clipboard.
+pub fn set_png(png: &[u8]) -> Result<(), String> {
+    sys::write(&Payload { png: Some(png.to_vec()), ..Default::default() }).map(|_| ())
+}
+
 pub struct ClipState {
     dir: PathBuf,
     history: Mutex<History>,

@@ -286,7 +286,9 @@ impl Sampler {
             };
             let max_gap = interval * 3 + Duration::from_secs(10);
             for alert in self.alerts.check(now, alert_cfg, &reading, max_gap) {
-                notify::send(alert.title, alert.body, alert_cfg.sound);
+                if !(alert_cfg.quiet_focus && notify::do_not_disturb()) {
+                    notify::send(alert.title, alert.body, alert_cfg.sound);
+                }
             }
         }
 
@@ -315,7 +317,7 @@ impl Sampler {
         if needs.temps {
             let components = self.components.get_or_insert_with(Components::new_with_refreshed_list);
             components.refresh(false);
-            r.temps = temps(components);
+            r.temps = temps(components, s.option("temperatures", "cpuValue").and_then(Value::as_str) == Some("hottest"));
         }
         if needs.gpu {
             r.gpus = self.gpus();
@@ -589,25 +591,31 @@ fn local_ip() -> Option<String> {
     (!ip.is_unspecified()).then(|| ip.to_string())
 }
 
-fn temps(components: &Components) -> Temps {
+fn temps(components: &Components, hottest_cpu: bool) -> Temps {
     let mut out = Temps::default();
     let mut other = None;
+    let mut cpu_readings = Vec::new();
     for component in components.list() {
         let Some(celsius) = component.temperature().filter(|c| c.is_finite() && *c > 0.0 && *c < 150.0) else { continue };
         let label = component.label().to_ascii_lowercase();
+        let is_cpu = !["gpu", "amdgpu", "nouveau", "radeon", "nvidia", "edge", "junction"].iter().any(|k| label.contains(k))
+            && !label.contains("bat")
+            && ["cpu", "package", "tctl", "tdie", "coretemp", "k10temp", "zenpower", "core"].iter().any(|k| label.contains(k));
+        if is_cpu {
+            cpu_readings.push((label.clone(), celsius));
+            continue;
+        }
         let slot = if ["gpu", "amdgpu", "nouveau", "radeon", "nvidia", "edge", "junction"].iter().any(|k| label.contains(k)) {
             &mut out.gpu
         } else if label.contains("bat") {
             &mut out.battery
-        } else if ["cpu", "package", "tctl", "tdie", "coretemp", "k10temp", "zenpower", "core"].iter().any(|k| label.contains(k)) {
-            &mut out.cpu
         } else {
             &mut other
         };
         *slot = Some(slot.map_or(celsius, |c: f32| c.max(celsius)));
     }
     // A plain thermal zone is the only CPU-ish reading some machines give.
-    out.cpu = out.cpu.or(other);
+    out.cpu = crate::monitor::sensors::cpu_temperature(&cpu_readings, hottest_cpu).or(other);
     out
 }
 

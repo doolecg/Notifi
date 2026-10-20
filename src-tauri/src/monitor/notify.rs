@@ -57,6 +57,33 @@ fn show(_title: &str, _body: &str, _sound: bool) -> Result<(), String> {
     Err("notifications are not available on this platform".into())
 }
 
+/// Whether the system's Do Not Disturb switch is on: toast banners off on Windows, banners off on GNOME.
+pub fn do_not_disturb() -> bool {
+    use std::process::Command;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = Command::new("reg")
+            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings", "/v", "NOC_GLOBAL_SETTING_TOASTS_ENABLED"])
+            .creation_flags(0x0800_0000)
+            .output();
+        out.ok().and_then(|o| reg_dword(&String::from_utf8_lossy(&o.stdout))) == Some(0)
+    }
+    #[cfg(not(windows))]
+    {
+        let out = Command::new("gsettings").args(["get", "org.gnome.desktop.notifications", "show-banners"]).output();
+        out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "false")
+    }
+}
+
+/// The number in a `reg query` line such as `    NAME    REG_DWORD    0x0`.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn reg_dword(output: &str) -> Option<u32> {
+    let line = output.lines().find(|l| l.contains("REG_DWORD"))?;
+    let hex = line.split_whitespace().last()?.strip_prefix("0x")?;
+    u32::from_str_radix(hex, 16).ok()
+}
+
 #[cfg_attr(not(windows), allow(dead_code))]
 fn escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
@@ -64,6 +91,13 @@ fn escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reads_a_registry_dword() {
+        assert_eq!(super::reg_dword("\r\nHKEY_CURRENT_USER\\X\r\n    NOC    REG_DWORD    0x0\r\n"), Some(0));
+        assert_eq!(super::reg_dword("    NOC    REG_DWORD    0x1f"), Some(31));
+        assert_eq!(super::reg_dword("ERROR: The system was unable to find the specified registry key or value."), None);
+    }
+
     #[test]
     fn escapes_xml() {
         assert_eq!(super::escape("<a & \"b\">"), "&lt;a &amp; &quot;b&quot;&gt;");

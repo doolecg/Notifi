@@ -543,4 +543,22 @@ mod tests {
         assert_eq!(merged.option("installerHelper", "portableFolder"), Some(&json!("E:\\Other")));
         assert_eq!(merged.option("autoClear", "delaySeconds"), Some(&json!(30)));
     }
+
+    #[test]
+    fn a_backup_restores_changed_options_and_reset_all_undoes_them() {
+        let mut s = Settings::default();
+        s.set_section("radialMenu", json!({ "slices": 10, "deadZone": 40 })).unwrap();
+        s.set_section("monitor", json!({ "perCoreDefault": true })).unwrap();
+        let text = serde_json::to_string_pretty(&s.exported()).unwrap();
+
+        let mut fresh = Settings::default();
+        fresh = fresh.imported(serde_json::from_str(&text).unwrap());
+        assert_eq!(fresh.option("radialMenu", "slices"), Some(&json!(10)));
+        assert_eq!(fresh.option("monitor", "perCoreDefault"), Some(&json!(true)));
+
+        fresh.reset_section("all").unwrap();
+        assert_eq!(fresh.option("radialMenu", "slices"), Settings::default().option("radialMenu", "slices"));
+        assert_eq!(fresh.option("monitor", "perCoreDefault"), Some(&json!(false)));
+        assert!(serde_json::from_str::<Settings>("not a backup").is_err());
+    }
 }

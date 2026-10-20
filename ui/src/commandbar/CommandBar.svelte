@@ -256,6 +256,8 @@
             <span class="icon k-{row.kind}">
               {#if isGlyph(row.icon)}
                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d={glyphPath(row.icon)} /></svg>
+              {:else if row.kind === 'color'}
+                <span class="swatch" style:background={row.icon}></span>
               {:else if row.kind === 'emoji'}
                 <span class="emoji">{row.icon}</span>
               {:else}
@@ -394,6 +396,12 @@
   }
   .icon.k-emoji {
     background: none;
+  }
+  .swatch {
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
   }
   .emoji {
     font-size: 22px;

@@ -11,21 +11,34 @@ pub mod logic;
 #[cfg(windows)]
 pub mod system_win;
 
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use tauri::{AppHandle, Manager};
 
+use crate::energy::EnergyState;
 use crate::settings::Store;
 use config::Config;
 
 static CONFIG: RwLock<Option<Arc<Config>>> = RwLock::new(None);
+/// The same options with the click filter and key debounce off, used while Cleaning Mode is on.
+static CLEANING_CONFIG: RwLock<Option<Arc<Config>>> = RwLock::new(None);
+static APP: OnceLock<AppHandle> = OnceLock::new();
 
-/// The options as of the last settings change; `None` before `start`.
+/// The options as of the last settings change; `None` before `start`. The click filter and key
+/// debounce are suspended while Cleaning Mode is on.
 pub fn config() -> Option<Arc<Config>> {
-    CONFIG.read().unwrap_or_else(|e| e.into_inner()).clone()
+    let cleaning = APP.get().is_some_and(|app| app.state::<EnergyState>().cleaning.load(Ordering::SeqCst));
+    let slot = if cleaning { &CLEANING_CONFIG } else { &CONFIG };
+    slot.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn without_filters(cfg: &Config) -> Config {
+    Config { click: None, debounce_ms: None, ..cfg.clone() }
 }
 
 pub fn start(app: &AppHandle) {
+    let _ = APP.set(app.clone());
     #[cfg(windows)]
     if let Some(file) = restore_file(app) {
         system_win::recover(&file);
@@ -63,6 +76,7 @@ pub fn input_open_touchpad_settings() -> Result<(), String> {
 fn reload(app: &AppHandle) {
     let Some(store) = app.try_state::<Store>() else { return };
     let new = Arc::new(Config::from_settings(&store.get()));
+    *CLEANING_CONFIG.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(without_filters(&new)));
     let old = CONFIG.write().unwrap_or_else(|e| e.into_inner()).replace(new.clone());
     if old.as_deref() == Some(&*new) {
         return;
@@ -76,5 +90,25 @@ fn reload(app: &AppHandle) {
         if new.touchpad_page && old.as_deref().is_some_and(|o| !o.touchpad_page) {
             let _ = system_win::open_touchpad_settings();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+
+    #[test]
+    fn cleaning_config_drops_click_filter_and_debounce_only() {
+        let mut settings = Settings::default();
+        let ns = settings.features.entry("clickFilter".into()).or_default();
+        ns.insert("enabled".into(), true.into());
+        let key = settings.features.entry("keyDebounce".into()).or_default();
+        key.insert("enabled".into(), true.into());
+        let cfg = Config::from_settings(&settings);
+        assert!(cfg.click.is_some() && cfg.debounce_ms.is_some());
+        let quiet = without_filters(&cfg);
+        assert!(quiet.click.is_none() && quiet.debounce_ms.is_none());
+        assert_eq!(quiet.flat_pointer, cfg.flat_pointer);
     }
 }

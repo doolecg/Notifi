@@ -2,6 +2,7 @@
 
 mod apps;
 mod apps_clean;
+mod capture;
 mod catalog;
 mod clipboard;
 mod commandbar;
@@ -15,6 +16,8 @@ mod media_tools;
 mod panel;
 mod picker;
 mod quick;
+mod recording;
+mod radial;
 mod scratchpad;
 mod settings;
 mod sound;
@@ -55,8 +58,11 @@ fn main() {
         .manage(island::IslandState::default())
         .manage(sound::SoundState::default())
         .manage(quick::QuickState::default())
+        .manage(radial::RadialState::default())
         .manage(scratchpad::ScratchpadState::default())
         .manage(picker::PickerState::default())
+        .manage(recording::RecordingState::default())
+        .manage(capture::CaptureState::default())
         .manage(media_tools::MediaState::default())
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("settings.json");
@@ -74,12 +80,15 @@ fn main() {
             quick::create(app.handle())?;
             scratchpad::create(app.handle())?;
             picker::create(app.handle())?;
+            recording::create(app.handle())?;
+            capture::create(app.handle())?;
             energy::start(app.handle())?;
             clipboard::start(app.handle())?;
             windows_mgmt::start(app.handle())?;
             input::start(app.handle());
             apps_clean::start(app.handle());
             switcher::create(app.handle())?;
+            radial::create(app.handle())?;
             stats::start(app.handle());
             if let Some(tab) = panel_arg(&std::env::args().collect::<Vec<_>>()) {
                 panel::show_by_tray(app.handle(), tab);
@@ -158,6 +167,7 @@ fn main() {
             stats::set_power_profile,
             stats::eject_all,
             monitor::speedtest::speed_test_run,
+            monitor::devices::monitor_devices,
             monitor::speedtest::speed_test_history,
             commandbar::commandbar_search,
             commandbar::commandbar_run,
@@ -200,6 +210,29 @@ fn main() {
             picker::picker_history,
             picker::picker_copy,
             picker::picker_close,
+            recording::recording_available,
+            recording::recording_toggle,
+            recording::recording_pause,
+            recording::recording_pick,
+            recording::recording_pick_cancel,
+            recording::recording_window_at,
+            recording::recording_open_folder,
+            recording::recording_dismiss,
+            capture::capture_frame,
+            capture::capture_ready,
+            capture::capture_cancel,
+            capture::capture_available,
+            capture::capture_start,
+            capture::capture_color,
+            capture::capture_nudge,
+            capture::capture_copy_pixel,
+            capture::capture_finish,
+            capture::capture_thumb,
+            capture::capture_action,
+            capture::capture_editor_opts,
+            capture::capture_editor_image,
+            capture::capture_editor_export,
+            capture::capture_close_editor,
             media_tools::media_status,
             media_tools::media_run,
             media_tools::media_cancel,
@@ -252,6 +285,10 @@ fn main() {
             switcher::taskbar::taskbar_slots,
             switcher::taskbar::taskbar_action,
             input::input_open_touchpad_settings,
+            radial::radial_wheel,
+            radial::radial_wheel_save,
+            radial::radial_wheel_reset,
+            radial::radial_actions,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Notifi");
@@ -284,6 +321,7 @@ pub fn on_settings_changed(app: &tauri::AppHandle, old: &settings::Settings, new
     energy::on_settings_changed(app, old, new);
     switcher::on_settings_changed(app);
     input::on_settings_changed(app);
+    radial::on_settings_changed(app);
 }
 
 /// `--panel` opens the tray panel; `--panel=<tab>` opens it on that tab.

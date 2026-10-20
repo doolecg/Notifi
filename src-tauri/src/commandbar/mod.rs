@@ -3,6 +3,7 @@
 
 mod apps;
 mod calc;
+mod colors;
 mod emoji_data;
 mod index;
 mod rank;
@@ -31,10 +32,14 @@ use crate::{
 };
 use apps::{App, Launch};
 use index::FileEntry;
-use search::{ClipRow, Input, Options, Row, Target, WindowRow};
+use search::{ClipRow, Input, Options, Row, SnippetRow, SystemRow, Target, WindowRow};
 
 pub const WINDOW: &str = "commandbar";
 pub const ACTION: &str = "commandBar";
+/// Prefixes of the keybind actions made from the script and app shortcut lists; the rest is the name.
+const SCRIPT_PREFIX: &str = "commandBar.script:";
+const APP_PREFIX: &str = "commandBar.app:";
+const MAX_APP_SHORTCUTS: usize = 64;
 const OPEN_EVENT: &str = "commandbar://open";
 const WIDTH: f64 = 720.0;
 const START_HEIGHT: f64 = 96.0;
@@ -98,6 +103,9 @@ fn options(s: &Settings) -> Options {
         clipboard: opt_bool(s, "searchClipboard", true),
         emoji: opt_bool(s, "searchEmoji", true),
         calculator: opt_bool(s, "calculator", true),
+        colors: opt_bool(s, "colors", true),
+        snippets: opt_bool(s, "searchSnippets", true),
+        system: opt_bool(s, "searchSystem", true),
         scripts: !opt_str(s, "scriptsFolder", "").is_empty(),
         aliases: search::parse_pairs(&opt_list(s, "aliases")),
         pins: opt_list(s, "pins"),
@@ -257,7 +265,17 @@ fn place(app: &AppHandle, s: &Settings, recentre: bool) {
         ("edge", _) if !recentre => (wx + (ww - width) / 2.0, wy + 8.0 * scale),
         _ => (wx + (ww - width) / 2.0, wy + wh * 0.18),
     };
+    let (x, y) = match under_pill(app, s) {
+        Some(bottom) => (wx + (ww - width) / 2.0, wy + (bottom + 8.0) * scale),
+        None => (x, y),
+    };
     let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+}
+
+/// With "Command Bar comes out of the Island", the bar opens just under the resting pill.
+fn under_pill(app: &AppHandle, s: &Settings) -> Option<f64> {
+    let on = s.enabled("companion") && s.option("companion", "commandBarInPill").and_then(Value::as_bool).unwrap_or(false);
+    on.then(|| crate::island::pill_bottom(app)).flatten()
 }
 
 // ---- Commands ----
@@ -292,13 +310,24 @@ pub async fn commandbar_search(app: AppHandle, query: String) -> Results {
         folder => index::list_scripts(&PathBuf::from(folder)),
     };
 
+    let snippets: Vec<SnippetRow> = if opts.snippets && !query.trim().is_empty() {
+        crate::clipboard::snippets_get(app.clone())
+            .snippets
+            .into_iter()
+            .map(|s| SnippetRow { id: s.id, name: s.name, trigger: s.trigger })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let system = if opts.system && query.trim().chars().count() >= 2 { system_rows() } else { Vec::new() };
+
     let usage = state.saved.lock().unwrap().usage.clone();
     let learned = state.learned.lock().unwrap().get(&query.trim().to_lowercase()).cloned();
     let apps = state.apps.lock().unwrap().0.clone();
     let files = if opts.files { state.files.lock().unwrap().0.clone() } else { Vec::new() };
     let found = search::run(
         &query,
-        &Input { apps: &apps, windows: &windows, files: &files, clips: &clips, scripts: &scripts, usage: &usage, learned: learned.as_deref(), options: &opts },
+        &Input { apps: &apps, windows: &windows, files: &files, clips: &clips, scripts: &scripts, snippets: &snippets, system: &system, usage: &usage, learned: learned.as_deref(), options: &opts },
     );
     let mut targets = state.targets.lock().unwrap();
     targets.clear();
@@ -310,6 +339,23 @@ pub async fn commandbar_search(app: AppHandle, query: String) -> Results {
         })
         .collect();
     Results { rows }
+}
+
+/// Notifi's own actions and settings pages, listed under "System actions and features".
+fn system_rows() -> Vec<SystemRow> {
+    let actions = crate::keybinds::ACTIONS.iter().map(|a| SystemRow {
+        id: format!("system:{}", a.id),
+        title: a.label.to_string(),
+        subtitle: "Notifi action".into(),
+        target: Target::Action(a.id.to_string()),
+    });
+    let pages = crate::catalog::pages().map(|p| SystemRow {
+        id: format!("page:{}", p.id),
+        title: format!("{} settings", p.label),
+        subtitle: "Open in Notifi Settings".into(),
+        target: Target::Page(p.id.to_string()),
+    });
+    actions.chain(pages).collect()
 }
 
 /// Clipboard history rows, read through the clipboard module's public list command.
@@ -389,12 +435,133 @@ pub async fn commandbar_run(app: AppHandle, id: String, query: String, alt: bool
             hide(&app, true);
             Ok(Outcome { closed: true, ..Default::default() })
         }
+        Target::Snippet(snippet) => {
+            if alt {
+                let text = crate::clipboard::snippets_get(app.clone()).snippets.into_iter().find(|s| s.id == snippet).map(|s| s.text).ok_or("That snippet no longer exists.")?;
+                let expanded = crate::clipboard::snippet_preview(text, HashMap::new()).await;
+                return Ok(Outcome { copy: Some(expanded), ..Default::default() });
+            }
+            hide(&app, true);
+            pause(120).await;
+            crate::clipboard::snippet_insert(app.clone(), snippet, HashMap::new()).await?;
+            Ok(Outcome { closed: true, ..Default::default() })
+        }
+        Target::Action(action) => {
+            hide(&app, false);
+            let handle = app.clone();
+            thread::spawn(move || crate::keybinds::run(&handle, &action));
+            Ok(Outcome { closed: true, ..Default::default() })
+        }
+        Target::Page(page) => {
+            hide(&app, false);
+            window::open_settings_at(&app, Some(page.as_str()));
+            Ok(Outcome { closed: true, ..Default::default() })
+        }
         Target::Copy(text) => Ok(Outcome { copy: Some(text), ..Default::default() }),
         Target::Script { complete: Some(text), .. } => Ok(Outcome { complete: Some(text), ..Default::default() }),
         Target::Script { path, args, .. } => {
             let out = tauri::async_runtime::spawn_blocking(move || index::run_script(&path, &args)).await.map_err(|e| e.to_string())??;
             Ok(Outcome { copy: (!out.is_empty()).then_some(out), ..Default::default() })
         }
+    }
+}
+
+// ---- Script and app shortcuts ----
+
+/// (accelerator, keybind action id, key shown when it cannot be registered) for every line of the
+/// script and app shortcut lists; the keybinds module registers them with the other shortcuts.
+pub fn shortcut_bindings(s: &Settings) -> Vec<(String, String, String)> {
+    if !s.enabled("commandBar") {
+        return Vec::new();
+    }
+    bindings(&opt_list(s, "scriptShortcuts"), &opt_list(s, "appShortcuts"))
+}
+
+fn bindings(scripts: &[String], apps: &[String]) -> Vec<(String, String, String)> {
+    let script = search::parse_pairs(scripts)
+        .into_iter()
+        .map(|(name, accel)| (accel, format!("{SCRIPT_PREFIX}{name}"), format!("commandBar.scriptShortcuts:{name}")));
+    let app = search::parse_pairs(apps)
+        .into_iter()
+        .take(MAX_APP_SHORTCUTS)
+        .map(|(name, accel)| (accel, format!("{APP_PREFIX}{name}"), format!("commandBar.appShortcuts:{name}")));
+    script.chain(app).collect()
+}
+
+/// Whether the keybind action belongs to this module.
+pub fn is_shortcut_action(action: &str) -> bool {
+    action.starts_with(SCRIPT_PREFIX) || action.starts_with(APP_PREFIX)
+}
+
+/// Runs a script or app shortcut: a script runs and its output is copied; an app is opened or, when
+/// it is in front, hidden.
+pub fn run_shortcut(app: &AppHandle, action: &str) {
+    let (app, action) = (app.clone(), action.to_string());
+    thread::spawn(move || {
+        if let Some(name) = action.strip_prefix(SCRIPT_PREFIX) {
+            run_script_shortcut(&app, name);
+        } else if let Some(name) = action.strip_prefix(APP_PREFIX) {
+            run_app_shortcut(&app, name);
+        }
+    });
+}
+
+fn run_script_shortcut(app: &AppHandle, name: &str) {
+    let folder = opt_str(&settings(app), "scriptsFolder", "").to_string();
+    if folder.is_empty() {
+        return;
+    }
+    let Some(script) = index::list_scripts(&PathBuf::from(folder)).into_iter().find(|s| s.name.eq_ignore_ascii_case(name)) else { return };
+    match index::run_script(&script.path, &[]) {
+        Ok(out) if !out.is_empty() => {
+            let _ = crate::clipboard::set_text(&out);
+        }
+        Ok(_) => {}
+        Err(message) => crate::monitor::notify::send(format!("{name} failed"), message, false),
+    }
+}
+
+/// Whether a window's executable name (or app id) is the app called `app_name`.
+fn belongs(app_name: &str, exe: Option<&str>) -> bool {
+    let Some(exe) = exe else { return false };
+    let norm = |s: &str| {
+        let lower = s.to_ascii_lowercase();
+        lower.trim_end_matches(".exe").chars().filter(|c| c.is_alphanumeric()).collect::<String>()
+    };
+    let (a, e) = (norm(app_name), norm(exe));
+    a.len() >= 3 && e.len() >= 3 && (a == e || a.contains(&e) || e.contains(&a))
+}
+
+fn launch_app(launch: &Launch) -> Result<(), String> {
+    match launch {
+        Launch::Shell(path) => index::open_path(path),
+        Launch::Appx(package) => index::open_appx(package),
+        Launch::Exec(exec) => index::spawn_exec(exec),
+    }
+}
+
+fn run_app_shortcut(app: &AppHandle, name: &str) {
+    let platform = app.state::<Platform>();
+    let windows = platform.windows().list().unwrap_or_default();
+    let mine: Vec<_> = windows.iter().filter(|w| belongs(name, w.app_id.as_deref())).collect();
+    if mine.iter().any(|w| w.focused) {
+        for w in &mine {
+            let _ = platform.windows().minimize(w.id);
+        }
+        return;
+    }
+    if let Some(w) = mine.first() {
+        let _ = platform.windows().focus(w.id);
+        return;
+    }
+    let state = app.state::<CommandBarState>();
+    if state.apps.lock().unwrap().0.is_empty() {
+        let found = apps::scan();
+        *state.apps.lock().unwrap() = (found, Some(Instant::now()));
+    }
+    let launch = state.apps.lock().unwrap().0.iter().find(|a| a.name.eq_ignore_ascii_case(name)).map(|a| a.launch.clone());
+    if let Some(launch) = launch {
+        let _ = launch_app(&launch);
     }
 }
 
@@ -439,4 +606,49 @@ pub fn commandbar_forget(state: State<CommandBarState>) {
     state.saved.lock().unwrap().usage.clear();
     state.learned.lock().unwrap().clear();
     state.persist();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lines(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn shortcut_lines_become_bindings() {
+        let b = bindings(&lines(&["backup = Ctrl+Alt+B", "no equals sign"]), &lines(&["Firefox = Ctrl+Alt+F"]));
+        assert_eq!(b.len(), 2);
+        assert_eq!(b[0], ("Ctrl+Alt+B".into(), "commandBar.script:backup".into(), "commandBar.scriptShortcuts:backup".into()));
+        assert_eq!(b[1].1, "commandBar.app:Firefox");
+        assert!(is_shortcut_action(&b[0].1) && is_shortcut_action(&b[1].1) && !is_shortcut_action(ACTION));
+    }
+
+    #[test]
+    fn app_shortcuts_stop_at_the_limit() {
+        let many: Vec<String> = (0..80).map(|i| format!("App{i} = Ctrl+Alt+F{}", i % 12 + 1)).collect();
+        assert_eq!(bindings(&[], &many).len(), MAX_APP_SHORTCUTS);
+    }
+
+    #[test]
+    fn bindings_need_the_feature_on() {
+        let mut s = Settings::default();
+        let ns = s.features.entry("commandBar".into()).or_default();
+        ns.insert("appShortcuts".into(), serde_json::json!(["Firefox = Ctrl+Alt+F"]));
+        assert!(shortcut_bindings(&s).is_empty());
+        s.features.get_mut("commandBar").unwrap().insert("enabled".into(), true.into());
+        assert_eq!(shortcut_bindings(&s).len(), 1);
+    }
+
+    #[test]
+    fn windows_are_matched_to_apps_by_name() {
+        assert!(belongs("Firefox", Some("firefox.exe")));
+        assert!(belongs("Visual Studio Code", Some("Code.exe")));
+        assert!(belongs("Google Chrome", Some("chrome.exe")));
+        assert!(belongs("Notepad++", Some("notepad++.exe")));
+        assert!(!belongs("Firefox", None));
+        assert!(!belongs("Firefox", Some("explorer.exe")));
+        assert!(!belongs("ab", Some("ab.exe")), "names under three characters are too loose to match");
+    }
 }

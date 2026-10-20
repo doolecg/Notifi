@@ -35,6 +35,8 @@ pub struct Config {
     pub repeat: Duration,
     pub fahrenheit: bool,
     pub sound: bool,
+    /// Skip the toast while Do Not Disturb is on.
+    pub quiet_focus: bool,
 }
 
 impl Default for Config {
@@ -51,6 +53,7 @@ impl Default for Config {
             repeat: Duration::from_secs(600),
             fahrenheit: false,
             sound: false,
+            quiet_focus: true,
         }
     }
 }
@@ -78,6 +81,7 @@ impl Config {
             repeat: Duration::from_secs(repeat_min * 60).max(MIN_REPEAT),
             fahrenheit: s.option("temperatures", "unit").and_then(Value::as_str) == Some("fahrenheit"),
             sound: flag("sound"),
+            quiet_focus: s.option("alerts", "quietFocus").and_then(Value::as_bool).unwrap_or(true),
         }
     }
 

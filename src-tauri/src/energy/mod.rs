@@ -154,10 +154,14 @@ fn on_event(app: &AppHandle, event: Sys) {
             std::thread::spawn(move || {
                 cleaning::stop(&app);
                 crate::keepawake::set_locked(&app, true);
+                crate::island::lock::session_changed(&app, true);
             });
         }
         Sys::Unlocked => {
-            std::thread::spawn(move || crate::keepawake::set_locked(&app, false));
+            std::thread::spawn(move || {
+                crate::keepawake::set_locked(&app, false);
+                crate::island::lock::session_changed(&app, false);
+            });
         }
         Sys::Resumed => {
             std::thread::spawn(move || {

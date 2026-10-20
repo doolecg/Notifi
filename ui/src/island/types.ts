@@ -172,6 +172,8 @@ export interface Agent {
   working: boolean;
   /** Sessions of this agent working now. */
   count: number;
+  subagents: number;
+  terminals: number;
   elapsedMs: number;
   model: string | null;
   project: string | null;
@@ -248,6 +250,10 @@ export interface Live {
   sessionPct: number | null;
   weekPct: number | null;
   project: string | null;
+  /** Terminals open for the agent shown. */
+  terminals: number;
+  /** Subagents running for the agent shown. */
+  subagents: number;
 }
 
 /** Whole percents for the resting pill's ends; null when off or not readable. */
