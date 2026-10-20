@@ -175,7 +175,9 @@ pub async fn cleaner_scan(app: AppHandle) -> Result<Vec<CategoryResult>, String>
         state.cancel.store(false, Ordering::Relaxed);
         let installed = if cleaner_opts(&app).leftovers { installed_or_list(&app) } else { vec![] };
         let system = state.system.lock().unwrap().clone();
-        cleaner::scan(&cleaner_opts(&app), &installed, &data_dir(&app), &system, &state.cancel)
+        cleaner::scan_with(&cleaner_opts(&app), &installed, &data_dir(&app), &system, &state.cancel, &|done| {
+            let _ = app.emit("apps-clean://category", done);
+        })
     })
     .await
 }

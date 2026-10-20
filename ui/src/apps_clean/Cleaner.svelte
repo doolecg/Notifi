@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import { fadeSlide } from '../lib/motion';
   import './apps-clean.css';
@@ -49,6 +50,8 @@
   async function scan() {
     scanning = true;
     error = '';
+    categories = [];
+    const off = await listen<Category>('apps-clean://category', (e) => (categories = [...categories.filter((c) => c.id !== e.payload.id), e.payload]));
     try {
       const found = await invoke<Category[]>('cleaner_scan');
       categories = found;
@@ -58,6 +61,7 @@
     } catch (e) {
       error = message(e);
     }
+    off();
     scanning = false;
   }
 

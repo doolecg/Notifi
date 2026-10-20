@@ -296,11 +296,31 @@ fn recycle_bin_size() -> (u64, usize) {
 
 /// Scans every category. `installed` guards leftovers; `removed_dir` is where removed apps are remembered.
 pub fn scan(opts: &Opts, installed: &[App], data_dir: &Path, system_items: &HashMap<String, Vec<Item>>, cancel: &AtomicBool) -> Vec<CategoryResult> {
-    let mut results = vec![];
-    for def in DEFS {
-        if cancel.load(Ordering::Relaxed) {
-            break;
+    scan_with(opts, installed, data_dir, system_items, cancel, &|_| {})
+}
+
+/// Measures the categories side by side (the slow ones are disk walks) and reports each as soon as it is done.
+pub fn scan_with(opts: &Opts, installed: &[App], data_dir: &Path, system_items: &HashMap<String, Vec<Item>>, cancel: &AtomicBool, on_done: &(dyn Fn(&CategoryResult) + Sync)) -> Vec<CategoryResult> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: Vec<std::sync::Mutex<Option<CategoryResult>>> = DEFS.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= DEFS.len() || cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let done = scan_one(&DEFS[i], opts, installed, data_dir, system_items, cancel);
+                on_done(&done);
+                *slots[i].lock().unwrap() = Some(done);
+            });
         }
+    });
+    slots.into_iter().filter_map(|s| s.into_inner().unwrap()).collect()
+}
+
+fn scan_one(def: &Def, opts: &Opts, installed: &[App], data_dir: &Path, system_items: &HashMap<String, Vec<Item>>, cancel: &AtomicBool) -> CategoryResult {
+    {
         let mut items: Vec<Item> = vec![];
         let mut needs_elevation = false;
         let (mut size, mut count) = (0u64, 0usize);
@@ -331,7 +351,7 @@ pub fn scan(opts: &Opts, installed: &[App], data_dir: &Path, system_items: &Hash
         } else {
             items.sort_by(|a, b| b.size.cmp(&a.size));
         }
-        results.push(CategoryResult {
+        CategoryResult {
             id: def.id.into(),
             label: def.label.into(),
             why: def.why.into(),
@@ -341,9 +361,8 @@ pub fn scan(opts: &Opts, installed: &[App], data_dir: &Path, system_items: &Hash
             itemised: def.itemised,
             items,
             needs_elevation,
-        });
+        }
     }
-    results
 }
 
 fn leftover_items(installed: &[App], data_dir: &Path, cancel: &AtomicBool) -> Vec<Item> {
