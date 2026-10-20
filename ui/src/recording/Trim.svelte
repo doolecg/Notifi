@@ -685,8 +685,8 @@
     position: relative;
     container-type: size;
     width: 100%;
-    max-width: calc(46vh * var(--ratio, 1.7778));
-    max-height: 46vh;
+    max-width: calc(40vh * var(--ratio, 1.7778));
+    max-height: 40vh;
     overflow: hidden;
     background: #000;
   }
@@ -951,7 +951,11 @@
     font-variant-numeric: tabular-nums;
   }
   .actions {
-    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    margin: auto 0 -14px;
+    padding: 8px 0 14px;
+    background: var(--bg);
   }
   .grow {
     flex: 1;

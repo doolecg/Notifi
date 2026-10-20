@@ -347,12 +347,14 @@
     background: var(--surface);
     color: var(--fg);
     border: 1px solid var(--line-strong);
+    width: max-content;
     transform: translateX(-50%);
     font: 13px/1 var(--sans);
     cursor: default;
   }
   .strip button {
     padding: 7px 11px;
+    white-space: nowrap;
     border: 0;
     border-radius: 8px;
     background: transparent;

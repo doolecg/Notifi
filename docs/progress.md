@@ -1,6 +1,6 @@
 # Notifi progress notes
 
-Last saved: 2026-10-20 (after wave 3 was built and tested).
+Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 
 ## Where things stand
 - Branch `dev-0.2.0`, local only, nothing pushed. Version 0.2.0 in `package.json`.
@@ -37,6 +37,14 @@ Last saved: 2026-10-20 (after wave 3 was built and tested).
 - Switcher: other-desktop, hidden (tray) and windowless apps (Windows 11 22H2+), taskbar-preview extras, Media tools shortcut, per-display extra dimming page, brightness slider in the tray panel.
 - Island watch (pick a screen area, show its OCR text as a pill page named Watch).
 - Still not built: browser tabs in the switcher (needs a browser extension), switcher badge for other-desktop windows, share links, select/move and eraser and layers in the editor, post-recording editor beyond trim.
+
+## Wave 4 and UI test (written, compiled, tests pass; rendered in a stubbed browser, not tried live)
+- Share links to the user's own server (`POST <server>/upload`, multipart, optional bearer token, JSON reply with `url`), shelf auto-add for captures, editor select/move/eraser/image layers/canvas padding.
+- Recording editor (cut, speed, zoom, blur, text and arrow overlays), separate system and microphone tracks, floating camera preview window.
+- Command bar menu search (UI Automation), monitor shortcut, touchpad settings button, switcher "Other desktop" and "No window" tags, Scoop dependency grouping.
+- UI test fixed Trim, Camera, Switcher, Taskbar preview, Select overlay layouts. Tests: app crate 516 passed, platform 59, svelte-check 0 errors.
+- Not built: WebM, browser tabs in the switcher, Island hideWhenIdle (mascot), fan control, keyboard backlight, SDR extra brightness, Bluetooth connect notices, recording share button and size-target re-encode.
+- Never tried live: nearly everything from waves 1 to 4 beyond the Island and Settings window. Do the live pass when the user is not typing; do not send synthetic clicks while they are working.
 
 ## Known gaps
 - Cannot be built on Windows: keyboard backlight, extra brightness (SDR white level), Bluetooth connect notices.

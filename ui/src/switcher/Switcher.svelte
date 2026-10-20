@@ -402,6 +402,17 @@
     font-size: 11px;
   }
 
+  .label .title {
+    min-width: 5.5em;
+  }
+
+  .label .tag {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .x {
     flex: none;
     width: 20px;

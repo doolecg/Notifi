@@ -146,8 +146,13 @@
   .cam {
     position: relative;
     display: grid;
-    place-items: center;
+    grid-auto-rows: min-content;
+    align-content: center;
+    justify-items: center;
     height: 100%;
+    padding: 6px 6px 38px;
+    box-sizing: border-box;
+    container-type: size;
     overflow: hidden;
     background: var(--toast);
     color: var(--toast-fg);
@@ -171,14 +176,15 @@
   }
   .note {
     z-index: 1;
-    max-width: 85%;
-    margin: 0 0 28px;
+    max-width: 100%;
+    margin: 0;
+    font-size: clamp(9px, 6.5cqw, 13px);
     text-align: center;
     pointer-events: none;
   }
   .again {
     z-index: 1;
-    margin-top: -16px;
+    margin-top: 6px;
   }
   .choose {
     position: absolute;
@@ -187,8 +193,9 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    justify-content: center;
-    padding: 12px;
+    justify-content: safe center;
+    padding: 8px 8px 38px;
+    overflow: auto;
     background: rgb(0 0 0 / 0.6);
     color: #fff;
   }
@@ -209,12 +216,17 @@
     opacity: 1;
   }
   button {
-    padding: 5px 12px;
+    max-width: 100%;
+    padding: 5px clamp(6px, 4cqw, 12px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     border: 0;
     border-radius: 99px;
     background: rgb(0 0 0 / 0.65);
     color: #fff;
     font: inherit;
+    font-size: clamp(10px, 6cqw, 13px);
     cursor: pointer;
   }
   button:hover {
