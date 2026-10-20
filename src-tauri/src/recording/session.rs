@@ -125,7 +125,7 @@ pub fn record(app: &AppHandle, region: Region, o: &Opts, session: &Arc<Session>)
     if let Some(warning) = streams.as_ref().and_then(|s| s.warning.as_deref()) {
         crate::island::notice(app, warning.to_string());
     }
-    let with_audio = streams.as_ref().is_some_and(audio::Streams::any);
+    let audio_tracks = streams.as_ref().map_or(0, audio::Streams::track_count);
 
     let dir = save_dir(&o.folder);
     if let Err(e) = fs::create_dir_all(&dir) {
@@ -134,7 +134,7 @@ pub fn record(app: &AppHandle, region: Region, o: &Opts, session: &Arc<Session>)
     let (date, time) = local_now();
     let path = unique_path(&dir, &file_stem(&o.name, date, time), if gif { "gif" } else { "mp4" }, |p| p.exists());
 
-    let enc = match Encoder::start(Config { path: path.clone(), w, h, fps: o.fps, bitrate: bitrate(&o.quality, w, h, o.fps), audio: with_audio, gif }) {
+    let enc = match Encoder::start(Config { path: path.clone(), w, h, fps: o.fps, bitrate: bitrate(&o.quality, w, h, o.fps), audio_tracks, gif }) {
         Ok(e) => e,
         Err(e) => {
             let _ = fs::remove_file(&path);

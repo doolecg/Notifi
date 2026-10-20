@@ -160,7 +160,9 @@
             <span class="app">{e.app}</span>
             <span class="title">{e.title}</span>
             {#if e.minimized}<span class="tag">Minimised</span>{/if}
-            {#if hoverButtons}<button class="x" aria-label="Close window" onclick={(ev) => closeWin(ev, e.id)}>×</button>{/if}
+            {#if e.otherDesktop}<span class="tag">Other desktop</span>{/if}
+            {#if e.noWindow}<span class="tag">No window</span>{/if}
+            {#if hoverButtons && !e.noWindow}<button class="x" aria-label="Close window" onclick={(ev) => closeWin(ev, e.id)}>×</button>{/if}
           </div>
         {/each}
       </div>
@@ -187,6 +189,7 @@
                   <div class="placeholder">
                     {#if e.icon}<img src={e.icon} alt="" />{/if}
                     {#if e.minimized}<span class="tag">Minimised</span>{/if}
+                    {#if e.noWindow}<span class="tag">No window</span>{/if}
                   </div>
                 {:else if kind === 'snapshot'}
                   {#if images[e.id]}<img class="snap" src={images[e.id]} alt="" />{:else if e.icon}<div class="placeholder"><img src={e.icon} alt="" /></div>{/if}
@@ -196,7 +199,8 @@
             <div class="label">
               {#if e.icon}<img class="ico" src={e.icon} alt="" />{:else}<span class="ico blank"></span>{/if}
               <span class="title">{e.title || e.app}</span>
-              {#if hoverButtons}<button class="x" aria-label="Close window" onclick={(ev) => closeWin(ev, e.id)}>×</button>{/if}
+              {#if e.otherDesktop}<span class="tag">Other desktop</span>{/if}
+              {#if hoverButtons && !e.noWindow}<button class="x" aria-label="Close window" onclick={(ev) => closeWin(ev, e.id)}>×</button>{/if}
             </div>
           </div>
         {/each}
@@ -389,6 +393,8 @@
   }
 
   .tag {
+    flex: none;
+    white-space: nowrap;
     padding: 1px 7px;
     border-radius: 99px;
     background: var(--track);

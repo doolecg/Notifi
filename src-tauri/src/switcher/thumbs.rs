@@ -69,6 +69,19 @@ pub fn icon_url(id: u64) -> Option<String> {
     png_data_url(&img?)
 }
 
+/// The icon of a program file as a PNG data URL, for apps that have no window to ask.
+pub fn file_icon_url(path: &str) -> Option<String> {
+    #[cfg(windows)]
+    {
+        png_data_url(&notifi_platform::win_icons::file_icon(path, 64)?)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 /// Previews registered into one of our windows.
 #[derive(Default)]
 pub struct Thumbs {

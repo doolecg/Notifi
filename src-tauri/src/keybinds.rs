@@ -74,9 +74,11 @@ pub const FEATURE_SHORTCUTS: &[FeatureShortcut] = &[
     FeatureShortcut { namespace: "colorPicker", key: "shortcut", action: crate::picker::ACTION },
     FeatureShortcut { namespace: "screenRecording", key: "shortcut", action: crate::recording::TOGGLE },
     FeatureShortcut { namespace: "screenRecording", key: "pauseShortcut", action: crate::recording::PAUSE },
+    FeatureShortcut { namespace: "cameraPreview", key: "shortcut", action: crate::camera::ACTION },
     FeatureShortcut { namespace: "screenshot", key: "shortcut", action: "captureScreenshot" },
     FeatureShortcut { namespace: "textFromScreen", key: "shortcut", action: "captureText" },
     FeatureShortcut { namespace: "recentCaptures", key: "shortcut", action: "captureRecent" },
+    FeatureShortcut { namespace: "shareLinks", key: "uploadShortcut", action: "captureUpload" },
     FeatureShortcut { namespace: "radialMenu", key: "shortcut", action: crate::radial::ACTION },
     FeatureShortcut { namespace: "mediaTools", key: "shortcut", action: MEDIA_TOOLS },
 ];
@@ -87,6 +89,7 @@ pub fn feature_shortcuts_changed(old: &Settings, new: &Settings) -> bool {
         .iter()
         .chain(crate::windows_mgmt::SHORTCUTS)
         .chain(crate::energy::SHORTCUTS)
+        .chain(crate::monitor::SHORTCUTS)
         .any(|f| old.enabled(f.namespace) != new.enabled(f.namespace) || old.option(f.namespace, f.key) != new.option(f.namespace, f.key))
         || crate::commandbar::shortcut_bindings(old) != crate::commandbar::shortcut_bindings(new)
 }
@@ -168,6 +171,7 @@ pub fn apply(app: &AppHandle, shortcuts: &BTreeMap<String, String>) {
             .iter()
             .chain(crate::windows_mgmt::SHORTCUTS)
             .chain(crate::energy::SHORTCUTS)
+            .chain(crate::monitor::SHORTCUTS)
             .filter(|f| settings.enabled(f.namespace))
         {
             let accel = settings.option(f.namespace, f.key).and_then(|v| v.as_str()).unwrap_or_default();
@@ -224,6 +228,7 @@ pub fn run(app: &AppHandle, action: &str) {
         rec if crate::recording::ACTIONS.contains(&rec) => crate::recording::run_action(app, rec),
         capture if crate::capture::ACTIONS.contains(&capture) => crate::capture::run_action(app, capture),
         crate::radial::ACTION => crate::radial::open_from_shortcut(app),
+        crate::camera::ACTION => crate::camera::toggle(app),
         "quickToggleLockScreen" => {
             let handle = app.clone();
             if !crate::island::lock::notice_then(app, move || crate::quick::run_action(&handle, "quickToggleLockScreen")) {
@@ -234,6 +239,7 @@ pub fn run(app: &AppHandle, action: &str) {
         sw if crate::switcher::ACTIONS.contains(&sw) => crate::switcher::run_action(app, sw),
         wm if wm.starts_with("wm.") => crate::windows_mgmt::run_action(app, wm),
         energy if energy.starts_with("energy.") => crate::energy::run_action(app, energy),
+        mon if mon.starts_with("monitor.") => crate::monitor::run_action(app, mon),
         _ => {}
     }
 }

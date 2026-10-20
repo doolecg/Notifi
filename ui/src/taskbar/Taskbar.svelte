@@ -12,6 +12,7 @@
     minimized: boolean;
     icon: string | null;
     noThumb: boolean;
+    otherDesktop: boolean;
   }
 
   interface OpenPayload {
@@ -132,6 +133,7 @@
           <div class="label">
             {#if c.icon}<img class="ico" src={c.icon} alt="" />{/if}
             <span class="title">{c.title || c.app}</span>
+            {#if c.otherDesktop}<span class="tag">Other desktop</span>{/if}
             <button class="more" aria-label="More actions" onclick={(e) => { e.stopPropagation(); menuFor = menuFor === c.id ? null : c.id; }}>⋯</button>
             <button class="x" aria-label={closeQuits ? 'Quit app' : 'Close window'} onclick={(e) => act(c.id, 'close', e)}>×</button>
           </div>
@@ -284,6 +286,8 @@
   }
 
   .tag {
+    flex: none;
+    white-space: nowrap;
     padding: 1px 7px;
     border-radius: 99px;
     background: var(--track);

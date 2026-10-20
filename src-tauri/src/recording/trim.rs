@@ -1,7 +1,7 @@
-//! After-recording trimmer: keeps the part of a finished recording between a start and an end time
-//! and saves it as a new file next to the original (the original is never changed). GIFs are
-//! re-written frame by frame; MP4 files are decoded and re-encoded through Media Foundation, so the
-//! trimmed copy goes through the same H.264 and AAC encoders as a recording.
+//! After-recording editor window and its commands. An edit (cuts, speed, zoom, blur, arrows, text,
+//! sound levels) is saved as a new file next to the original; the original is never changed. GIFs
+//! are re-written frame by frame and can only be trimmed; MP4 files are decoded, edited and
+//! re-encoded by `export.rs`, so the copy goes through the same H.264 and AAC encoders as a recording.
 
 use std::{
     borrow::Cow,
@@ -16,7 +16,11 @@ use tauri::{
     AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
-use super::{pure::unique_path, RecordingState};
+use super::{
+    edit::{sound_tracks, EditSpec},
+    pure::unique_path,
+    RecordingState,
+};
 
 pub const TRIM: &str = "recordtrim";
 /// A trimmed copy must keep at least this much.
@@ -43,16 +47,24 @@ pub fn frame_overlap_cs(at_ms: u64, delay_cs: u16, start_ms: u64, end_ms: u64) -
     (to > from).then(|| (((to - from) as f64 / 10.0).round() as u16).max(1))
 }
 
-/// `Recording (trimmed).mp4`, or `Recording (trimmed 2).mp4` and so on. Never an existing file.
-pub fn trimmed_path(src: &Path) -> PathBuf {
+/// `Recording (label).mp4`, or `Recording (label 2).mp4` and so on. Never an existing file.
+fn variant_path(src: &Path, label: &str) -> PathBuf {
     let dir = src.parent().unwrap_or_else(|| Path::new("."));
     let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Recording".into());
     let ext = src.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "mp4".into());
-    let first = dir.join(format!("{stem} (trimmed).{ext}"));
+    let first = dir.join(format!("{stem} ({label}).{ext}"));
     if !first.exists() {
         return first;
     }
-    unique_path(dir, &format!("{stem} (trimmed)"), &ext, |p| p.exists())
+    unique_path(dir, &format!("{stem} ({label})"), &ext, |p| p.exists())
+}
+
+pub fn trimmed_path(src: &Path) -> PathBuf {
+    variant_path(src, "trimmed")
+}
+
+pub fn edited_path(src: &Path) -> PathBuf {
+    variant_path(src, "edited")
 }
 
 fn is_gif(path: &Path) -> bool {
@@ -86,6 +98,8 @@ pub struct TrimTarget {
     kind: &'static str,
     /// Known up front for a GIF; for MP4 the page reads it from the video.
     duration_ms: Option<u64>,
+    /// Sound tracks in an MP4 (system sound and microphone are kept apart); 0 for a GIF.
+    audio_tracks: usize,
 }
 
 fn target(app: &AppHandle) -> Result<PathBuf, String> {
@@ -113,6 +127,7 @@ pub fn recording_trim_target(app: AppHandle) -> Result<TrimTarget, String> {
         name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
         kind: if gif { "gif" } else { "mp4" },
         duration_ms: if gif { Some(gif_duration_ms(&path)?) } else { None },
+        audio_tracks: if gif { 0 } else { sound_tracks(&path) },
         path: path.display().to_string(),
     })
 }
@@ -122,17 +137,41 @@ pub fn recording_trim_target(app: AppHandle) -> Result<TrimTarget, String> {
 pub async fn recording_trim_save(app: AppHandle, start_ms: f64, end_ms: f64, duration_ms: f64) -> Result<String, String> {
     let src = target(&app)?;
     let (start, end) = clamp_range(start_ms, end_ms, duration_ms.max(0.0) as u64).ok_or("Pick a part that is at least a tenth of a second long.")?;
+    if !is_gif(&src) {
+        return save_edit(&app, src, EditSpec::trim(duration_ms, start as f64, end as f64), "Trimmed").await;
+    }
     let dst = trimmed_path(&src);
     let (from, to) = (src.clone(), dst.clone());
-    let done = tauri::async_runtime::spawn_blocking(move || if is_gif(&from) { trim_gif(&from, &to, start, end) } else { trim_mp4(&from, &to, start, end) })
-        .await
-        .map_err(|e| e.to_string())?;
+    let done = tauri::async_runtime::spawn_blocking(move || trim_gif(&from, &to, start, end)).await.map_err(|e| e.to_string())?;
+    finish_copy(&app, &dst, done, "Trimmed")
+}
+
+/// Saves the edited video (cuts, speed, effects, sound levels) as a new file and returns its path.
+#[tauri::command]
+pub async fn recording_edit_save(app: AppHandle, spec: EditSpec) -> Result<String, String> {
+    let src = target(&app)?;
+    if is_gif(&src) {
+        return Err("A GIF can only be trimmed.".into());
+    }
+    save_edit(&app, src, spec, "Edited").await
+}
+
+async fn save_edit(app: &AppHandle, src: PathBuf, spec: EditSpec, what: &'static str) -> Result<String, String> {
+    let spec = spec.check()?;
+    let dst = edited_path(&src);
+    let (from, to) = (src, dst.clone());
+    let done = tauri::async_runtime::spawn_blocking(move || render_mp4(&from, &to, &spec)).await.map_err(|e| e.to_string())?;
+    finish_copy(app, &dst, done, what)
+}
+
+/// Keeps a finished copy and tells the user, or removes what a failed save left behind.
+fn finish_copy(app: &AppHandle, dst: &Path, done: Result<(), String>, what: &str) -> Result<String, String> {
     if let Err(e) = done {
-        let _ = fs::remove_file(&dst);
+        let _ = fs::remove_file(dst);
         return Err(e);
     }
-    crate::capture::recent::remember(&app, &dst, "video");
-    crate::island::notice(&app, format!("Trimmed copy saved \u{b7} {}", dst.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+    crate::capture::recent::remember(app, dst, "video");
+    crate::island::notice(app, format!("{what} copy saved \u{b7} {}", dst.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
     Ok(dst.display().to_string())
 }
 
@@ -164,9 +203,9 @@ pub fn open(app: &AppHandle, path: &Path) {
     let app = app.clone();
     std::thread::spawn(move || {
         let _ = WebviewWindowBuilder::new(&app, TRIM, WebviewUrl::App("recording.html#trim".into()))
-            .title("Trim recording")
-            .inner_size(560.0, 460.0)
-            .min_inner_size(420.0, 380.0)
+            .title("Edit recording")
+            .inner_size(940.0, 720.0)
+            .min_inner_size(760.0, 600.0)
             .center()
             .focused(!crate::window::no_focus())
             .build();
@@ -252,144 +291,12 @@ fn trim_gif(src: &Path, dst: &Path, start_ms: u64, end_ms: u64) -> Result<(), St
 
 // ---- MP4 ----
 
+#[cfg(windows)]
+use super::export::render_mp4;
+
 #[cfg(not(windows))]
-fn trim_mp4(_src: &Path, _dst: &Path, _start_ms: u64, _end_ms: u64) -> Result<(), String> {
-    Err("Trimming a video is only built for Windows so far.".into())
-}
-
-#[cfg(windows)]
-fn trim_mp4(src: &Path, dst: &Path, start_ms: u64, end_ms: u64) -> Result<(), String> {
-    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-    }
-    let result = trim_mp4_inner(src, dst, start_ms, end_ms);
-    unsafe { CoUninitialize() };
-    result
-}
-
-#[cfg(windows)]
-fn trim_mp4_inner(src: &Path, dst: &Path, start_ms: u64, end_ms: u64) -> Result<(), String> {
-    use std::collections::HashMap;
-
-    use windows::{
-        core::HSTRING,
-        Win32::Media::MediaFoundation::{
-            IMFAttributes, IMFSample, IMFSourceReader, MFAudioFormat_PCM, MFCreateAttributes, MFCreateMediaType, MFCreateSourceReaderFromURL,
-            MFMediaType_Audio, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_NV12, MFSTARTUP_FULL, MF_MT_AUDIO_BITS_PER_SAMPLE,
-            MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
-            MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READER_ANY_STREAM, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
-            MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_VERSION,
-        },
-    };
-
-    use super::{
-        encode::{open_writer, Config},
-        pure::{bitrate, SAMPLE_RATE},
-    };
-
-    let err = |what: &'static str| move |e: windows::core::Error| format!("{what}: {e}");
-    unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) }.map_err(err("Media Foundation"))?;
-    let out = (|| -> Result<(), String> {
-        let mut attrs: Option<IMFAttributes> = None;
-        unsafe { MFCreateAttributes(&mut attrs, 1) }.map_err(err("Media Foundation"))?;
-        let attrs = attrs.ok_or("Media Foundation gave no settings object")?;
-        unsafe { attrs.SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1) }.map_err(err("Media Foundation"))?;
-        let url = HSTRING::from(src.to_string_lossy().as_ref());
-        let reader: IMFSourceReader = unsafe { MFCreateSourceReaderFromURL(&url, &attrs) }.map_err(err("Opening the recording"))?;
-
-        let video_index = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
-        let audio_index = MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32;
-        unsafe { reader.SetStreamSelection(MF_SOURCE_READER_ANY_STREAM.0 as u32, false) }.map_err(err("Opening the recording"))?;
-        unsafe { reader.SetStreamSelection(video_index, true) }.map_err(|_| "The recording has no video".to_string())?;
-        let native = unsafe { reader.GetNativeMediaType(video_index, 0) }.map_err(err("Reading the video format"))?;
-        let size = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.map_err(err("Reading the video size"))?;
-        let rate = unsafe { native.GetUINT64(&MF_MT_FRAME_RATE) }.unwrap_or((30u64 << 32) | 1);
-        let (w, h) = ((size >> 32) as u32, size as u32);
-        let fps = (((rate >> 32) as f64) / f64::from((rate as u32).max(1))).round().clamp(1.0, 120.0) as u32;
-
-        let want = unsafe { MFCreateMediaType() }.map_err(err("Video format"))?;
-        unsafe {
-            want.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).map_err(err("Video format"))?;
-            want.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12).map_err(err("Video format"))?;
-            reader.SetCurrentMediaType(video_index, None, &want).map_err(err("Reading the video"))?;
-        }
-
-        // A recording made without sound has no audio stream.
-        let audio = unsafe {
-            reader.SetStreamSelection(audio_index, true).is_ok() && {
-                let pcm = MFCreateMediaType().map_err(err("Audio format"))?;
-                pcm.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio).map_err(err("Audio format"))?;
-                pcm.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM).map_err(err("Audio format"))?;
-                pcm.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 2).map_err(err("Audio format"))?;
-                pcm.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, SAMPLE_RATE).map_err(err("Audio format"))?;
-                pcm.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16).map_err(err("Audio format"))?;
-                reader.SetCurrentMediaType(audio_index, None, &pcm).is_ok()
-            }
-        };
-        if !audio {
-            unsafe { reader.SetStreamSelection(audio_index, false) }.ok();
-        }
-
-        let cfg = Config { path: dst.to_path_buf(), w, h, fps, bitrate: bitrate("balanced", w, h, fps), audio, gif: false };
-        let writer = open_writer(&cfg)?;
-
-        let (start, end) = (start_ms as i64 * 10_000, end_ms as i64 * 10_000);
-        // Reader stream numbers to the kind of stream: 0 video, 1 audio.
-        let mut kinds: HashMap<u32, usize> = HashMap::new();
-        let mut finished = [false, !audio];
-        let mut written = 0u32;
-        let mut empty_reads = 0u32;
-        while !(finished[0] && finished[1]) {
-            let (mut index, mut flags, mut stamp) = (0u32, 0u32, 0i64);
-            let mut sample: Option<IMFSample> = None;
-            unsafe { reader.ReadSample(MF_SOURCE_READER_ANY_STREAM.0 as u32, 0, Some(&mut index), Some(&mut flags), Some(&mut stamp), Some(&mut sample)) }
-                .map_err(err("Reading the recording"))?;
-            let kind = match kinds.get(&index) {
-                Some(k) => *k,
-                None => {
-                    let major = unsafe { reader.GetCurrentMediaType(index).and_then(|t| t.GetGUID(&MF_MT_MAJOR_TYPE)) };
-                    let k = usize::from(major.map_or(true, |g| g != MFMediaType_Video));
-                    kinds.insert(index, k);
-                    k
-                }
-            };
-            if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
-                finished[kind] = true;
-            }
-            let Some(sample) = sample else {
-                empty_reads += 1;
-                if empty_reads > 100_000 {
-                    return Err("The recording stopped giving frames.".into());
-                }
-                continue;
-            };
-            empty_reads = 0;
-            let length = unsafe { sample.GetSampleDuration() }.unwrap_or(0);
-            if stamp >= end {
-                finished[kind] = true;
-                continue;
-            }
-            if stamp + length <= start {
-                continue;
-            }
-            unsafe { sample.SetSampleTime((stamp - start).max(0)) }.map_err(err("Writing the trimmed copy"))?;
-            let stream = if kind == 0 { writer.video } else { writer.audio.ok_or("No audio stream")? };
-            unsafe { writer.writer.WriteSample(stream, &sample) }.map_err(err("Writing the trimmed copy"))?;
-            if kind == 0 {
-                written += 1;
-            }
-        }
-        unsafe { writer.writer.Finalize() }.map_err(err("Finishing the file"))?;
-        if written == 0 {
-            return Err("No frames are left in that part.".into());
-        }
-        Ok(())
-    })();
-    unsafe {
-        let _ = MFShutdown();
-    }
-    out
+fn render_mp4(_src: &Path, _dst: &Path, _spec: &EditSpec) -> Result<(), String> {
+    Err("Editing a video is only built for Windows so far.".into())
 }
 
 #[cfg(test)]

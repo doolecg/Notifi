@@ -27,6 +27,7 @@ export default defineConfig({
         scratchpad: fileURLToPath(new URL('scratchpad.html', import.meta.url)),
         picker: fileURLToPath(new URL('picker.html', import.meta.url)),
         recording: fileURLToPath(new URL('recording.html', import.meta.url)),
+        camera: fileURLToPath(new URL('camera.html', import.meta.url)),
         capture: fileURLToPath(new URL('capture.html', import.meta.url)),
         mediatools: fileURLToPath(new URL('mediatools.html', import.meta.url)),
         switcher: fileURLToPath(new URL('switcher.html', import.meta.url)),

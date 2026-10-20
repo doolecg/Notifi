@@ -3,7 +3,9 @@
   import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import Confirm from './Confirm.svelte';
-  import { MANAGER_LABEL, message, runJobs, type Listing, type ManagerInfo, type Pkg, type UpdatesResult } from './api';
+  import { store } from '../lib/settings.svelte';
+  import { groupRows, type Needs } from './group';
+  import { MANAGER_LABEL, message, runJobs, type Listing, type ManagerInfo, type Pkg, type UpdateItem, type UpdatesResult } from './api';
   import { jobs } from './jobs.svelte';
 
   type Tab = 'search' | 'installed' | 'updates';
@@ -18,12 +20,17 @@
   let filter = $state('');
   let confirmRemove = $state<Pkg | null>(null);
   let timer: ReturnType<typeof setTimeout>;
+  let needs = $state<Needs[]>([]);
+  let groupChoice = $state<boolean | null>(null);
 
   const anyManager = $derived(managers?.some((m) => m.found) ?? true);
   const installedKeys = $derived(new Set((installed?.items ?? []).map((p) => `${p.manager}|${p.id}`)));
   const shown = $derived(
     (installed?.items ?? []).filter((p) => !filter || `${p.name} ${p.id}`.toLowerCase().includes(filter.toLowerCase())),
   );
+  const grouped = $derived(groupChoice ?? Boolean(store.values('packageManager').groupDependencies ?? true));
+  const installedRows = $derived(grouped && !filter ? groupRows(shown, needs) : shown.map((item) => ({ item, depth: 0, parent: null as Pkg | null })));
+  const updateRows = $derived(grouped ? groupRows(updates?.items ?? [], needs) : (updates?.items ?? []).map((item) => ({ item, depth: 0, parent: null as UpdateItem | null })));
   const target = (p: Pkg) => ({ manager: p.manager, id: p.id, name: p.name, origin: p.origin });
 
   async function loadInstalled() {
@@ -35,6 +42,10 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function loadNeeds() {
+    needs = await invoke<Needs[]>('apps_pkg_dependencies').catch(() => []);
   }
 
   async function loadUpdates() {
@@ -72,10 +83,14 @@
   onMount(() => {
     invoke<ManagerInfo[]>('apps_managers').then((m) => {
       managers = m;
-      if (m.some((x) => x.found)) loadInstalled();
+      if (m.some((x) => x.found)) {
+        loadInstalled();
+        loadNeeds();
+      }
     });
     const off = listen('apps://changed', () => {
       loadInstalled();
+      loadNeeds();
       invoke<UpdatesResult | null>('apps_updates_last').then((u) => u && (updates = u));
     });
     return () => off.then((f) => f());
@@ -103,6 +118,7 @@
       {:else if tab === 'installed'}
         <input type="search" placeholder="Filter installed" aria-label="Filter installed" bind:value={filter} />
         <button class="ghost" disabled={loading} onclick={loadInstalled}>Refresh</button>
+        <button class="ghost" class:on={grouped} aria-pressed={grouped} title="Show each dependency under the package that needs it. Only Scoop reports dependencies." onclick={() => (groupChoice = !grouped)}>Group dependencies</button>
       {:else}
         <button class="ghost" onclick={loadUpdates}>Refresh sources</button>
         <button class="ghost primary" disabled={!updates?.items.length} onclick={() => updates && run('update', updates.items.map((u) => ({ manager: u.manager, id: u.id, name: u.name, version: u.installed, available: u.available, origin: u.origin })))}>Update all</button>
@@ -124,10 +140,10 @@
           <table class="t">
             <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th>Source</th><th></th></tr></thead>
             <tbody>
-              {#each updates.items as u (u.manager + u.id)}
+              {#each updateRows as { item: u, depth, parent } (u.manager + u.id)}
                 {@const job = jobs.latest(u.manager, u.name)}
                 <tr>
-                  <td><span class="name" title={u.id}>{u.name}<small>{u.id}</small></span></td>
+                  <td><span class="name" style:padding-left="{depth * 18}px" title={u.id}>{u.name}<small>{parent ? `Needed by ${parent.name}` : u.id}</small></span></td>
                   <td class="mono">{u.installed}</td>
                   <td class="mono">{u.available}</td>
                   <td><span class="badge">{MANAGER_LABEL[u.manager]}</span></td>
@@ -141,7 +157,7 @@
           </table>
         {/if}
       {:else}
-        {@const list = tab === 'search' ? (found?.items ?? []) : shown}
+        {@const list = tab === 'search' ? (found?.items ?? []).map((item) => ({ item, depth: 0, parent: null as Pkg | null })) : installedRows}
         {#if loading && !list.length}
           <div class="empty">Loading...</div>
         {:else if !list.length}
@@ -150,11 +166,11 @@
           <table class="t">
             <thead><tr><th>Package</th><th>{tab === 'search' ? 'Version' : 'Installed'}</th>{#if tab === 'installed'}<th>Update</th>{/if}<th>Source</th><th></th></tr></thead>
             <tbody>
-              {#each list as p (p.manager + p.id)}
+              {#each list as { item: p, depth, parent } (p.manager + p.id)}
                 {@const job = jobs.latest(p.manager, p.name)}
                 {@const has = installedKeys.has(`${p.manager}|${p.id}`)}
                 <tr>
-                  <td><span class="name" title={p.id}>{p.name}<small>{p.id}</small></span></td>
+                  <td><span class="name" style:padding-left="{depth * 18}px" title={p.id}>{p.name}<small>{parent ? `Needed by ${parent.name}` : p.id}</small></span></td>
                   <td class="mono">{p.version}</td>
                   {#if tab === 'installed'}<td class="mono">{p.available ?? ''}</td>{/if}
                   <td><span class="badge">{MANAGER_LABEL[p.manager]}</span>{#if p.origin && p.origin !== p.manager} <small class="note">{p.origin}</small>{/if}</td>
@@ -193,6 +209,9 @@
 {/if}
 
 <style>
+  button.ghost.on {
+    background: var(--acc-soft);
+  }
   .seg {
     display: inline-flex;
     padding: 2px;

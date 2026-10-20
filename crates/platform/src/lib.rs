@@ -6,6 +6,7 @@ mod caps;
 mod common;
 mod error;
 mod media;
+pub mod menus;
 mod observe;
 mod traits;
 mod window_control;
@@ -18,6 +19,10 @@ mod win_audio;
 mod win_display;
 #[cfg(windows)]
 mod win_media;
+#[cfg(windows)]
+pub mod win_icons;
+#[cfg(windows)]
+mod win_menus;
 #[cfg(windows)]
 mod win_windows;
 #[cfg(windows)]

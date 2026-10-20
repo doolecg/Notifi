@@ -34,7 +34,8 @@ pub struct Config {
     pub h: u32,
     pub fps: u32,
     pub bitrate: u32,
-    pub audio: bool,
+    /// Sound tracks in the file: 0, 1, or 2 (system sound and microphone apart).
+    pub audio_tracks: u8,
     pub gif: bool,
 }
 
@@ -42,7 +43,8 @@ pub enum Msg {
     /// A finished BGRA frame and its time in 100 ns units.
     Video { bgra: Vec<u8>, ts: i64 },
     /// Interleaved 48 kHz stereo 16-bit sound and its time in 100 ns units.
-    Audio { pcm: Vec<i16>, ts: i64 },
+    /// `second` is the microphone track when the file keeps two; with one track it is mixed in.
+    Audio { pcm: Vec<i16>, second: Option<Vec<i16>>, ts: i64 },
 }
 
 pub struct Encoder {
@@ -81,7 +83,7 @@ fn pack(hi: u32, lo: u32) -> u64 {
 pub(super) struct Writer {
     pub(super) writer: IMFSinkWriter,
     pub(super) video: u32,
-    pub(super) audio: Option<u32>,
+    pub(super) audio: Vec<u32>,
 }
 
 fn run_mf(cfg: &Config, rx: &Receiver<Msg>, ready: &Sender<Result<(), String>>) -> Result<(), String> {
@@ -123,11 +125,17 @@ fn write_all(cfg: &Config, w: &Writer, rx: &Receiver<Msg>) -> Result<(), String>
                 bgra_to_nv12(&bgra, cfg.w as usize, cfg.h as usize, &mut nv12);
                 write_sample(&w.writer, w.video, &nv12, ts, frame_len)?;
             }
-            Msg::Audio { pcm, ts } => {
-                if let Some(stream) = w.audio {
-                    let bytes: Vec<u8> = pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
-                    let len = (pcm.len() as i64 / 2) * 10_000_000 / i64::from(SAMPLE_RATE);
-                    write_sample(&w.writer, stream, &bytes, ts, len)?;
+            Msg::Audio { pcm, second, ts } => {
+                let len = (pcm.len() as i64 / 2) * 10_000_000 / i64::from(SAMPLE_RATE);
+                let bytes = |p: &[i16]| p.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>();
+                match (w.audio.as_slice(), second) {
+                    ([a, b], Some(second)) => {
+                        write_sample(&w.writer, *a, &bytes(&pcm), ts, len)?;
+                        write_sample(&w.writer, *b, &bytes(&second), ts, len)?;
+                    }
+                    ([a, ..], Some(second)) => write_sample(&w.writer, *a, &bytes(&mix_tracks(&pcm, &second)), ts, len)?,
+                    ([a, ..], None) => write_sample(&w.writer, *a, &bytes(&pcm), ts, len)?,
+                    _ => {}
                 }
             }
         }
@@ -176,7 +184,15 @@ unsafe fn audio_type(subtype: &windows::core::GUID, bytes_per_second: u32, block
     Ok(t)
 }
 
+/// Opens the file with the sound tracks asked for; if the MP4 writer will not take two, with one.
 pub(super) fn open_writer(cfg: &Config) -> Result<Writer, String> {
+    match open_writer_with(cfg, cfg.audio_tracks) {
+        Err(e) if cfg.audio_tracks > 1 => open_writer_with(cfg, 1).map_err(|_| e),
+        done => done,
+    }
+}
+
+fn open_writer_with(cfg: &Config, tracks: u8) -> Result<Writer, String> {
     unsafe {
         let mut attrs: Option<IMFAttributes> = None;
         MFCreateAttributes(&mut attrs, 2).map_err(mf_err("Media Foundation"))?;
@@ -192,7 +208,8 @@ pub(super) fn open_writer(cfg: &Config) -> Result<Writer, String> {
         let input = video_type(&MFVideoFormat_NV12, cfg)?;
         writer.SetInputMediaType(video, &input, None::<&IMFAttributes>).map_err(mf_err("Video input"))?;
 
-        let audio = if cfg.audio {
+        let mut audio = Vec::new();
+        for _ in 0..tracks {
             // 24000 bytes a second is 192 kbit/s AAC, one of the rates the Windows encoder takes.
             let out = audio_type(&MFAudioFormat_AAC, 24_000, 1)?;
             out.SetUINT32(&MF_MT_AAC_PAYLOAD_TYPE, 0).map_err(mf_err("Audio format"))?;
@@ -201,10 +218,8 @@ pub(super) fn open_writer(cfg: &Config) -> Result<Writer, String> {
             let input = audio_type(&MFAudioFormat_PCM, SAMPLE_RATE * 4, 4)?;
             input.SetUINT32(&MF_MT_ALL_SAMPLES_INDEPENDENT, 1).map_err(mf_err("Audio format"))?;
             writer.SetInputMediaType(stream, &input, None::<&IMFAttributes>).map_err(mf_err("Audio input"))?;
-            Some(stream)
-        } else {
-            None
-        };
+            audio.push(stream);
+        }
         writer.BeginWriting().map_err(mf_err("Starting the file"))?;
         Ok(Writer { writer, video, audio })
     }

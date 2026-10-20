@@ -10,6 +10,7 @@ pub mod ports;
 pub mod process;
 pub mod rules;
 mod scoop;
+pub mod scoop_deps;
 mod table;
 pub mod updates;
 mod version;

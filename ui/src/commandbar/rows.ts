@@ -1,6 +1,6 @@
 export interface Row {
   id: string;
-  kind: 'app' | 'window' | 'file' | 'clipboard' | 'calc' | 'unit' | 'emoji' | 'script' | 'snippet' | 'system' | 'color';
+  kind: 'app' | 'window' | 'file' | 'clipboard' | 'calc' | 'unit' | 'emoji' | 'script' | 'snippet' | 'system' | 'color' | 'menu';
   title: string;
   subtitle: string;
   icon: string;
@@ -27,6 +27,7 @@ const PATHS: Record<string, string> = {
   ruler: 'M3 9l12-6 6 12-12 6zM8 8l2 4M11 6l1 2M5 13l2 4',
   script: 'M4 5h16v14H4zM8 10l3 2-3 2M13 15h4',
   snippet: 'M5 4h14v16H5zM8 9h8M8 13h8M8 17h5',
+  menu: 'M4 6h16M4 12h16M4 18h10',
   system: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM12 3v3M12 18v3M3 12h3M18 12h3',
 };
 

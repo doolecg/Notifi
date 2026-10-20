@@ -5,6 +5,7 @@
 mod logic;
 pub mod pin;
 pub mod recent;
+pub mod share;
 mod stitch;
 #[cfg_attr(windows, path = "win.rs")]
 #[cfg_attr(not(windows), path = "other.rs")]
@@ -15,7 +16,7 @@ use std::{
     io::Cursor,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -43,7 +44,7 @@ use stitch::{Step, Stitcher};
 pub const OVERLAY: &str = "capture";
 pub const PREVIEW: &str = "capturepreview";
 pub const EDITOR: &str = "captureedit";
-pub const ACTIONS: &[&str] = &["captureScreenshot", "captureText", "captureRecent"];
+pub const ACTIONS: &[&str] = &["captureScreenshot", "captureText", "captureRecent", "captureUpload"];
 
 const START_EVENT: &str = "capture://start";
 const PREVIEW_EVENT: &str = "capture://preview";
@@ -90,6 +91,8 @@ pub struct CaptureState {
     last: Mutex<Option<Arc<Last>>>,
     last_rect: Mutex<Option<Rect>>,
     link: Mutex<Option<String>>,
+    /// Moves on when the capture is replaced or edited, so a late upload does not copy its link.
+    share_gen: AtomicU64,
     pins: pin::Pins,
 }
 
@@ -135,6 +138,8 @@ struct Opts {
     auto_copy: bool,
     auto_shelf: bool,
     auto_editor: bool,
+    auto_pin: bool,
+    shelf_auto: bool,
     preview_secs: i32,
     save_1x: bool,
     include_pill: bool,
@@ -169,6 +174,8 @@ impl Opts {
             auto_copy: flag(&s, p, "autoCopy", true),
             auto_shelf: flag(&s, p, "autoShelf", false),
             auto_editor: flag(&s, p, "autoEditor", false),
+            auto_pin: flag(&s, p, "autoPin", false),
+            shelf_auto: s.enabled("shelf") && flag(&s, "shelf", "autoAddCaptures", false),
             preview_secs: number(&s, p, "previewDuration", 5.0) as i32,
             save_1x: flag(&s, p, "saveAt1x", false),
             include_pill: flag(&s, p, "includePillInShots", false),
@@ -205,6 +212,10 @@ pub fn run_action(app: &AppHandle, action: &str) {
     match action {
         "captureText" => start(app, Mode::Text),
         "captureRecent" => recent::open(app),
+        "captureUpload" => match last_shot(app) {
+            Some(last) => share::share_shot(app, &last),
+            None => notice(app, "There is no screenshot to share yet."),
+        },
         _ => match Opts::read(app).default_mode.as_str() {
             "text" => start(app, Mode::Text),
             "color" => crate::picker::toggle(app),
@@ -610,6 +621,7 @@ fn last_shot(app: &AppHandle) -> Option<Arc<Last>> {
 /// What happens to a finished capture: the automatic outputs, then the editor or the preview.
 fn deliver(app: &AppHandle, o: &Opts, img: RgbaImage, scale: f64) {
     let last = Arc::new(Last { img, scale, saved: Mutex::new(None) });
+    share::cancel_pending(app);
     *app.state::<CaptureState>().last.lock().unwrap() = Some(last.clone());
     let mut copied = false;
     let mut notes: Vec<String> = Vec::new();
@@ -619,7 +631,7 @@ fn deliver(app: &AppHandle, o: &Opts, img: RgbaImage, scale: f64) {
             Err(e) => notes.push(format!("Could not copy the screenshot: {e}")),
         }
     }
-    if o.auto_shelf {
+    if o.auto_shelf || o.shelf_auto {
         match save_file(app, o, &last) {
             Ok(path) => crate::clipboard::shelf::add(app, &[path]),
             Err(e) => notes.push(e),
@@ -627,6 +639,9 @@ fn deliver(app: &AppHandle, o: &Opts, img: RgbaImage, scale: f64) {
     }
     for n in &notes {
         notice(app, n.clone());
+    }
+    if o.auto_pin {
+        pin::pin_last(app);
     }
     if o.auto_editor {
         open_editor(app);
@@ -647,6 +662,7 @@ struct PreviewData {
     height: u32,
     text: String,
     link: Option<String>,
+    share: bool,
 }
 
 fn place_preview(app: &AppHandle, logical: (f64, f64)) {
@@ -683,6 +699,7 @@ fn show_preview(app: &AppHandle, o: &Opts, last: &Last) {
         height: last.img.height(),
         text: String::new(),
         link: None,
+        share: share::available(app),
     };
     show_card(app, (340.0, 252.0), data);
 }
@@ -730,6 +747,12 @@ pub fn capture_action(app: AppHandle, action: String) {
                 hide_preview(&app);
                 pin::pin_last(&app);
             }
+            "share" => {
+                hide_preview(&app);
+                if let Some(last) = last_shot(&app) {
+                    share::share_shot(&app, &last);
+                }
+            }
             "copy" | "save" | "shelf" | "text" => {
                 let Some(last) = last_shot(&app) else { return };
                 let done = match action.as_str() {
@@ -767,6 +790,7 @@ pub fn capture_action(app: AppHandle, action: String) {
 
 fn open_editor(app: &AppHandle) {
     let Some(last) = last_shot(app) else { return };
+    share::cancel_pending(app);
     if let Some(window) = app.get_webview_window(EDITOR) {
         let _ = app.emit_to(EDITOR, EDITOR_EVENT, ());
         let _ = window.unminimize();
@@ -792,6 +816,8 @@ fn open_editor(app: &AppHandle) {
             .inner_size(width, height)
             .min_inner_size(560.0, 420.0)
             .center()
+            // Dropped image files go to the page (image layers), not to the window's drag-drop events.
+            .disable_drag_drop_handler()
             .focused(!crate::window::no_focus())
             .build();
     });
@@ -809,12 +835,13 @@ pub fn capture_close_editor(app: AppHandle) {
 pub struct EditorOpts {
     text_size: u32,
     blur: u32,
+    share: bool,
 }
 
 #[tauri::command]
 pub fn capture_editor_opts(app: AppHandle) -> EditorOpts {
     let o = Opts::read(&app);
-    EditorOpts { text_size: o.text_size, blur: o.blur }
+    EditorOpts { text_size: o.text_size, blur: o.blur, share: share::available(&app) }
 }
 
 /// Boxes around the words found in a part of the editor image (x, y, width, height in image pixels),
@@ -847,11 +874,16 @@ pub fn capture_editor_export(app: AppHandle, request: Request<'_>) -> Result<Str
     let o = Opts::read(&app);
     let scale = last_shot(&app).map_or(1.0, |l| l.scale);
     let last = Arc::new(Last { img, scale, saved: Mutex::new(None) });
+    share::cancel_pending(&app);
     *app.state::<CaptureState>().last.lock().unwrap() = Some(last.clone());
     match action.as_str() {
         "pin" => {
             pin::pin_last(&app);
             Ok("Pinned".into())
+        }
+        "share" => {
+            share::share_shot(&app, &last);
+            Ok(String::new())
         }
         "save" => save_file(&app, &o, &last).map(|p| format!("Saved {}", file_label(&p))),
         "shelf" => save_file(&app, &o, &last).map(|p| {
@@ -908,7 +940,7 @@ fn scroll_capture(app: &AppHandle, o: &Opts, rect: Rect, first: RgbaImage) -> Op
     state.stop_scroll.store(false, Ordering::SeqCst);
     let _guard = ScrollGuard(app);
     let hint = if o.scroll_auto { "Scrolling for you. Esc or Enter stops." } else { "Scroll the page yourself. Esc or Enter stops." };
-    show_card(app, (340.0, 150.0), PreviewData { kind: "scroll", seconds: -1, auto_copy: o.auto_copy, width: 0, height: first.height(), text: hint.into(), link: None });
+    show_card(app, (340.0, 150.0), PreviewData { kind: "scroll", seconds: -1, auto_copy: o.auto_copy, width: 0, height: first.height(), text: hint.into(), link: None, share: false });
     let armed = Instant::now();
     let before = sys::cursor();
     if o.scroll_auto {
@@ -1030,7 +1062,7 @@ fn read_text(app: &AppHandle, o: &Opts, img: RgbaImage) {
                 }
             } else if o.show_toast {
                 *state.link.lock().unwrap() = Some(link.clone());
-                let data = PreviewData { kind: "link", seconds: 8, auto_copy: false, width: 0, height: 0, text: link.clone(), link: Some(link) };
+                let data = PreviewData { kind: "link", seconds: 8, auto_copy: false, width: 0, height: 0, text: link.clone(), link: Some(link), share: false };
                 show_card(app, (340.0, 160.0), data);
             }
         }

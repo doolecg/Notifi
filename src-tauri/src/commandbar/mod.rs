@@ -21,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use notifi_platform::{Platform, WindowId};
+use notifi_platform::{menus, Platform, WindowId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -32,7 +32,7 @@ use crate::{
 };
 use apps::{App, Launch};
 use index::FileEntry;
-use search::{ClipRow, Input, Options, Row, SnippetRow, SystemRow, Target, WindowRow};
+use search::{ClipRow, Input, MenuRow, Options, Row, SnippetRow, SystemRow, Target, WindowRow};
 
 pub const WINDOW: &str = "commandbar";
 pub const ACTION: &str = "commandBar";
@@ -46,6 +46,8 @@ const START_HEIGHT: f64 = 96.0;
 const MAX_HEIGHT: f64 = 600.0;
 const APPS_STALE: Duration = Duration::from_secs(300);
 const FILES_STALE: Duration = Duration::from_secs(600);
+/// How long one window's menu commands are reused before the menus are read again.
+const MENUS_STALE: Duration = Duration::from_secs(300);
 
 #[derive(Serialize, Deserialize, Default)]
 struct Saved {
@@ -61,6 +63,9 @@ pub struct CommandBarState {
     scanning_files: AtomicBool,
     targets: Mutex<HashMap<String, Target>>,
     previous: Mutex<Option<WindowId>>,
+    /// Menu commands of the window the bar was opened over: window id, when read, commands.
+    menus: Mutex<Option<(u64, Instant, Vec<menus::MenuItem>)>>,
+    scanning_menus: AtomicBool,
     saved: Mutex<Saved>,
     learned: Mutex<HashMap<String, String>>,
     path: Mutex<Option<PathBuf>>,
@@ -106,6 +111,7 @@ fn options(s: &Settings) -> Options {
         colors: opt_bool(s, "colors", true),
         snippets: opt_bool(s, "searchSnippets", true),
         system: opt_bool(s, "searchSystem", true),
+        menus: opt_bool(s, "searchMenus", true),
         scripts: !opt_str(s, "scriptsFolder", "").is_empty(),
         aliases: search::parse_pairs(&opt_list(s, "aliases")),
         pins: opt_list(s, "pins"),
@@ -179,6 +185,35 @@ fn refresh_files(app: &AppHandle) {
     });
 }
 
+/// Reads the menu commands of the window the bar opened over, unless they were read recently. The
+/// scan runs on its own thread: it opens each menu of the app for a moment.
+fn refresh_menus(app: &AppHandle) {
+    let state = app.state::<CommandBarState>();
+    let Some(WindowId(window)) = *state.previous.lock().unwrap() else { return };
+    if state.menus.lock().unwrap().as_ref().is_some_and(|(w, at, _)| *w == window && at.elapsed() < MENUS_STALE) {
+        return;
+    }
+    if state.scanning_menus.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    thread::spawn(move || {
+        let found = menus::list(window).unwrap_or_default();
+        let state = app.state::<CommandBarState>();
+        *state.menus.lock().unwrap() = Some((window, Instant::now(), found));
+        state.scanning_menus.store(false, Ordering::SeqCst);
+    });
+}
+
+/// The cached commands, only while the bar is still over the window they were read from.
+fn menu_rows(state: &CommandBarState) -> Vec<MenuRow> {
+    let Some(WindowId(window)) = *state.previous.lock().unwrap() else { return Vec::new() };
+    match &*state.menus.lock().unwrap() {
+        Some((w, _, items)) if *w == window => items.iter().map(|m| MenuRow { window, path: m.path.clone() }).collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn stale<T>(slot: &Mutex<(Vec<T>, Option<Instant>)>, limit: Duration) -> bool {
     slot.lock().unwrap().1.is_none_or(|t| t.elapsed() > limit)
 }
@@ -222,6 +257,9 @@ pub fn open(app: &AppHandle, query: Option<String>) {
     }
     if opt_bool(&s, "searchFiles", true) && stale(&state.files, FILES_STALE) {
         refresh_files(app);
+    }
+    if opt_bool(&s, "searchMenus", true) {
+        refresh_menus(app);
     }
     state.learned.lock().unwrap().clear();
     place(app, &s, false);
@@ -319,6 +357,7 @@ pub async fn commandbar_search(app: AppHandle, query: String) -> Results {
     } else {
         Vec::new()
     };
+    let menu_rows = if opts.menus && query.trim().chars().count() >= 2 { menu_rows(&state) } else { Vec::new() };
     let system = if opts.system && query.trim().chars().count() >= 2 { system_rows() } else { Vec::new() };
 
     let usage = state.saved.lock().unwrap().usage.clone();
@@ -327,7 +366,7 @@ pub async fn commandbar_search(app: AppHandle, query: String) -> Results {
     let files = if opts.files { state.files.lock().unwrap().0.clone() } else { Vec::new() };
     let found = search::run(
         &query,
-        &Input { apps: &apps, windows: &windows, files: &files, clips: &clips, scripts: &scripts, snippets: &snippets, system: &system, usage: &usage, learned: learned.as_deref(), options: &opts },
+        &Input { apps: &apps, windows: &windows, files: &files, clips: &clips, scripts: &scripts, snippets: &snippets, system: &system, menus: &menu_rows, usage: &usage, learned: learned.as_deref(), options: &opts },
     );
     let mut targets = state.targets.lock().unwrap();
     targets.clear();
@@ -455,6 +494,13 @@ pub async fn commandbar_run(app: AppHandle, id: String, query: String, alt: bool
         Target::Page(page) => {
             hide(&app, false);
             window::open_settings_at(&app, Some(page.as_str()));
+            Ok(Outcome { closed: true, ..Default::default() })
+        }
+        Target::Menu { window, path } => {
+            hide(&app, false);
+            let _ = app.state::<Platform>().windows().focus(WindowId(window));
+            pause(150).await;
+            tauri::async_runtime::spawn_blocking(move || menus::invoke(window, &path)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
             Ok(Outcome { closed: true, ..Default::default() })
         }
         Target::Copy(text) => Ok(Outcome { copy: Some(text), ..Default::default() }),

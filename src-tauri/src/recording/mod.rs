@@ -6,6 +6,7 @@
 //! `recordpick` (the full-display overlay for choosing the area) and `recordbar` (timer, pause and
 //! stop). The bar is hidden from the recording itself.
 
+mod edit;
 mod pure;
 pub mod trim;
 
@@ -15,6 +16,8 @@ mod audio;
 mod capture;
 #[cfg(windows)]
 mod encode;
+#[cfg(windows)]
+mod export;
 #[cfg(windows)]
 mod session;
 

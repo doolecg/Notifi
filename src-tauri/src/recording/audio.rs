@@ -119,6 +119,10 @@ impl Streams {
     pub fn any(&self) -> bool {
         self.system.is_some() || self.mic.is_some()
     }
+
+    pub fn track_count(&self) -> u8 {
+        track_count(self.system.is_some(), self.mic.is_some())
+    }
 }
 
 /// Opens system sound and/or the microphone. `mic_id` is a capture device id, or `None` for the default.
@@ -162,6 +166,8 @@ fn run(mut s: Streams, session: &Session, stop: &AtomicBool, tx: &SyncSender<Msg
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
     }
     let mut written = 0u64;
+    // Fixed at the start: a source that drops out later leaves its track silent instead of moving the other.
+    let split = track_count(s.system.is_some(), s.mic.is_some()) == 2;
     loop {
         let stopping = stop.load(Ordering::SeqCst);
         for slot in [&mut s.system, &mut s.mic] {
@@ -190,9 +196,17 @@ fn run(mut s: Streams, session: &Session, stop: &AtomicBool, tx: &SyncSender<Msg
                 let system = take(&mut s.system);
                 let mic = take(&mut s.mic);
                 let mut pcm = Vec::with_capacity(due * 2);
-                mix_pcm(&system, &mic, due, &mut pcm);
+                let second = if split {
+                    let mut mic_pcm = Vec::with_capacity(due * 2);
+                    mix_pcm(&system, &[], due, &mut pcm);
+                    mix_pcm(&[], &mic, due, &mut mic_pcm);
+                    Some(mic_pcm)
+                } else {
+                    mix_pcm(&system, &mic, due, &mut pcm);
+                    None
+                };
                 let ts = (u128::from(written) * 10_000_000 / u128::from(SAMPLE_RATE)) as i64;
-                if tx.send(Msg::Audio { pcm, ts }).is_err() {
+                if tx.send(Msg::Audio { pcm, second, ts }).is_err() {
                     break;
                 }
                 written += due as u64;

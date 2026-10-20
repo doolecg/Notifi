@@ -37,7 +37,7 @@
   }
 
   /** Tools that can run straight from the menu; the rest open their settings page. */
-  const RUN: Record<string, string> = { colorPicker: 'picker_toggle', mediaTools: 'media_open', cleaningMode: 'cleaning_mode_start' };
+  const RUN: Record<string, string> = { colorPicker: 'picker_toggle', mediaTools: 'media_open', cleaningMode: 'cleaning_mode_start', cameraPreview: 'camera_preview_toggle' };
   const open = (section: string) => invoke(RUN[section] ?? 'open_settings_section', RUN[section] ? {} : { section }).catch(() => {});
 
   onMount(() => {

@@ -13,6 +13,10 @@ export interface Entry {
   monitor: string | null;
   icon: string | null;
   noThumb: boolean;
+  /** On another virtual desktop. */
+  otherDesktop: boolean;
+  /** An app with no window; choosing it starts or reopens the program. */
+  noWindow: boolean;
 }
 
 export interface Grid {

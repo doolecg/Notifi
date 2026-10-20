@@ -2,6 +2,7 @@
 
 mod apps;
 mod apps_clean;
+mod camera;
 mod capture;
 mod catalog;
 mod clipboard;
@@ -63,6 +64,7 @@ fn main() {
         .manage(scratchpad::ScratchpadState::default())
         .manage(picker::PickerState::default())
         .manage(recording::RecordingState::default())
+        .manage(camera::CameraState::default())
         .manage(capture::CaptureState::default())
         .manage(media_tools::MediaState::default())
         .setup(|app| {
@@ -126,6 +128,7 @@ fn main() {
             apps::packages::apps_managers,
             apps::packages::apps_pkg_installed,
             apps::packages::apps_pkg_search,
+            apps::scoop_deps::apps_pkg_dependencies,
             apps::jobs::apps_job_run,
             apps::jobs::apps_job_cancel,
             apps::updates::apps_updates_check,
@@ -227,6 +230,12 @@ fn main() {
             recording::recording_trim_open,
             recording::trim::recording_trim_target,
             recording::trim::recording_trim_save,
+            recording::trim::recording_edit_save,
+            camera::camera_preview_options,
+            camera::camera_preview_toggle,
+            camera::camera_preview_close,
+            camera::camera_preview_lost,
+            camera::camera_preview_remember,
             recording::trim::recording_trim_reveal,
             recording::trim::recording_trim_close,
             capture::capture_frame,
@@ -245,6 +254,7 @@ fn main() {
             capture::capture_editor_export,
             capture::capture_close_editor,
             capture::capture_editor_text_boxes,
+            capture::share::capture_share_file,
             capture::pin::capture_pin_image,
             capture::pin::capture_pin_zoom,
             capture::pin::capture_pin_close,

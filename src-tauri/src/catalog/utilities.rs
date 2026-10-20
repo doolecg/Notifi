@@ -169,6 +169,7 @@ pub const PAGES: &[Page] = &[
                 sw("autoCopy", "Copy to clipboard", "", true),
                 sw("autoShelf", "Add to the Shelf", "", false),
                 sw("autoEditor", "Open in the editor", "", false),
+                sw("autoPin", "Pin it to the screen", "Shows the capture as a small window that stays on top.", false),
                 pick("previewDuration", "Preview", "", &[c("0", "Hidden"), c("1", "1 second"), c("3", "3 seconds"), c("5", "5 seconds"), c("10", "10 seconds"), c("-1", "Until dismissed")], "5"),
                 sw("saveAt1x", "Save at 1x size on high-density displays", "Smaller files; the default keeps full pixels.", false),
                 sw("includePillInShots", "Include the Top Pill in shots", "Only when the pill is set to show in screenshots.", false),
@@ -191,7 +192,7 @@ pub const PAGES: &[Page] = &[
             ]),
             Card { title: "Temporary links", tab: "Sharing", feature: "shareLinks", options: &[
                 text("server", "Server address", "Your own server that hosts the files.", "https://share.example.com", ""),
-                text("token", "Access token", "Stored in the system credential store.", "Optional", ""),
+                text("token", "Access token", "Kept in Notifi's settings on this computer and only sent to your server.", "Optional", ""),
                 pick("expiry", "Default expiry", "", &[c("1", "1 hour"), c("6", "6 hours"), c("24", "24 hours")], "1"),
                 num("recordingLimit", "Compress recordings under", "", 10.0, 1000.0, 10.0, "MB", 100.0),
                 key("uploadShortcut", "Shortcut for the latest screenshot", "Uploads it and copies the link.", ""),

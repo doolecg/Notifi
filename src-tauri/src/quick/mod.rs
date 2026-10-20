@@ -155,6 +155,7 @@ fn run_tool(app: &AppHandle, id: &str) {
         "scratchpad" => crate::scratchpad::show(app),
         "clipboardHistory" => crate::clipboard::run_action(app, "clipboardHistory"),
         "textSnippets" => crate::clipboard::run_action(app, "snippetMenu"),
+        "cameraPreview" => crate::camera::toggle(app),
         _ => window::open_settings(app),
     }
 }

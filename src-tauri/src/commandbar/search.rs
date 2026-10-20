@@ -25,6 +25,8 @@ pub enum Target {
     Action(String),
     /// A settings page id.
     Page(String),
+    /// A command in the menus of a window: the window id and the menu path.
+    Menu { window: u64, path: Vec<String> },
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -53,6 +55,11 @@ pub struct SnippetRow {
     pub trigger: String,
 }
 
+pub struct MenuRow {
+    pub window: u64,
+    pub path: Vec<String>,
+}
+
 pub struct SystemRow {
     pub id: String,
     pub title: String,
@@ -71,6 +78,7 @@ pub struct Options {
     pub colors: bool,
     pub snippets: bool,
     pub system: bool,
+    pub menus: bool,
     pub scripts: bool,
     pub aliases: Vec<(String, String)>,
     pub pins: Vec<String>,
@@ -86,12 +94,14 @@ pub struct Input<'a> {
     pub scripts: &'a [Script],
     pub snippets: &'a [SnippetRow],
     pub system: &'a [SystemRow],
+    pub menus: &'a [MenuRow],
     pub usage: &'a HashMap<String, u32>,
     pub learned: Option<&'a str>,
     pub options: &'a Options,
 }
 
 pub const LIMIT: usize = 30;
+const MENU_LIMIT: usize = 6;
 
 /// `"ff = Firefox"` lines become pairs; anything without an equals sign is ignored.
 pub fn parse_pairs(lines: &[String]) -> Vec<(String, String)> {
@@ -256,6 +266,10 @@ pub fn run(query: &str, input: &Input) -> Vec<(Row, Target)> {
         }
     }
 
+    if o.menus && query.chars().count() >= 2 {
+        out.extend(menu_rows(query, input.menus));
+    }
+
     if o.system && query.chars().count() >= 2 {
         for r in input.system {
             if let Some(base) = score(query, &r.title) {
@@ -284,6 +298,36 @@ pub fn run(query: &str, input: &Input) -> Vec<(Row, Target)> {
     out.sort_by(|a, b| b.score.cmp(&a.score));
     out.truncate(LIMIT);
     finish(out)
+}
+
+/// Menu commands that match the query, best first, at most [`MENU_LIMIT`]. A match on the command
+/// name beats one on the menus above it.
+fn menu_rows(query: &str, menus: &[MenuRow]) -> Vec<Scored> {
+    let mut hits: Vec<(i32, &MenuRow)> = menus
+        .iter()
+        .filter_map(|m| {
+            let title = m.path.last()?;
+            let trail = m.path[..m.path.len() - 1].join(" ");
+            let by_title = score(query, title);
+            let by_trail = score(query, &format!("{trail} {title}")).map(|s| s - 150);
+            by_title.into_iter().chain(by_trail).max().map(|s| (s, m))
+        })
+        .collect();
+    hits.sort_by(|a, b| b.0.cmp(&a.0));
+    hits.into_iter()
+        .take(MENU_LIMIT)
+        .map(|(s, m)| Scored {
+            score: s - 30,
+            row: Row {
+                id: format!("menu:{}", m.path.join(">")),
+                kind: "menu",
+                title: m.path.last().cloned().unwrap_or_default(),
+                subtitle: format!("Menu - {}", m.path[..m.path.len() - 1].join(" > ")),
+                icon: "menu".into(),
+            },
+            target: Target::Menu { window: m.window, path: m.path.clone() },
+        })
+        .collect()
 }
 
 fn app_row(app: &App, score: i32) -> Scored {
@@ -323,7 +367,7 @@ mod tests {
         let usage = HashMap::new();
         let o = options();
         let apps = [app("Calculator")];
-        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         let rows = run("2*21", &input);
         assert_eq!(rows[0].0.title, "42");
         assert_eq!(rows[0].1, Target::Copy("42".into()));
@@ -333,7 +377,7 @@ mod tests {
     fn unit_row_and_emoji() {
         let usage = HashMap::new();
         let o = options();
-        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         assert_eq!(run("5 km to mi", &input)[0].0.kind, "unit");
         let rows = run("rocket", &input);
         assert_eq!(rows[0].0.icon, "🚀");
@@ -344,7 +388,7 @@ mod tests {
         let usage = HashMap::new();
         let o = options();
         let apps = [app("Chrome"), app("Chromium")];
-        let plain = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let plain = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         let learned = Input { learned: Some("app:Chromium"), ..plain };
         assert_eq!(titles(&run("chrom", &learned))[0], "Chromium");
     }
@@ -355,7 +399,7 @@ mod tests {
         usage.insert("app:Chromium".to_string(), 5);
         let o = options();
         let apps = [app("Chrome"), app("Chromium")];
-        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         let rows = run("chrom", &input);
         assert_eq!(rows[0].0.title, "Chromium");
     }
@@ -368,7 +412,7 @@ mod tests {
         o.hidden = vec!["Secret".into()];
         o.pins = vec!["Zed".into()];
         let apps = [app("Firefox"), app("Secret"), app("Zed")];
-        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         assert_eq!(run("ff", &input)[0].0.title, "Firefox");
         assert!(!titles(&run("secret", &input)).contains(&"Secret".to_string()));
         assert_eq!(titles(&run("", &input)), vec!["Zed".to_string()]);
@@ -379,7 +423,7 @@ mod tests {
         let usage = HashMap::new();
         let o = options();
         let scripts = [Script { name: "backup".into(), path: "/s/backup.sh".into() }];
-        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &scripts, snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &scripts, snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         match &run("backup now \"to disk\"", &input)[0].1 {
             Target::Script { args, complete, .. } => {
                 assert_eq!(args, &vec!["now".to_string(), "to disk".to_string()]);
@@ -406,7 +450,7 @@ mod tests {
         let o = Options { colors: true, snippets: true, system: true, ..Default::default() };
         let snippets = [SnippetRow { id: "s1".into(), name: "Email signature".into(), trigger: ";sig".into() }];
         let system = [SystemRow { id: "system:openSettings".into(), title: "Open Settings".into(), subtitle: "Notifi".into(), target: Target::Action("openSettings".into()) }];
-        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &[], snippets: &snippets, system: &system, usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &[], snippets: &snippets, system: &system, menus: &[], usage: &usage, learned: None, options: &o };
         let colour = run("#33aa77", &input);
         assert_eq!((colour[0].0.kind, colour[0].0.icon.as_str()), ("color", "#33aa77"));
         assert_eq!(run("#f00 to rgb", &input)[0].1, Target::Copy("rgb(255, 0, 0)".into()));
@@ -419,11 +463,29 @@ mod tests {
     }
 
     #[test]
+    fn menu_commands_rank_by_name_then_by_menu() {
+        let usage = HashMap::new();
+        let o = Options { menus: true, ..Default::default() };
+        let menus = [
+            MenuRow { window: 7, path: vec!["File".into(), "Save As".into()] },
+            MenuRow { window: 7, path: vec!["File".into(), "Export".into(), "Save copy".into()] },
+            MenuRow { window: 7, path: vec!["Help".into(), "About".into()] },
+        ];
+        let input = Input { apps: &[], windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &menus, usage: &usage, learned: None, options: &o };
+        let rows = run("save", &input);
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[0].0.kind, rows[0].0.title.as_str(), rows[0].0.subtitle.as_str()), ("menu", "Save As", "Menu - File"));
+        assert_eq!(rows[0].1, Target::Menu { window: 7, path: vec!["File".into(), "Save As".into()] });
+        assert_eq!(rows[1].0.subtitle, "Menu - File > Export");
+        assert!(run("sa", &Input { options: &Options::default(), ..input }).is_empty());
+    }
+
+    #[test]
     fn disabled_sources_stay_quiet() {
         let usage = HashMap::new();
         let o = Options::default();
         let apps = [app("Firefox")];
-        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], usage: &usage, learned: None, options: &o };
+        let input = Input { apps: &apps, windows: &[], files: &[], clips: &[], scripts: &[], snippets: &[], system: &[], menus: &[], usage: &usage, learned: None, options: &o };
         assert!(run("firefox", &input).is_empty());
         assert!(run("1+1", &input).is_empty());
     }

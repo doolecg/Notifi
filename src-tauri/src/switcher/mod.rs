@@ -310,6 +310,13 @@ fn collect(app: &AppHandle, s: &Settings, same_app: bool, mru: &[u64], kind: Kin
             }
             let id = filter::idle_id(a.pid);
             let name = app_name_of(&a.app_id);
+            let icon_key = format!("file:{}", a.path.to_lowercase());
+            let cached = state.inner.lock().unwrap().icons.get(&icon_key).cloned();
+            let icon = cached.unwrap_or_else(|| {
+                let url = thumbs::file_icon_url(&a.path);
+                state.inner.lock().unwrap().icons.insert(icon_key, url.clone());
+                url
+            });
             entries.push(Entry {
                 id,
                 title: name.clone(),
@@ -317,7 +324,7 @@ fn collect(app: &AppHandle, s: &Settings, same_app: bool, mru: &[u64], kind: Kin
                 pid: Some(a.pid),
                 minimized: false,
                 monitor: None,
-                icon: None,
+                icon,
                 no_thumb: true,
                 other_desktop: false,
                 no_window: true,

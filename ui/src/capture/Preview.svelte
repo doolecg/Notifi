@@ -12,6 +12,7 @@
     height: number;
     text: string;
     link: string | null;
+    share: boolean;
   }
 
   let data = $state<Data | null>(null);
@@ -58,6 +59,7 @@
         <button onclick={() => act('shelf')}>Shelf</button>
         <button onclick={() => act('edit')}>Edit</button>
         <button onclick={() => act('pin')}>Pin</button>
+        {#if data.share}<button onclick={() => act('share')}>Share link</button>{/if}
         <button onclick={() => act('text')}>Copy text</button>
         <button class="quiet" onclick={() => act('dismiss')} title="Dismiss">Close</button>
       </div>

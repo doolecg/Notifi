@@ -239,7 +239,7 @@ pub fn ripple_look(age_ms: u64) -> Option<(f32, f32)> {
     Some((10.0 + 36.0 * out, 0.9 * (1.0 - t)))
 }
 
-fn blend_px(buf: &mut [u8], w: i32, h: i32, x: i32, y: i32, rgb: [u8; 3], a: f32) {
+pub fn blend_px(buf: &mut [u8], w: i32, h: i32, x: i32, y: i32, rgb: [u8; 3], a: f32) {
     if x < 0 || y < 0 || x >= w || y >= h || a <= 0.0 {
         return;
     }
@@ -433,6 +433,23 @@ pub fn mix_pcm(system: &[Stereo], mic: &[Stereo], frames: usize, out: &mut Vec<i
         out.push(pcm16(a + c));
         out.push(pcm16(b + d));
     }
+}
+
+/// How many audio tracks a recording gets: system sound and the microphone are kept apart when both
+/// are on, so they can be balanced or removed in the editor.
+pub fn track_count(system: bool, mic: bool) -> u8 {
+    match (system, mic) {
+        (true, true) => 2,
+        (false, false) => 0,
+        _ => 1,
+    }
+}
+
+/// Two interleaved 16-bit tracks added together (for a file that can only hold one sound track).
+pub fn mix_tracks(a: &[i16], b: &[i16]) -> Vec<i16> {
+    (0..a.len().max(b.len()))
+        .map(|i| (i32::from(a.get(i).copied().unwrap_or(0)) + i32::from(b.get(i).copied().unwrap_or(0))).clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16)
+        .collect()
 }
 
 /// How many audio frames to write now: the ones the clock has reached, less the latency margin.
@@ -655,5 +672,21 @@ mod tests {
         assert_eq!(Region { x: 3000, y: 0, w: 10, h: 10 }.within(display), None);
         assert_eq!(Region { x: 0, y: 0, w: 101, h: 55 }.even(), Region { x: 0, y: 0, w: 100, h: 54 });
         assert_eq!(Region { x: 0, y: 0, w: 1, h: 1 }.even(), Region { x: 0, y: 0, w: 2, h: 2 });
+    }
+
+    #[test]
+    fn sound_tracks_follow_the_sources() {
+        assert_eq!(track_count(true, true), 2);
+        assert_eq!(track_count(true, false), 1);
+        assert_eq!(track_count(false, true), 1);
+        assert_eq!(track_count(false, false), 0);
+    }
+
+    #[test]
+    fn mixing_two_tracks_clips_and_pads() {
+        assert_eq!(mix_tracks(&[100, 200, 300], &[1, 2]), vec![101, 202, 300]);
+        assert_eq!(mix_tracks(&[30_000], &[30_000]), vec![i16::MAX]);
+        assert_eq!(mix_tracks(&[-30_000], &[-30_000]), vec![i16::MIN]);
+        assert!(mix_tracks(&[], &[]).is_empty());
     }
 }
