@@ -4,3 +4,5 @@ build/
 dist/
 src-tauri/gen/
 target-install/
+
+.playwright-mcp/
