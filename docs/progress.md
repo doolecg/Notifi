@@ -63,3 +63,11 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - New dependencies are allowed if open source with a permissive licence (MIT, Apache-2.0, BSD, ISC, MPL-2.0, Zlib). No GPL.
 - Builder agents see only `spec/`, never Vorssaint source.
 - `ui/src/island/Island.svelte` is large; edit with exact-string scripts and keep a copy (a bad write once emptied it).
+
+## 0.2.0 release (2026-10-20)
+- Released from `main` (tag `0.2.0`, commit `3a78ccf`, MSI attached, default branch is now `main`). `dev-0.2.0` is pushed and keeps everything.
+- Held back from main, still on `dev-0.2.0`: App switcher (Alt+Tab replacement, user said it does not work), Port manager and Kill process (settings page, Ports tab), Processes tab. To release them, fix them on `dev-0.2.0`, then merge into `main`.
+- Added this session: AI questions in the Island (Claude Code hooks, `src-tauri/src/ask/`, `ui/src/island/modules/Ask.svelte`; off by default, switch in Settings, Island; tested live with a fake question in both dock modes, not with a real Claude Code run), taller question menu with an expand button in both modes, Open buttons on tool pages (`src-tauri/src/tools.rs`).
+- Stuck Cleaner and Uninstaller pages were slowness, not hangs: Uninstaller list 6 s, Cleaner 40 s (Temp files is 37 GB). Cleaner now measures in parallel and streams each category (`apps-clean://category`). Ports and the Alt+Tab complaint were not found to be broken in testing.
+- Test trick: start `notifi.exe` with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, then drive any window over CDP (no clicks on the user's screen). `open_settings_section` opens Settings from the Island window.
+- Not done: real Claude Code run against the ask hooks; live pass of waves 1 to 4; Linux; items under Known gaps.
