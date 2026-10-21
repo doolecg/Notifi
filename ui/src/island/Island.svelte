@@ -14,6 +14,7 @@
   import Ask from './modules/Ask.svelte';
   import Calendar from './modules/Calendar.svelte';
   import Camera from './modules/Camera.svelte';
+  import Chat from './modules/Chat.svelte';
   import Captures from './modules/Captures.svelte';
   import Downloads from './modules/Downloads.svelte';
   import Notifications from './modules/Notifications.svelte';
@@ -248,7 +249,7 @@
     lastModule = module;
     if (layout && !tall && !open) baseH = layout.open[1];
     // Questions get the tall menu so options and a reply box fit.
-    if (module === 'ask' && !tall) {
+    if ((module === 'ask' || module === 'chat') && !tall) {
       await invoke('island_tall', { tall: true }).catch(() => {});
       tall = true;
     }
@@ -268,6 +269,8 @@
     if (!open || collapsing) return;
     collapsing = true;
     expanded = false;
+    // The chat is a separate page over the menu, so it goes first.
+    if (module === 'chat') invoke('chat_hide').catch(() => {});
     shrinkTimer = setTimeout(() => {
       collapsing = false;
       open = false;
@@ -290,12 +293,16 @@
   function setModule(id: string) {
     module = id;
     lastModule = id;
+    // The chat needs the room of the tall menu.
+    if (id === 'chat' && !tall) toggleTall();
   }
 
   function press(id: string) {
     if (OUTSIDE.has(id)) {
       runOutside(id);
       collapse();
+    } else if (id === 'dictate') {
+      invoke('chat_dictate').catch(() => {});
     } else if (id === 'volume') {
       setModule('controls');
     } else {
@@ -341,7 +348,8 @@
     clearTimeout(hoverOff);
     hoverOff = setTimeout(() => (hovering = false), 200);
     clearTimeout(hoverTimer);
-    if (open && !layout?.dock) collapseTimer = setTimeout(collapse, cfg?.collapseDelayMs ?? 600);
+    // The chat is its own page over the menu, so the pointer is always "off" the menu while using it.
+    if (open && !layout?.dock && module !== 'chat') collapseTimer = setTimeout(collapse, cfg?.collapseDelayMs ?? 600);
   }
 
   let lastWheel = 0;
@@ -404,8 +412,8 @@
   const dock = $derived(!!layout?.dock);
   /** The buttons are a tab strip along the top of the open menu: modules as tabs, the rest as icons at the right. */
   const strip = $derived.by(() => {
-    const ids = [...new Set(['nook', ...(cfg?.orbitLeft ?? []), ...(cfg?.orbitRight ?? []), ...(cfg?.orbitBottom ?? [])])];
-    return { tabs: ids.filter((id) => !OUTSIDE.has(id)), actions: ids.filter((id) => OUTSIDE.has(id)) };
+    const ids = [...new Set(['nook', ...(cfg?.chatEnabled ? ['chat'] : []), ...(cfg?.orbitLeft ?? []), ...(cfg?.orbitRight ?? []), ...(cfg?.orbitBottom ?? [])])];
+    return { tabs: ids.filter((id) => !OUTSIDE.has(id)), actions: [...(cfg?.chatEnabled && module === 'chat' ? ['dictate'] : []), ...ids.filter((id) => OUTSIDE.has(id))] };
   });
   const buttonInfo = (id: string) =>
     id === 'nook' ? { label: 'Nook', icon: 'home' } : (BUTTONS[id] ?? { label: snap?.modules.find((m) => m.id === id)?.label ?? id, icon: MODULE_ICONS[id] ?? 'utilities' });
@@ -508,8 +516,10 @@
     <Timer />
   {:else if module === 'agents'}
     <Agents />
+  {:else if module === 'chat'}
+    <Chat onAsk={() => setModule('ask')} />
   {:else if module === 'ask'}
-    <Ask onDone={collapse} />
+    <Ask onDone={collapse} onChat={cfg?.chatEnabled ? () => setModule('chat') : undefined} />
   {:else if module === 'mixer'}
     <Mixer />
   {:else if module === 'system'}

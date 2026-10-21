@@ -5,6 +5,7 @@ mod apps_clean;
 mod ask;
 mod camera;
 mod capture;
+mod chat;
 mod catalog;
 mod clipboard;
 mod commandbar;
@@ -219,6 +220,10 @@ fn main() {
             island::watch::watch_read,
             island::island_focus,
             island::island_open_agents,
+            island::island_open_chat,
+            chat::chat_show,
+            chat::chat_hide,
+            chat::chat_dictate,
             island::island_media,
             island::lyrics::island_lyrics,
             island::island_timer,

@@ -3,7 +3,9 @@
 
   // Island-only line icons on the same 24 x 24 grid as the panel's.
   const own: Record<string, string> = {
-    bag: 'M6 8h12l-1 11.5H7Z M9 8V6.5a3 3 0 0 1 6 0V8',
+    chat: 'M5 6.5h14v9.5H11.5L7.5 19.5V16H5Z M8.5 10h7 M8.5 12.8h4',
+    mic: 'M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z M6 11a6 6 0 0 0 12 0 M12 17v3',
+    bag:'M6 8h12l-1 11.5H7Z M9 8V6.5a3 3 0 0 1 6 0V8',
     car: 'M5 15.5V12l1.8-4.5h10.4L19 12v3.5 M5 12h14 M5 15.5h14 M7.5 18.5v-3 M16.5 18.5v-3',
     home:'M4.5 11 12 4.5l7.5 6.5 M6.5 9.5v10h11v-10 M10 19.5v-5h4v5',
     music: 'M9 17.5V6l10-2v11.5 M9 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z M19 15.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z',

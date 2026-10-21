@@ -3,6 +3,7 @@
   import { onMount, untrack } from 'svelte';
   import { applyCssVars, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
+  import Glyph from '../island/Glyph.svelte';
   import Logo from '../island/Logo.svelte';
   import PixelBar from '../island/PixelBar.svelte';
   import { island } from '../island/state.svelte';
@@ -95,7 +96,7 @@
 
 {#if snap?.enabled && cfg}
   <div class="root" class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
-    <button class="pill" style:--fc={pixelColor} onclick={click}>
+    <button class="pill" class:with-chat={cfg.chatEnabled} style:--fc={pixelColor} onclick={click}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
         <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
@@ -121,6 +122,9 @@
         <span class="count">No sessions</span>
       {/if}
     </button>
+    {#if cfg.chatEnabled}
+      <button class="chat" title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
+    {/if}
   </div>
 {/if}
 
@@ -163,6 +167,30 @@
     font: inherit;
     overflow: hidden;
     cursor: pointer;
+  }
+  .pill.with-chat {
+    padding-right: 44px;
+  }
+  .chat {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--i-mut);
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+  .chat:hover {
+    background: color-mix(in srgb, var(--i-fg), transparent 88%);
+    color: var(--i-fg);
   }
   .pill::before {
     content: '';

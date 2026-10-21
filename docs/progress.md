@@ -121,3 +121,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - The mp3's licence is the Pixabay content licence (free to use, not open source); the file name says Universfield. Not checked in the running app by ear.
 
 - The notification chime now plays in Windows' 'System sounds' audio session (PlaySound with SND_SYSTEM), so it follows the System sounds slider and mute in the volume mixer. Checked: while it played, the mixer showed activity on 'System sounds' (peak 0.29) and no Notifi session.
+
+## AI chat in the Island
+- Spec: spec/apps/chat-host.md. Code: src-tauri/src/chat/mod.rs, ui/src/island/modules/Chat.svelte. Off by default: Island > Content > AI chat button (carries the disclaimers).
+- An AI chat tab in the Island opens T3 Code's own chat inside the tall menu, as a second webview over the menu (not an iframe: T3's sign-in cookie is blocked in frames, tested). Sessions, project, model and effort, prompt box and panels are T3's. Uses tauri's 'unstable' feature for the child webview.
+- Sign-in: one-time link from 't3 auth pairing create --json', once per run of Notifi. It gives the chat full T3 access.
+- Opens on the last chat (the chat address is saved in the app data folder). Dictate button sends Win+H. The AI question menu has a 'Prompt chat' button and the chat has 'Questions (n)'. The taskbar AI Agents bar has a chat button.
+- Checked live: chat opens in the Island, signed in, shows T3's sidebar and prompt box; after restarting Notifi it came back to the last chat. Not checked: dictation, the question-to-chat switch, light taskbar, dock mode, typing in the chat. Other hosts (Operant, OpenCode, Claude) are not built.

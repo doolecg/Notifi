@@ -42,6 +42,7 @@ export interface IslandConfig {
   dynamicNotifications: boolean;
   dynamicOther: boolean;
   dynamicApps: string[];
+  chatEnabled: boolean;
   activitySound: boolean;
   alertsInIsland: boolean;
   privacyMode: boolean;
@@ -95,6 +96,7 @@ export const DEFAULT_CONFIG: IslandConfig = {
   dynamicNotifications: false,
   dynamicOther: false,
   dynamicApps: ['Just Eat', 'Uber Eats', 'Uber', 'Deliveroo'],
+  chatEnabled: false,
   activitySound: true,
   alertsInIsland: true,
   privacyMode: false,
@@ -341,6 +343,8 @@ export const BUTTONS: Record<string, { label: string; icon: string }> = {
   mixer: { label: 'Volume mixer', icon: 'mixer' },
   keepAwake: { label: 'Keep awake', icon: 'keepAwake' },
   calendar: { label: 'Calendar', icon: 'calendar' },
+  chat: { label: 'AI chat', icon: 'chat' },
+  dictate: { label: 'Dictate (Windows voice typing)', icon: 'mic' },
 };
 
 export const MODULE_ICONS: Record<string, string> = {

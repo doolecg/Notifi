@@ -6,7 +6,7 @@
   import Logo from '../Logo.svelte';
   import { island } from '../state.svelte';
 
-  let { onDone }: { onDone: () => void } = $props();
+  let { onDone, onChat }: { onDone: () => void; onChat?: () => void } = $props();
 
   let at = $state(0);
   const ask = $derived(island.asks[Math.min(at, island.asks.length - 1)]);
@@ -80,6 +80,9 @@
           <small>{Math.min(at, island.asks.length - 1) + 1} / {island.asks.length}</small>
           <button class="icon next" aria-label="Next" disabled={at >= island.asks.length - 1} onclick={() => (at = Math.min(island.asks.length - 1, at + 1))}><Glyph name="back" size={14} /></button>
         </span>
+      {/if}
+      {#if onChat}
+        <button class="chat-switch" onclick={onChat}><Glyph name="chat" size={14} />Prompt chat</button>
       {/if}
     </header>
 
@@ -167,6 +170,22 @@
   }
   .pager .next :global(svg) {
     transform: scaleX(-1);
+  }
+  .chat-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--i-fg), transparent 90%);
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .chat-switch:hover {
+    background: color-mix(in srgb, var(--i-fg), transparent 82%);
   }
   .body {
     flex: 1;

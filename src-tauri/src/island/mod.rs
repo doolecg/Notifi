@@ -999,12 +999,19 @@ pub fn island_open_agents(app: AppHandle) {
     run_action(&app, "islandModuleAgents");
 }
 
+/// The taskbar bar's chat button: open the Island on the AI chat.
+#[tauri::command]
+pub fn island_open_chat(app: AppHandle) {
+    run_action(&app, "islandChat");
+}
+
 /// Runs a keybind action (`island…` ids from keybinds.rs).
 pub fn run_action(app: &AppHandle, action: &str) {
     if !config(app).enabled {
         return;
     }
     let command = match action {
+        "islandChat" => "module:chat".to_string(),
         "islandToggle" => "toggle".to_string(),
         other => match other.strip_prefix("islandModule") {
             Some(m) => format!("module:{}", lower_first(m)),

@@ -84,6 +84,8 @@ pub struct IslandConfig {
     pub dynamic_other: bool,
     /// Services followed as live progress, by name.
     pub dynamic_apps: Vec<String>,
+    /// A chat button on the Island and the AI Agents bar that opens the AI chat window.
+    pub chat_enabled: bool,
     /// Notifi's notifications make a deep click.
     pub activity_sound: bool,
     /// Notifi's own alerts show on the Island instead of as Windows toasts.
@@ -152,6 +154,7 @@ impl Default for IslandConfig {
             dynamic_notifications: false,
             dynamic_other: false,
             dynamic_apps: ["Just Eat", "Uber Eats", "Uber", "Deliveroo"].map(String::from).to_vec(),
+            chat_enabled: false,
             activity_sound: true,
             alerts_in_island: true,
             privacy_mode: false,

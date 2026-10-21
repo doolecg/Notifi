@@ -30,6 +30,7 @@ pub const ACTIONS: &[Action] = &[
     Action { id: "islandModuleTimer", label: "Island: Timer", default_accel: "" },
     Action { id: "islandModuleAgents", label: "Island: AI Agents", default_accel: "" },
     Action { id: "islandModuleGrid", label: "Island: module grid", default_accel: "" },
+    Action { id: "islandChat", label: "Island: AI chat", default_accel: "" },
     Action { id: "mediaPlayPause", label: "Media: play or pause", default_accel: "MediaPlayPause" },
     Action { id: "mediaNext", label: "Media: next track", default_accel: "MediaTrackNext" },
     Action { id: "mediaPrevious", label: "Media: previous track", default_accel: "MediaTrackPrevious" },

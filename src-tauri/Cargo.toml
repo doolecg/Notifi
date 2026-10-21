@@ -11,7 +11,7 @@ tauri-build = { version = "2", features = [] }
 notifi-core = { path = "../crates/core" }
 notifi-platform = { path = "../crates/platform" }
 sysinfo = { version = "0.39", default-features = false, features = ["component", "disk", "network", "system", "user"] }
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "unstable"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"

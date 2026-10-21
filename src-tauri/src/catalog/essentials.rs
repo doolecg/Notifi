@@ -137,6 +137,9 @@ pub const PAGES: &[Page] = &[
                 sw("askInIsland", "Show AI questions in the Island", "When Claude Code asks you something or needs permission, it appears in the Island so you can answer there.", false),
                 custom("askHooks", "Claude Code link", "Adds or removes Notifi's hooks in your Claude Code settings. Your other hooks are kept."),
             ]),
+            tab_card("Content", "AI chat", &[
+                sw("chatEnabled", "AI chat button", "Adds an AI chat tab and a dictate button to the Island, and a chat button to the taskbar AI Agents bar. The chat opens inside the Island and is T3 Code's own chat, so T3 Code must be installed and running. Notifi asks T3 Code for a one-time pairing link, the same as pairing a phone, which gives that window full access to your T3 Code, including your projects and files. Dictation uses Windows voice typing (Win+H): it needs Windows 10 or 11 with online speech recognition turned on and a microphone, and Microsoft processes your speech. Operant, OpenCode and Claude are not supported yet.", false),
+            ]),
             tab_card("Content", "AI agents", &[
                 custom("claudeUsage", "Claude usage", "Show your real 5 hour and weekly limits from your Claude Code login."),
                 num("claudePlanLimitUsd", "Claude plan limit per session", "API value of one 5-hour session on your plan. 0 shows elapsed time instead.", 0.0, 1000.0, 1.0, "$", 0.0),
@@ -189,7 +192,7 @@ pub const PAGES: &[Page] = &[
                 sw("lockedNotice", "Show a short notice before locking", "", false),
             ] },
         ],
-        specs: &["apps/dynamic-notifications.md", "everyday/island.md", "everyday/top-pill.md", "everyday/companion.md", "everyday/watch.md", "everyday/lock-screen.md"],
+        specs: &["apps/chat-host.md", "apps/dynamic-notifications.md","everyday/island.md", "everyday/top-pill.md", "everyday/companion.md", "everyday/watch.md", "everyday/lock-screen.md"],
         ..PAGE
     },
     super::monitor::MONITOR,
