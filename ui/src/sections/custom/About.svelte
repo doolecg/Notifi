@@ -21,6 +21,12 @@
     <span class="name">Licence<small>MIT. Free and open source.</small></span>
   </div>
   <div class="row">
+    <span class="name">No warranty<small>Provided "as is", without warranty, under the MIT licence. To the extent permitted by law, the authors are not liable for any loss or damage from using it. Back up your work.</small></span>
+  </div>
+  <div class="row">
+    <span class="name">Not affiliated<small>Notifi is not made by, affiliated with or endorsed by Vorssaint, Anthropic, OpenAI, GitHub, the makers of T3 Code or OpenCode, Microsoft, Spotify or Amazon. Their names belong to their owners and are only used to say what Notifi works with. AI agents' output can be wrong; check it before relying on it.</small></span>
+  </div>
+  <div class="row">
     <span class="name">Clean room<small>Written only from behaviour specs drawn from public docs and screenshots. No other project's code is read or copied. The name, icon and look are Notifi's own.</small></span>
   </div>
   <div class="row">

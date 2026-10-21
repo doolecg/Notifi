@@ -19,6 +19,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tauri-plugin-http = "2"
 sha2 = "0.10"
+# Already built in for HTTPS; used directly to check update signatures.
+ring = "0.17"
 rusqlite = { version = "0.32", features = ["bundled"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp", "avif"] }
 rqrr = { version = "0.11", default-features = false }

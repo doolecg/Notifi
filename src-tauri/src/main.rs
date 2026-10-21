@@ -167,6 +167,7 @@ fn main() {
             updater::install_update,
             updater::open_release_page,
             updater::open_release_notes,
+            updater::update_notes,
             panel::panel_status,
             window::open_settings_section,
             panel::panel_resize,

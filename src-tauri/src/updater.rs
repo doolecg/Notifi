@@ -17,6 +17,10 @@ use tauri_plugin_http::reqwest;
 use crate::{settings, tray};
 
 const REPO: &str = "doolecg/notifi";
+/// The Ed25519 public key (hex) whose private half signs every installer (`scripts/sign-update.mjs`).
+/// An installer is only used when its `.sig` beside it on the release checks out against this key,
+/// so a changed or swapped file is refused even if it came from GitHub.
+const UPDATE_KEY: &str = "c2f83aa02f15a99b44433938ddcf3617ac59727d09bcb2fe1baf6a11ace6a799";
 const STATUS_EVENT: &str = "updater://status";
 const STARTUP_DELAY: Duration = Duration::from_secs(8);
 
@@ -46,6 +50,16 @@ struct Release {
     html_url: String,
     #[serde(default)]
     assets: Vec<Asset>,
+    /// The release notes, as Markdown.
+    #[serde(default)]
+    body: Option<String>,
+}
+
+/// The newest release's notes, for the settings page.
+#[derive(Serialize, Clone)]
+pub struct Notes {
+    version: String,
+    markdown: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -69,6 +83,7 @@ fn platform_kind() -> Kind {
 pub struct Updater {
     status: Mutex<Status>,
     ready: Mutex<Option<PathBuf>>,
+    notes: Mutex<Option<Notes>>,
     busy: AtomicBool,
     installing: AtomicBool,
 }
@@ -78,6 +93,7 @@ impl Default for Updater {
         Self {
             status: Mutex::new(Status::Idle),
             ready: Mutex::new(None),
+            notes: Mutex::new(None),
             busy: AtomicBool::new(false),
             installing: AtomicBool::new(false),
         }
@@ -117,6 +133,26 @@ fn pick_asset(assets: &[Asset], kind: Kind) -> Option<&Asset> {
 fn expected_sha256(digest: Option<&str>) -> Option<String> {
     let hex = digest?.strip_prefix("sha256:")?.to_ascii_lowercase();
     (hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(hex)
+}
+
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok()).collect()
+}
+
+/// Whether `sig` (hex) is the update key's signature of `data`.
+fn signed(data: &[u8], sig: &str) -> bool {
+    use ring::signature::{UnparsedPublicKey, ED25519};
+    let (Some(key), Some(sig)) = (unhex(UPDATE_KEY), unhex(sig)) else { return false };
+    UnparsedPublicKey::new(&ED25519, key).verify(data, &sig).is_ok()
+}
+
+/// Only files on this project's own GitHub releases are fetched.
+fn from_release(url: &str) -> bool {
+    url.to_ascii_lowercase().starts_with(&format!("https://github.com/{REPO}/releases/download/"))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -172,10 +208,15 @@ async fn fetch_latest(client: &reqwest::Client) -> Result<Release, String> {
     }
 }
 
-async fn download(app: &AppHandle, client: &reqwest::Client, asset: &Asset, version: &str) -> Result<PathBuf, String> {
+/// Downloads the installer and keeps it only when its digest matches and its signature checks out.
+async fn download(app: &AppHandle, client: &reqwest::Client, asset: &Asset, sig: &Asset, version: &str) -> Result<PathBuf, String> {
     let Some(expected) = expected_sha256(asset.digest.as_deref()) else {
         return Err("The release has no SHA-256 digest, so it was not downloaded".into());
     };
+    if !from_release(&asset.browser_download_url) || !from_release(&sig.browser_download_url) {
+        return Err("The update is not on Notifi's own release page, so it was not downloaded".into());
+    }
+    let signature = fetch_signature(client, sig).await?;
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("updates");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = safe_name(&asset.name);
@@ -183,7 +224,7 @@ async fn download(app: &AppHandle, client: &reqwest::Client, asset: &Asset, vers
     let part_path = dir.join(format!("{name}.part"));
 
     if hash_file(&final_path).is_ok_and(|h| h == expected) {
-        return Ok(final_path);
+        return check_signature(final_path, &signature);
     }
     let _ = fs::remove_file(&final_path);
 
@@ -227,7 +268,30 @@ async fn download(app: &AppHandle, client: &reqwest::Client, asset: &Asset, vers
         return Err("The download did not match its SHA-256 digest and was discarded".into());
     }
     fs::rename(&part_path, &final_path).map_err(|e| e.to_string())?;
-    Ok(final_path)
+    check_signature(final_path, &signature)
+}
+
+async fn fetch_signature(client: &reqwest::Client, sig: &Asset) -> Result<String, String> {
+    // A hex Ed25519 signature is 128 characters; anything much bigger is not one.
+    if sig.size > 1024 {
+        return Err("The update's signature file is the wrong size, so it was not downloaded".into());
+    }
+    let response = client.get(&sig.browser_download_url).timeout(Duration::from_secs(30)).send().await.map_err(|e| format!("Download failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("Download failed: GitHub answered {}", response.status().as_u16()));
+    }
+    response.text().await.map_err(|e| format!("Download failed: {e}"))
+}
+
+/// Keeps the file only when it is signed with the update key; otherwise it is deleted.
+fn check_signature(path: PathBuf, signature: &str) -> Result<PathBuf, String> {
+    let data = fs::read(&path).map_err(|e| e.to_string())?;
+    if signed(&data, signature) {
+        Ok(path)
+    } else {
+        let _ = fs::remove_file(&path);
+        Err("The update's signature did not check out, so it was discarded".into())
+    }
 }
 
 async fn run_check(app: &AppHandle) -> Status {
@@ -241,6 +305,7 @@ async fn run_check(app: &AppHandle) -> Status {
         Err(message) => return Status::Error { message },
     };
     let version = release.tag_name.trim().trim_start_matches(['v', 'V']).to_string();
+    *app.state::<Updater>().notes.lock().unwrap() = Some(Notes { version: version.clone(), markdown: release.body.clone().unwrap_or_default() });
     if !is_newer(&version, &current) {
         return Status::UpToDate;
     }
@@ -252,8 +317,12 @@ async fn run_check(app: &AppHandle) -> Status {
             Status::Error { message: format!("Version {version} has no installer for this system") }
         };
     };
+    let sig_name = format!("{}.sig", asset.name);
+    let Some(sig) = release.assets.iter().find(|a| a.name == sig_name) else {
+        return Status::Error { message: format!("Version {version} is not signed, so it was not downloaded") };
+    };
     set_status(app, Status::Downloading { version: version.clone(), percent: 0 });
-    match download(app, &client, asset, &version).await {
+    match download(app, &client, asset, sig, &version).await {
         Ok(path) => {
             *app.state::<Updater>().ready.lock().unwrap() = Some(path);
             Status::Ready { version }
@@ -299,15 +368,21 @@ pub fn start(app: &AppHandle) {
     });
 }
 
+/// Runs the installer once Notifi has quit; with `restart`, starts the updated Notifi when it is done.
 #[cfg(windows)]
-fn launch_installer(path: &Path) -> Result<(), String> {
+fn launch_installer(path: &Path, restart: bool) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    std::process::Command::new("msiexec")
-        .arg("/i")
-        .arg(path)
-        .arg("/passive")
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // Both paths come from Windows (the cache folder and this program), never from the release, and are quoted for cmd.
+    let quoted = |p: &Path| format!("\"{}\"", p.display());
+    let mut line = format!("/c start \"\" /wait msiexec /i {} /passive /norestart", quoted(path));
+    if restart {
+        line += &format!(" & start \"\" {}", quoted(&exe));
+    }
+    std::process::Command::new("cmd")
+        .raw_arg(line)
         .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
@@ -315,7 +390,7 @@ fn launch_installer(path: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn launch_installer(path: &Path) -> Result<(), String> {
+fn launch_installer(path: &Path, _restart: bool) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     let target = PathBuf::from(std::env::var_os("APPIMAGE").ok_or("Not running as an AppImage")?);
     let mut staged = target.clone().into_os_string();
@@ -333,10 +408,7 @@ fn relaunch() {
     }
 }
 
-#[cfg(windows)]
-fn relaunch() {}
-
-fn install(app: &AppHandle) -> Result<(), String> {
+fn install(app: &AppHandle, restart: bool) -> Result<(), String> {
     let updater = app.state::<Updater>();
     let Some(path) = updater.ready.lock().unwrap().clone() else {
         return Err("No update is ready".into());
@@ -344,21 +416,23 @@ fn install(app: &AppHandle) -> Result<(), String> {
     if updater.installing.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
-    launch_installer(&path).inspect_err(|_| updater.installing.store(false, Ordering::SeqCst))
+    launch_installer(&path, restart).inspect_err(|_| updater.installing.store(false, Ordering::SeqCst))
 }
 
-/// Runs on app exit: installs a ready update when the user chose install-on-quit.
+/// Runs on app exit: installs a ready update when the user chose install-on-quit (Notifi stays closed after).
 pub fn on_exit(app: &AppHandle) {
     let on_quit = app.state::<settings::Store>().get().general.install_on_quit;
     let ready = matches!(*app.state::<Updater>().status.lock().unwrap(), Status::Ready { .. });
     if on_quit && ready {
-        let _ = install(app);
+        let _ = install(app, false);
     }
 }
 
+/// The Install button: install, then start the new version.
 pub fn install_and_exit(app: &AppHandle) {
-    match install(app) {
+    match install(app, true) {
         Ok(()) => {
+            #[cfg(not(windows))]
             relaunch();
             app.exit(0);
         }
@@ -389,6 +463,18 @@ pub fn open_release_page(updater: State<Updater>) -> Result<(), String> {
     open_url(&url)
 }
 
+/// The newest release's notes; fetched now when no check has run yet.
+#[tauri::command]
+pub async fn update_notes(app: AppHandle) -> Result<Notes, String> {
+    if let Some(notes) = app.state::<Updater>().notes.lock().unwrap().clone() {
+        return Ok(notes);
+    }
+    let release = fetch_latest(&client()?).await?;
+    let notes = Notes { version: release.tag_name.trim().trim_start_matches(['v', 'V']).to_string(), markdown: release.body.unwrap_or_default() };
+    *app.state::<Updater>().notes.lock().unwrap() = Some(notes.clone());
+    Ok(notes)
+}
+
 #[tauri::command]
 pub fn open_release_notes() -> Result<(), String> {
     open_url(&format!("https://github.com/{REPO}/releases/latest"))
@@ -416,6 +502,27 @@ mod tests {
 
     fn asset(name: &str) -> Asset {
         Asset { name: name.into(), size: 1, digest: None, browser_download_url: String::new() }
+    }
+
+    #[test]
+    fn only_signed_files_from_our_releases_pass() {
+        // Signed with a throwaway Ed25519 key (RFC 8032 test 1); the real key would reject it.
+        const TEST_KEY: &str = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+        const TEST_SIG: &str = "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b";
+        use ring::signature::{UnparsedPublicKey, ED25519};
+        assert!(UnparsedPublicKey::new(&ED25519, unhex(TEST_KEY).unwrap()).verify(b"", &unhex(TEST_SIG).unwrap()).is_ok());
+        assert!(!signed(b"", TEST_SIG));
+        // Made by scripts/sign-update.mjs with the real key: the script and UPDATE_KEY belong together.
+        let real = "ae66cdf2f78e36658ab0f5c2d386e7aa496048630d44b9e758a9e43c044137304ac2ad499339c9a1e1680c44fa19bf84b6acc3271e69458d434817e6284fab09";
+        assert!(signed(b"notifi", real));
+        assert!(!signed(b"notifj", real));
+        assert!(!signed(b"", "not hex"));
+        assert_eq!(unhex("0aFf"), Some(vec![0x0a, 0xff]));
+        assert_eq!(unhex("abc"), None);
+        assert!(from_release("https://github.com/doolecg/Notifi/releases/download/0.3.0/Notifi_0.3.0_x64_en-US.msi"));
+        assert!(!from_release("https://github.com/someone/notifi/releases/download/0.3.0/x.msi"));
+        assert!(!from_release("http://github.com/doolecg/notifi/releases/download/0.3.0/x.msi"));
+        assert!(!from_release("https://github.com.evil.example/doolecg/notifi/releases/download/x.msi"));
     }
 
     #[test]
