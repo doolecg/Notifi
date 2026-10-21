@@ -7,6 +7,7 @@
   import Packages from './Packages.svelte';
   import Ports from './Ports.svelte';
   import Processes from './Processes.svelte';
+  import Space from './Space.svelte';
   import Updates from './Updates.svelte';
   import './view.css';
 
@@ -15,6 +16,7 @@
     { id: 'packages', label: 'Package manager' },
     { id: 'ports', label: 'Ports' },
     { id: 'processes', label: 'Processes' },
+    { id: 'space', label: 'Disk space' },
   ];
 
   let view = $state(location.hash.slice(1) || 'updates');
@@ -59,8 +61,10 @@
           <Packages />
         {:else if active === 'ports'}
           <Ports />
-        {:else}
+        {:else if active === 'processes'}
           <Processes />
+        {:else}
+          <Space />
         {/if}
       </div>
     {/key}

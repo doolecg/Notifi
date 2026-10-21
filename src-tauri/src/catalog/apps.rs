@@ -131,4 +131,23 @@ pub const PAGES: &[Page] = &[
         specs: &["apps/port-manager.md", "apps/kill-process.md"],
         ..PAGE
     },
+    Page {
+        id: "spaceMap",
+        label: "Disk space",
+        icon: "apps",
+        blurb: "A map of where the space on a drive went, with filters, colour tags and a text report.",
+        tool: true,
+        cards: &[
+            card("Scan", &[
+                text("startRoot", "Folder or drive to open first", "Leave empty to use the last one scanned.", "C:\\", ""),
+                num("smallKb", "Smallest file drawn on its own", "Smaller files are merged into one block per folder. Name filters do not see them.", 0.0, 4096.0, 1.0, "KB", 16.0),
+                sw("showHidden", "Include hidden and system files", "", true),
+            ]),
+            card("Report", &[
+                num("reportDepth", "Folder levels in the text report", "", 1.0, 6.0, 1.0, "", 3.0),
+            ]),
+        ],
+        specs: &["apps/space-map.md"],
+        ..PAGE
+    },
 ];

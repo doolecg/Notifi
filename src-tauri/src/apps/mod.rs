@@ -1,5 +1,5 @@
 //! App management tools (spec/apps/app-updates.md, package-manager.md, port-manager.md,
-//! kill-process.md): one tools window with Updates, Packages, Ports and Processes views.
+//! kill-process.md): one tools window with Updates, Packages, Ports, Processes and Disk space views.
 
 mod exec;
 mod flatpak;
@@ -11,6 +11,7 @@ pub mod process;
 pub mod rules;
 mod scoop;
 pub mod scoop_deps;
+pub mod space;
 mod table;
 pub mod updates;
 mod version;
@@ -31,6 +32,7 @@ pub struct AppsState {
     updates: Mutex<Option<updates::UpdatesResult>>,
     jobs: jobs::Jobs,
     procs: process::ProcState,
+    space: space::SpaceState,
 }
 
 /// Reads one option of a feature namespace from the settings store.
@@ -53,6 +55,7 @@ const VIEWS: &[(&str, &str)] = &[
     ("packageManager", "packages"),
     ("portManager", "ports"),
     ("killProcess", "processes"),
+    ("spaceMap", "space"),
 ];
 
 /// Opens (or raises) the tools window on `view`.

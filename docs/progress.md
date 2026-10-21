@@ -71,3 +71,7 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Stuck Cleaner and Uninstaller pages were slowness, not hangs: Uninstaller list 6 s, Cleaner 40 s (Temp files is 37 GB). Cleaner now measures in parallel and streams each category (`apps-clean://category`). Ports and the Alt+Tab complaint were not found to be broken in testing.
 - Test trick: start `notifi.exe` with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, then drive any window over CDP (no clicks on the user's screen). `open_settings_section` opens Settings from the Island window.
 - Not done: real Claude Code run against the ask hooks; live pass of waves 1 to 4; Linux; items under Known gaps.
+
+## Disk space (space map)
+- New Disk space tab in the App tools window, feature id `spaceMap`: scanner `src-tauri/src/apps/space.rs`, UI `ui/src/apps/Space.svelte` and `space-layout.ts`, spec `spec/apps/space-map.md`. Clean-room from the public SpaceSniffer page only.
+- Tried live: scan, nested treemap, filter, tags, text report, C: drive scan stays responsive. Not built: NTFS alternate streams, several views, saved filters, MFT reading.
