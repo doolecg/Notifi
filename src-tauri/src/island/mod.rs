@@ -501,14 +501,23 @@ fn place(app: &AppHandle) {
         // Open, the island floats above the taskbar; resting, it sits inside it.
         let (w, h) = if open { (l.window.0.max(rest.0), l.window.1 - layout::DOCK_GAP + bar + layout::FLY_GAP) } else { (rest.0, rest.1 + 2.0 * layout::DOCK_GAP) };
         let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, w, h);
-        set_rect(&win, x, y, pw, ph);
+        set_island_rect(app, &win, x, y, pw, ph);
         #[cfg(windows)]
         raise(&win);
         return;
     }
     let (w, h) = if open { l.window } else { layout::bounds(l.window.0.max(rest.0), &layout::shape(l.window.0.max(rest.0), rest, rest.1 / 2.0, &[])) };
     let (x, y, pw, ph) = top_centre(mon_rect(&mon), mon.scale_factor(), w, h);
-    set_rect(&win, x, y, pw, ph);
+    set_island_rect(app, &win, x, y, pw, ph);
+}
+
+/// The chat sits at a fixed spot in the window, so when the window moves it is moved back the same amount and stays still on screen.
+fn set_island_rect(app: &AppHandle, win: &tauri::Window, x: i32, y: i32, w: u32, h: u32) {
+    let before = win.outer_position().ok();
+    set_rect(win, x, y, w, h);
+    if let Some(b) = before {
+        crate::chat::shift(app, b.x - x, b.y - y);
+    }
 }
 
 /// The AI Agents bar sits at the taskbar's left, as tall as the taskbar.

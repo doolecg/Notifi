@@ -171,6 +171,14 @@ impl Sampler {
     }
 }
 
+/// A graphics card with 2 GB or more of its own memory, for effects that cost GPU time.
+pub fn strong() -> bool {
+    #[cfg(windows)]
+    return win::adapters().iter().any(|a| a.dedicated >= 2 << 30);
+    #[cfg(not(windows))]
+    false
+}
+
 #[cfg(windows)]
 mod win {
     use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};

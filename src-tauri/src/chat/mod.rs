@@ -2,10 +2,18 @@
 //! The page is a child webview of the Island window, so it is a normal first-party page (its sign-in cookie
 //! works) and it gets no access to Notifi's commands. Version 1 hosts T3 Code only.
 
-use std::{path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, OnceLock,
+    },
+    time::Duration,
+};
 
+use serde::Deserialize;
 use serde_json::Value;
-use tauri::{webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl};
+use tauri::{webview::WebviewBuilder, AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl};
 use tauri_plugin_http::reqwest;
 
 use crate::island;
@@ -13,6 +21,8 @@ use crate::island;
 /// Label of the chat webview inside the Island window.
 const WEBVIEW: &str = "chat";
 const PAIR_TTL: &str = "2m";
+/// Never loaded: the chat page asks for it on Escape and Notifi closes the Island instead.
+const CLOSE_URL: &str = "https://notifi.invalid/close";
 
 /// Where a host's chat page is, found from files and the local server, never from the network.
 struct Host {
@@ -26,6 +36,43 @@ static PAIRED: Mutex<Option<String>> = Mutex::new(None);
 
 /// A chat to open next, as its address; used when a session button asks for one and the chat has not been started yet.
 static WANT: Mutex<Option<String>> = Mutex::new(None);
+
+/// Whether the chat is on screen (not parked), so it only moves in when it was away.
+static VISIBLE: AtomicBool = AtomicBool::new(false);
+
+/// Escape and the grow/shrink motion, run in the chat page (it moves itself; see the file).
+const PAGE_JS: &str = include_str!("page.js");
+/// Length of the plain fade out.
+const FADE_OUT_MS: u64 = 140;
+/// Waited after the motion out before parking, so the last frame drawn is the empty one.
+const SETTLE_MS: u64 = 30;
+/// Out of sight, outside the window. The chat is parked here rather than hidden: a hidden view takes about half
+/// a second to draw again when shown, so the motion in would be over before it was seen.
+const PARKED: i32 = -30_000;
+
+/// How the page asks the chat to grow out of, or shrink into, the resting pill: origin and scale in the chat's own pixels, the menu's spring.
+#[derive(Deserialize)]
+pub struct Morph {
+    ox: f64,
+    oy: f64,
+    sx: f64,
+    sy: f64,
+    ms: u64,
+    ease: String,
+}
+
+/// The page call for a motion in or out; blur only on a graphics card that has power to spare.
+fn motion_js(into: bool, morph: Option<&Morph>) -> String {
+    static STRONG: OnceLock<bool> = OnceLock::new();
+    match morph {
+        Some(m) => {
+            let blur = if *STRONG.get_or_init(crate::monitor::gpu::strong) { 8 } else { 0 };
+            let m = serde_json::json!({ "ox": m.ox, "oy": m.oy, "sx": m.sx, "sy": m.sy, "ms": m.ms, "ease": m.ease, "blur": blur });
+            format!("window.__notifi?.morph({into}, {m});")
+        }
+        None => format!("window.__notifi?.fade({into});"),
+    }
+}
 
 /// A T3 Code chat behind a Claude session.
 #[derive(Clone)]
@@ -126,15 +173,20 @@ fn pair_url(origin: &str) -> Result<String, String> {
 }
 
 /// Shows the chat at this rectangle of the Island window (logical pixels), starting it the first time.
-pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
+/// When it was hidden it comes in with `morph`, else fades in.
+pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64, morph: Option<Morph>) -> Result<(), String> {
     if !island::config(app).chat_enabled {
         return Err("Turn on the AI chat button in the Island settings first.".into());
     }
     let (pos, size) = (LogicalPosition::new(x, y), LogicalSize::new(w.max(1.0), h.max(1.0)));
     if let Some(view) = app.get_webview(WEBVIEW) {
+        if !VISIBLE.swap(true, Ordering::SeqCst) {
+            crate::keybinds::give_way(app, &t3_shortcuts());
+            // A frame on, once it is in place.
+            let _ = view.eval(format!("window.__notifi?.hidden(); requestAnimationFrame(() => {{ {} }});", motion_js(true, morph.as_ref())));
+        }
         let _ = view.set_position(pos);
         let _ = view.set_size(size);
-        let _ = view.show();
         return Ok(());
     }
     let window = app.get_window(island::ISLAND).ok_or("The Island is not running.")?;
@@ -142,7 +194,20 @@ pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(),
     let paired = PAIRED.lock().unwrap().as_deref() == Some(host.origin.as_str());
     let first = if paired { format!("{}/", host.origin) } else { pair_url(&host.origin)? };
     let url = first.parse::<tauri::Url>().map_err(|e| e.to_string())?;
-    let view = window.add_child(WebviewBuilder::new(WEBVIEW, WebviewUrl::External(url)), pos, size).map_err(|e| e.to_string())?;
+    // Escape in the page asks for CLOSE_URL (T3 marks every Escape as handled, so the page checks for its popups instead).
+    let closer = app.clone();
+    let builder = WebviewBuilder::new(WEBVIEW, WebviewUrl::External(url))
+        .initialization_script(PAGE_JS.replace("__CLOSE_URL__", CLOSE_URL))
+        .on_navigation(move |u| {
+            if u.as_str() != CLOSE_URL {
+                return true;
+            }
+            let _ = closer.emit_to(island::ISLAND, "island://command", "close");
+            false
+        });
+    let view = window.add_child(builder.transparent(true), pos, size).map_err(|e| e.to_string())?;
+    VISIBLE.store(true, Ordering::SeqCst);
+    crate::keybinds::give_way(app, &t3_shortcuts());
     *PAIRED.lock().unwrap() = Some(host.origin.clone());
     // The chat a session button asked for, else the chat that was open last, once the sign-in has landed on its start page.
     let wanted = WANT.lock().unwrap().take();
@@ -159,9 +224,56 @@ pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(),
     Ok(())
 }
 
-/// Hides the chat, remembering which chat was open so it comes back to it.
-pub fn hide(app: &AppHandle) {
+/// The shortcuts T3 Code uses (its keybindings.json), so Notifi can let go of the same keys while the chat is in front.
+fn t3_shortcuts() -> Vec<tauri_plugin_global_shortcut::Shortcut> {
+    let Some(text) = t3_home().and_then(|h| std::fs::read_to_string(h.join("userdata").join("keybindings.json")).ok()) else { return Vec::new() };
+    let Ok(Value::Array(list)) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
+    list.iter().filter_map(|b| b.get("key")?.as_str().and_then(t3_accel)).filter_map(|a| crate::keybinds::parse(&a).ok()).collect()
+}
+
+/// T3's `mod+shift+n` as Notifi's `Ctrl+Shift+N`; keys without a Ctrl, Alt or Win key are left out (Notifi binds none).
+fn t3_accel(key: &str) -> Option<String> {
+    let parts: Vec<&str> = key.split('+').collect();
+    // `mod++` is mod and the plus key.
+    let (mods, last) = if key.ends_with("++") { (&parts[..parts.len() - 2], "=") } else { parts.split_last().map(|(l, m)| (m, *l))? };
+    let mods: Vec<&str> = mods
+        .iter()
+        .map(|m| match *m {
+            "mod" | "ctrl" => Some("Ctrl"),
+            "shift" => Some("Shift"),
+            "alt" => Some("Alt"),
+            "meta" | "win" => Some("Super"),
+            _ => None,
+        })
+        .collect::<Option<_>>()?;
+    if !mods.iter().any(|m| *m != "Shift") {
+        return None;
+    }
+    let mut key = last.to_string();
+    if let Some(first) = key.get(..1) {
+        key = first.to_uppercase() + &key[1..];
+    }
+    Some(format!("{}+{key}", mods.join("+")))
+}
+
+/// Moves the chat within the Island window by this many physical pixels.
+pub fn shift(app: &AppHandle, dx: i32, dy: i32) {
+    if (dx, dy) == (0, 0) || !VISIBLE.load(Ordering::SeqCst) {
+        return;
+    }
     let Some(view) = app.get_webview(WEBVIEW) else { return };
+    if let Ok(p) = view.position() {
+        let _ = view.set_position(tauri::PhysicalPosition::new(p.x + dx, p.y + dy));
+    }
+}
+
+/// Hides the chat, remembering which chat was open so it comes back to it; `fade` first moves it out with `morph`, else fades it.
+pub async fn hide(app: &AppHandle, fade: bool, morph: Option<Morph>) {
+    let Some(view) = app.get_webview(WEBVIEW) else { return };
+    if !VISIBLE.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    crate::keybinds::take_back(app);
     if let (Ok(url), Some(file)) = (view.url(), last_file(app)) {
         let path = url.path().to_string();
         // A chat's address has two parts (`/<environment>/<thread>`); the check on the way back in does the full test.
@@ -170,7 +282,19 @@ pub fn hide(app: &AppHandle) {
             let _ = std::fs::write(file, path);
         }
     }
-    let _ = view.hide();
+    if fade {
+        let ms = morph.as_ref().map_or(FADE_OUT_MS, |m| m.ms) + SETTLE_MS;
+        let _ = view.eval(motion_js(false, morph.as_ref()));
+        let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(Duration::from_millis(ms))).await;
+        // Opened again while it moved out: the motion in has taken over.
+        if VISIBLE.load(Ordering::SeqCst) {
+            return;
+        }
+    } else {
+        // Parked empty, so nothing old shows for a frame when it comes back.
+        let _ = view.eval("window.__notifi?.hidden();");
+    }
+    let _ = view.set_position(tauri::PhysicalPosition::new(PARKED, PARKED));
 }
 
 /// Starts Windows voice typing in the chat (Win+H).
@@ -196,8 +320,8 @@ pub fn dictate(app: &AppHandle) -> Result<(), String> {
 
 /// The Island's chat page asks for the chat where its empty area is; a problem comes back as text to show there.
 #[tauri::command]
-pub async fn chat_show(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
-    show(&app, x, y, w, h).await
+pub async fn chat_show(app: AppHandle, x: f64, y: f64, w: f64, h: f64, morph: Option<Morph>) -> Result<(), String> {
+    show(&app, x, y, w, h, morph).await
 }
 
 /// A session button: open the Island on this T3 Code chat.
@@ -223,8 +347,8 @@ pub async fn chat_open_thread(app: AppHandle, thread: String) {
 }
 
 #[tauri::command]
-pub fn chat_hide(app: AppHandle) {
-    hide(&app);
+pub async fn chat_hide(app: AppHandle, fade: Option<bool>, morph: Option<Morph>) {
+    hide(&app, fade.unwrap_or(false), morph).await;
 }
 
 #[tauri::command]
@@ -255,6 +379,17 @@ mod tests {
         assert!(!chat_path("/env-1/5e43a3e8-5d91-458a-98eb/extra", "env-1"));
         assert!(!chat_path("/env-1/short", "env-1"));
         assert!(!chat_path("/env-1/5e43a3e8-5d91-458a-98eb", ""));
+    }
+
+    #[test]
+    fn t3_keys_read_as_notifi_shortcuts() {
+        assert_eq!(t3_accel("mod+shift+n").as_deref(), Some("Ctrl+Shift+N"));
+        assert_eq!(t3_accel("mod+alt+enter").as_deref(), Some("Ctrl+Alt+Enter"));
+        assert_eq!(t3_accel("mod++").as_deref(), Some("Ctrl+="));
+        assert_eq!(t3_accel("shift+x"), None);
+        assert_eq!(t3_accel("c"), None);
+        let notifi = crate::keybinds::parse("Ctrl+Shift+N").unwrap();
+        assert_eq!(crate::keybinds::parse(&t3_accel("mod+shift+n").unwrap()).unwrap().id(), notifi.id());
     }
 
     #[test]

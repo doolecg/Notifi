@@ -279,9 +279,8 @@
     clearTimers();
     if (!open || collapsing) return;
     collapsing = true;
+    // The chat (a separate page over the menu) sees `collapsing` and shrinks into the pill alongside it.
     expanded = false;
-    // The chat is a separate page over the menu, so it goes first.
-    if (module === 'chat') invoke('chat_hide').catch(() => {});
     shrinkTimer = setTimeout(() => {
       collapsing = false;
       open = false;
@@ -415,6 +414,8 @@
     if (cmd === 'toggle') {
       if (open && !collapsing) collapse();
       else openIsland();
+    } else if (cmd === 'close') {
+      collapse();
     } else if (cmd === 'open') {
       openIsland();
     } else if (cmd.startsWith('module:')) {
@@ -548,7 +549,7 @@
   {:else if module === 'agents'}
     <Agents />
   {:else if module === 'chat'}
-    <Chat onAsk={() => setModule('ask')} />
+    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h }} onAsk={() => setModule('ask')} />
   {:else if module === 'ask'}
     <Ask onDone={collapse} onChat={cfg?.chatEnabled ? () => setModule('chat') : undefined} />
   {:else if module === 'mixer'}

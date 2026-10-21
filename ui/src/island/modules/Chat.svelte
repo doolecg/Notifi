@@ -3,20 +3,47 @@
   import { onDestroy, onMount } from 'svelte';
   import Glyph from '../Glyph.svelte';
   import { island } from '../state.svelte';
+  import { duration, motion, reducedMotion } from '../../lib/motion';
 
-  let { onAsk }: { onAsk: () => void } = $props();
+  type Box = { left: number; top: number; width: number; height: number };
+  /** The open and resting sizes of the pill hanging from the top centre; null when docked. */
+  type Pill = { openW: number; openH: number; restW: number; restH: number } | null;
+  let { closing, pill, onAsk }: { closing: boolean; pill: Pill; onAsk: () => void } = $props();
 
   let slot = $state<HTMLDivElement>();
   let error = $state('');
   let last = '';
+  let seen = '';
+  let stillFor = 0;
   let busy = false;
   let stopped = false;
   let raf = 0;
+  /** Where this page put the chat, while it is shown. */
+  let placed: Box | null = null;
 
-  async function place(r: DOMRect) {
+  const key = (r: Box) => [r.left, r.top, r.width, r.height].map(Math.round).join();
+
+  /** The chat moving with the pill: scaled about the pill's top centre to the pill's size (w, h), on the pill's own spring. */
+  function morph(r: Box, w: number, h: number, name: 'pillDrop' | 'pillRise') {
+    if (!pill || reducedMotion()) return null;
+    return { ox: innerWidth / 2 - r.left, oy: -r.top, sx: w / pill.openW, sy: h / pill.openH, ms: duration(name), ease: motion[name].ease };
+  }
+
+  $effect(() => {
+    if (!closing || !placed || !slot) return;
+    // Where the chat is now: the window may have moved since it was placed.
+    const r = slot.getBoundingClientRect();
+    const m = pill ? morph(r, pill.restW, pill.restH, 'pillRise') : null;
+    placed = null;
+    last = '';
+    invoke('chat_hide', { fade: true, morph: m }).catch(() => {});
+  });
+
+  async function place(r: Box, m: ReturnType<typeof morph> = null) {
     busy = true;
+    placed = r;
     try {
-      await invoke('chat_show', { x: r.left, y: r.top, w: r.width, h: r.height });
+      await invoke('chat_show', { x: r.left, y: r.top, w: r.width, h: r.height, morph: m });
       error = '';
     } catch (e) {
       error = String(e);
@@ -25,14 +52,29 @@
     }
   }
 
-  /** Keeps the chat on the empty area below, which moves and grows while the Island opens. */
+  /** Keeps the chat on the empty area below. A native view dragged along each frame lags behind the menu, so it
+   *  goes straight to where the area will end up and grows there with the pill; later moves wait until the area is still. */
   function follow() {
     if (stopped) return;
     const r = slot?.getBoundingClientRect();
-    if (r && !busy && r.width > 40 && r.height > 40) {
-      const key = [r.left, r.top, r.width, r.height].map(Math.round).join();
-      if (key !== last) {
-        last = key;
+    const box = slot?.closest('.content')?.getBoundingClientRect();
+    const now = slot?.closest('.pill')?.getBoundingClientRect();
+    if (closing || !r || busy || r.width <= 40 || r.height <= 40) {
+      // Nothing to do this frame.
+    } else if (!placed && pill && box && now) {
+      // The window is the chat's size before the area is placed, so its final spot is known.
+      if (innerWidth >= pill.openW) {
+        const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left), top: r.top, width: r.width, height: r.height };
+        last = seen = key(end);
+        place(end, morph(end, now.width, now.height, 'pillDrop'));
+      }
+    } else {
+      const k = key(r);
+      // Still for 4 frames, so a spring's turning point does not count as stopped.
+      stillFor = k === seen ? stillFor + 1 : 0;
+      seen = k;
+      if (stillFor >= 4 && k !== last) {
+        last = k;
         place(r);
       }
     }

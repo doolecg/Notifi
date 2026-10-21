@@ -142,6 +142,27 @@ pub fn parse(accel: &str) -> Result<Shortcut, String> {
 pub struct Registry {
     bound: Mutex<HashMap<u32, String>>,
     failed: Mutex<BTreeMap<String, String>>,
+    /// Bound shortcuts let go for now, so a page that uses the same keys gets them.
+    given: Mutex<Vec<Shortcut>>,
+}
+
+/// Lets go of every bound shortcut in `keys` until `take_back`, so the page in front gets those keys.
+pub fn give_way(app: &AppHandle, keys: &[Shortcut]) {
+    let registry = app.state::<Registry>();
+    let bound = registry.bound.lock().unwrap();
+    let mut given = registry.given.lock().unwrap();
+    for k in keys {
+        if bound.contains_key(&k.id()) && !given.iter().any(|g| g.id() == k.id()) && app.global_shortcut().unregister(*k).is_ok() {
+            given.push(*k);
+        }
+    }
+}
+
+/// Takes back the shortcuts `give_way` let go.
+pub fn take_back(app: &AppHandle) {
+    for k in std::mem::take(&mut *app.state::<Registry>().given.lock().unwrap()) {
+        let _ = app.global_shortcut().register(k);
+    }
 }
 
 /// Re-registers every global shortcut from the settings map.
@@ -153,6 +174,7 @@ pub fn apply(app: &AppHandle, shortcuts: &BTreeMap<String, String>) {
     let mut failed = registry.failed.lock().unwrap();
     bound.clear();
     failed.clear();
+    registry.given.lock().unwrap().clear();
 
     for action in ACTIONS {
         let accel = shortcuts.get(action.id).map(String::as_str).unwrap_or_default();

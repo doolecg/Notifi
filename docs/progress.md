@@ -158,3 +158,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Fixed: the taskbar bar could stay tall after the pointer left it; Notifi now checks the pointer itself and shrinks the bar back.
 - Modules fills the wide menu with as many tiles as fit (no cut-off third row); Volume puts its quick buttons beside the sliders; the Nook's sections share the width with no blank strip on the right; tab focus rings are a soft grey line, not teal.
 - Checked: Nook, AI chat, Modules, Volume and AI Agents each fit at 1700 x 270 with the window 1720 x 280; chat to Modules ended at the right size; the resting Island and the 32 px bar have no extra window area. Not checked: dock mode, and the 4% hold change in a fresh build (tests pass).
+
+## AI chat: clean open and close, Escape, shortcuts
+- Escape inside the chat closes the Island, unless one of T3's own popups is open (then Escape closes that first).
+- Fixed: on close the chat popped back up, slid sideways and could stay on the desktop after the menu had gone (its follow loop kept showing it). The chat now shrinks up into the pill on the menu's own spring and grows out of it on open; with a graphics card of 2 GB or more it also blurs while it moves. Reduced motion and the docked Island use a plain fade.
+- The chat is parked outside the window instead of hidden, because a hidden view takes about half a second to draw again. When the Island window moves or resizes, the chat is moved back so it stays still on screen.
+- While the chat is in front, Notifi lets go of any global shortcut T3 Code also uses (read from T3's keybindings.json), so T3 gets them; they come back when the chat closes. Today that is Ctrl+Shift+N (Notifi's Open settings, T3's new local chat).
+- Checked: filmed open and close frame by frame; Escape in the chat closed the Island; Ctrl+Shift+N was free only while the chat was open. Not checked: the docked Island's chat, and a PC without a strong graphics card.
