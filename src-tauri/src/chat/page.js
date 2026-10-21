@@ -16,6 +16,33 @@
     style?.remove();
     style = null;
     document.documentElement.style.opacity = '';
+    for (const p of ['transform', 'opacity', 'filter']) document.body?.style.removeProperty(p);
+  };
+  /** A CSS `linear(a, b, c, ...)` easing (evenly spaced points, as the menu's springs are) as a function. */
+  const curve = (ease) => {
+    const pts = /^linear\((.*)\)$/.exec(ease.trim())?.[1].split(',').map(Number);
+    if (!pts || pts.length < 2 || pts.some(Number.isNaN)) return (t) => t;
+    return (t) => {
+      const at = t * (pts.length - 1);
+      const i = Math.min(pts.length - 2, Math.floor(at));
+      return pts[i] + (pts[i + 1] - pts[i]) * (at - i);
+    };
+  };
+  /** Runs `step(eased progress)` every frame for `ms`. Driven from the page rather than handed to the compositor:
+   *  the host's sticky headers are placed on the page's own frames, and lag behind a compositor animation. */
+  const tween = (ms, ease, step, done) => {
+    const f = curve(ease);
+    const t0 = performance.now();
+    let id = 0;
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / ms);
+      step(f(t));
+      if (t < 1) id = requestAnimationFrame(tick);
+      else done?.();
+    };
+    step(f(0));
+    id = requestAnimationFrame(tick);
+    anim = { cancel: () => cancelAnimationFrame(id) };
   };
   const run = (el, frames, ms, easing, done) => {
     anim = el.animate(frames, { duration: ms, easing, fill: 'forwards' });
@@ -40,11 +67,17 @@
       style = document.createElement('style');
       style.textContent = `html{background:rgb(0 0 0 / 0.004)!important}body{background:${bg}!important;transform-origin:${m.ox}px ${m.oy}px;will-change:transform,opacity${m.blur ? ',filter' : ''}}`;
       document.head.append(style);
-      const small = { transform: `scale(${m.sx}, ${m.sy})`, opacity: 0, ...(m.blur && { filter: `blur(${m.blur}px)` }) };
-      const full = { transform: 'none', opacity: 1, ...(m.blur && { filter: 'blur(0px)' }) };
-      // Seen while it is big: in, it is solid by half way; out, it is gone before it gets small.
-      run(document.body, into ? [small, { opacity: 1, offset: 0.5 }, full] : [full, { opacity: 0, offset: 0.6 }, small], m.ms, m.ease, into);
+      const b = document.body.style;
+      const clamp = (v) => Math.min(1, Math.max(0, v));
+      // e runs 0 (resting pill) to 1 (full size), overshooting a little on the spring.
+      const draw = (e) => {
+        b.transform = `scale(${m.sx + (1 - m.sx) * e}, ${m.sy + (1 - m.sy) * e})`;
+        // Seen while it is big: in, it is solid by half way; out, it is gone before it gets small.
+        b.opacity = String(into ? clamp(e / 0.5) : clamp((e - 0.4) / 0.6));
+        if (m.blur) b.filter = `blur(${(m.blur * (1 - clamp(e))).toFixed(2)}px)`;
+      };
       document.documentElement.style.opacity = '';
+      tween(m.ms, m.ease, (p) => draw(into ? p : 1 - p), into ? clear : null);
     },
   };
 })();
