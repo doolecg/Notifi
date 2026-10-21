@@ -39,6 +39,7 @@ pub const ACTIONS: &[Action] = &[
     Action { id: "quickToggleDesktopIcons", label: "Toggle: Show desktop icons", default_accel: "" },
     Action { id: "quickToggleNightLight", label: "Toggle: Night light", default_accel: "" },
     Action { id: "quickToggleDnd", label: "Toggle: Do not disturb", default_accel: "" },
+    Action { id: "quickTogglePrivacy", label: "Toggle: Privacy mode", default_accel: "" },
     Action { id: "quickToggleMuteMic", label: "Toggle: Mute microphone", default_accel: "" },
     Action { id: "quickToggleKeepAwake", label: "Toggle: Keep awake", default_accel: "" },
     Action { id: "quickToggleEjectAll", label: "Toggle: Eject all disks", default_accel: "" },

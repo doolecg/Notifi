@@ -42,6 +42,9 @@ export interface IslandConfig {
   dynamicNotifications: boolean;
   dynamicOther: boolean;
   dynamicApps: string[];
+  activitySound: boolean;
+  alertsInIsland: boolean;
+  privacyMode: boolean;
   claudeUsageConnect: boolean;
   dockDarkness: number;
   askInIsland: boolean;
@@ -92,6 +95,9 @@ export const DEFAULT_CONFIG: IslandConfig = {
   dynamicNotifications: false,
   dynamicOther: false,
   dynamicApps: ['Just Eat', 'Uber Eats', 'Uber', 'Deliveroo'],
+  activitySound: true,
+  alertsInIsland: true,
+  privacyMode: false,
   claudeUsageConnect: false,
   dockDarkness: 25,
   askInIsland: false,

@@ -36,6 +36,7 @@ pub const ALL: &[Def] = &[
     switch("desktopIcons", "Show desktop icons", "Shows or hides everything on the desktop."),
     switch("nightLight", "Night light", "Warms the screen colours."),
     switch("dnd", "Do not disturb", "Stops notification banners."),
+    switch("privacy", "Privacy mode", "Stops Notifi's own notifications."),
     switch("muteMic", "Mute microphone", "Mutes every microphone."),
     switch("keepAwake", "Keep awake", "Keeps the computer and screen on."),
     action("ejectAll", "Eject all disks", "Ejects removable disks, except the ones you keep mounted."),
@@ -57,7 +58,7 @@ pub fn available(app: &AppHandle, id: &str) -> bool {
         "nightLight" => !cfg!(windows) && gsettings_present(),
         "muteMic" => supported(Feature::AudioMicrophone),
         "keepAwake" => supported(Feature::KeepAwake),
-        "ejectAll" | "emptyTrash" | "lockScreen" => true,
+        "ejectAll" | "emptyTrash" | "lockScreen" | "privacy" => true,
         _ => false,
     }
 }
@@ -71,6 +72,7 @@ pub async fn state(app: &AppHandle, id: &str) -> bool {
         "desktopIcons" => sys::desktop_icons(),
         "nightLight" => sys::night_light(),
         "dnd" => sys::dnd(),
+        "privacy" => crate::island::config(app).privacy_mode,
         "muteMic" => mic_muted(app).await,
         "keepAwake" => serde_json::to_value(crate::keepawake::keep_awake_status(app.clone()))
             .ok()
@@ -89,6 +91,7 @@ pub async fn apply(app: &AppHandle, id: &str, on: bool) -> Result<(), String> {
         "desktopIcons" => sys::set_desktop_icons(on),
         "nightLight" => sys::set_night_light(on),
         "dnd" => sys::set_dnd(on),
+        "privacy" => crate::settings::set_section(app.clone(), app.state(), "island".into(), serde_json::json!({ "privacyMode": on })).map(|_| ()),
         "muteMic" => {
             let platform = app.state::<Platform>().inner().clone();
             platform.audio().mute_all_microphones(on).map_err(|e| e.to_string())

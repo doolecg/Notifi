@@ -27,7 +27,7 @@ pub fn session_changed(app: &AppHandle, locked: bool) {
     let s = app.state::<Store>().get();
     super::set_locked(app, locked);
     if s.enabled(NS) && flag(&s, "sounds", false) {
-        beep(locked);
+        super::click::play();
     }
 }
 
@@ -45,16 +45,6 @@ pub fn notice_then(app: &AppHandle, lock: impl FnOnce() + Send + 'static) -> boo
     });
     true
 }
-
-#[cfg(windows)]
-fn beep(locked: bool) {
-    use windows::Win32::System::Diagnostics::Debug::MessageBeep;
-    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_OK};
-    let _ = unsafe { MessageBeep(if locked { MB_OK } else { MB_ICONASTERISK }) };
-}
-
-#[cfg(not(windows))]
-fn beep(_locked: bool) {}
 
 #[cfg(test)]
 mod tests {

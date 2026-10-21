@@ -144,6 +144,9 @@ pub const PAGES: &[Page] = &[
             ]),
             tab_card("Activity", "Events", &[
                 custom("activity", "Events", "Which events may grow the resting pill, and for how long."),
+                sw("privacyMode", "Privacy mode", "Stops Notifi's notifications while on. Also a quick toggle with its own shortcut. Windows Do Not Disturb stops them too.", false),
+                sw("activitySound", "Deep click sound", "A soft deep click when a notification shows on the pill. Silent during Do Not Disturb and Privacy mode.", true),
+                sw("alertsInIsland", "Alerts on the Island, not Windows toasts", "Notifi's own alerts (temperatures, disks, updates) show on the Island while it is on screen. A Windows toast is only the fallback.", true),
                 sw("activityTrack", "Track changes", "", true),
                 sw("activityTimer", "Timer done", "", true),
                 sw("activityAgent", "AI agent task finished", "", true),

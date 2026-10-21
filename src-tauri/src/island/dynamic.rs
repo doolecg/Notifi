@@ -180,19 +180,21 @@ mod listener {
         Some((who, texts))
     }
 
-    fn handle(app: &AppHandle, c: &IslandConfig, who: &str, texts: &[String], backlog: bool) {
+    /// True when a progress card took the notification, so it can leave Windows' list.
+    fn handle(app: &AppHandle, c: &IslandConfig, who: &str, texts: &[String], backlog: bool) -> bool {
         let text = texts.join(" \u{b7} ");
         let followed = |p: &&Provider| c.dynamic_apps.iter().any(|a| a.eq_ignore_ascii_case(p.name));
         let state = app.state::<IslandState>();
         if let Some(p) = provider(who, &text).filter(followed) {
             if state.orders.lock().unwrap().update(p, &text, now_ms()) {
                 state.wake();
-                return;
+                return true;
             }
         }
         if c.dynamic_other && !backlog {
             activity(app, c, "bell", AGENT_COLOR, format!("{who} \u{b7} {}", texts.first().map_or("", String::as_str)));
         }
+        false
     }
 
     pub fn run(app: AppHandle) {
@@ -229,7 +231,9 @@ mod listener {
                 now_ids.insert(id);
                 if seen.insert(id) {
                     if let Some((who, texts)) = read(&n) {
-                        handle(&app, &c, &who, &texts, first);
+                        if handle(&app, &c, &who, &texts, first) {
+                            let _ = listener.RemoveNotification(id);
+                        }
                     }
                 }
             }

@@ -1,7 +1,22 @@
 //! OS notifications for alerts: Windows toasts, freedesktop notifications over D-Bus on Linux.
 //! Do Not Disturb is honoured by the OS on both (Focus Assist, the notification daemon).
 
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// Lets alerts find the Island, so they can show there instead of as a Windows toast.
+pub fn init(app: &tauri::AppHandle) {
+    let _ = APP.set(app.clone());
+}
+
 pub fn send(title: String, body: String, sound: bool) {
+    if APP.get().is_some_and(|app| crate::island::deliver(app, &title, &body, sound)) {
+        return;
+    }
+    // A toast on Windows is silent and Notifi's own click plays instead of the system ding.
+    if sound && cfg!(windows) {
+        crate::island::click::play();
+    }
+    let sound = sound && !cfg!(windows);
     std::thread::spawn(move || {
         if let Err(e) = show(&title, &body, sound) {
             eprintln!("notifi: notification failed: {e}");

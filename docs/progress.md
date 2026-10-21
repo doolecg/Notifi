@@ -95,3 +95,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Tried live with a test Just Eat toast: card showed 'On the way', 12 min, 70% fill. Windows did not ask for permission on this machine.
 - Not built: signing in to the services, a browser extension, more than one card at a time, Linux.
 - Also fixed a flaky Disk space test (parallel tests shared one temp folder).
+
+## Quiet modes, alerts on the Island, deep click
+- Do Not Disturb (Windows) and the new Privacy mode stop all of Notifi's own notifications: pill notices, alerts and the click. Privacy mode is in Island > Activity > Events and is a quick toggle (shortcut action 'Toggle: Privacy mode'). AI questions still show.
+- Notifi alerts show on the Island instead of as Windows toasts while the Island is on screen (switch 'Alerts on the Island, not Windows toasts', on by default).
+- One sound: a deep click made in code (src-tauri/src/island/click.rs). It replaces the toast ding and the lock/unlock beeps and plays on pill notifications ('Deep click sound', on).
+- Notifications taken by a progress card are removed from the Windows list; the banner itself cannot be stopped.
+- Checked live: privacy toggle holds back and releases pill notifications. Not checked: Do Not Disturb live, hearing the click, alerts routing, lock sounds.

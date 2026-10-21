@@ -5,6 +5,7 @@
 
 pub mod agents;
 pub mod claude_limits;
+pub mod click;
 pub mod config;
 pub mod dynamic;
 pub mod files;
@@ -529,6 +530,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             .visible(false)
             .build()?;
     }
+    crate::monitor::notify::init(app);
     start(app);
     Ok(())
 }
@@ -557,8 +559,52 @@ fn set_visible(app: &AppHandle, on: bool) {
     }
 }
 
+/// Whether Windows' Do Not Disturb is on, read at most every 3 seconds.
+fn system_dnd() -> bool {
+    static CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap();
+    if let Some((at, on)) = *cache {
+        if at.elapsed() < Duration::from_secs(3) {
+            return on;
+        }
+    }
+    let on = crate::monitor::notify::do_not_disturb();
+    *cache = Some((Instant::now(), on));
+    on
+}
+
+/// Notifi's own notifications are held back while Do Not Disturb or Privacy mode is on.
+fn quiet(c: &IslandConfig) -> bool {
+    c.privacy_mode || system_dnd()
+}
+
+/// Every notification Notifi shows on the pill goes through here: a deep click, nothing when quiet.
 fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'static str, text: String) {
+    if quiet(c) {
+        return;
+    }
+    if c.activity_sound {
+        click::play();
+    }
     let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms });
+}
+
+/// An alert from another feature. Shown on the Island while it is on screen, so no Windows toast is
+/// needed; returns false when the caller should send a toast. Swallowed (true) while quiet.
+pub fn deliver(app: &AppHandle, title: &str, body: &str, sound: bool) -> bool {
+    let c = config(app);
+    if quiet(&c) {
+        return true;
+    }
+    if !(c.enabled && c.alerts_in_island && app.state::<IslandState>().inner.lock().unwrap().visible) {
+        return false;
+    }
+    let text = if body.is_empty() { title.to_string() } else { format!("{title} \u{b7} {body}") };
+    if sound {
+        click::play();
+    }
+    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms });
+    true
 }
 
 /// Records that the session locked or unlocked and wakes the worker so the Island hides or returns.

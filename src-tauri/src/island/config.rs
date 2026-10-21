@@ -84,6 +84,12 @@ pub struct IslandConfig {
     pub dynamic_other: bool,
     /// Services followed as live progress, by name.
     pub dynamic_apps: Vec<String>,
+    /// Notifi's notifications make a deep click.
+    pub activity_sound: bool,
+    /// Notifi's own alerts show on the Island instead of as Windows toasts.
+    pub alerts_in_island: bool,
+    /// Stops Notifi's notifications while on.
+    pub privacy_mode: bool,
     /// Read Claude's 5 hour and weekly limits from Anthropic using Claude Code's saved login.
     pub claude_usage_connect: bool,
     /// How much darker than the taskbar the docked bar is, in percent.
@@ -146,6 +152,9 @@ impl Default for IslandConfig {
             dynamic_notifications: false,
             dynamic_other: false,
             dynamic_apps: ["Just Eat", "Uber Eats", "Uber", "Deliveroo"].map(String::from).to_vec(),
+            activity_sound: true,
+            alerts_in_island: true,
+            privacy_mode: false,
             claude_usage_connect: false,
             dock_darkness: 25.0,
             agents_follow: Vec::new(),

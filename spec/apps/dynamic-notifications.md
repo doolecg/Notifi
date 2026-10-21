@@ -19,6 +19,13 @@ Written for Notifi from how phones show live delivery and ride progress. No thir
 - A delivered card goes after 90 seconds. A card with no news for 3 hours goes. A passed arrival time stops counting 20 minutes late.
 - Notifications already in the Action Center when the feature starts are used for cards only; they do not flash on the pill.
 
+## Quiet modes, alerts and sound
+
+- While Windows Do Not Disturb or Notifi's Privacy mode is on, Notifi shows and sounds nothing of its own: no pill notices, no alerts, no click. Privacy mode is a switch in the Island settings and a quick toggle with a shortcut. AI questions still show, because they wait for an answer.
+- Notifi's own alerts show on the Island when it is on screen, so no Windows toast is sent. If the Island is off or hidden the alert is a Windows toast, as before.
+- Notifi's only sound is a short deep click, made in code. It replaces the system ding on alerts and the lock and unlock beeps, and plays when a notification shows on the pill (switch: "Deep click sound", on by default).
+- A notification a progress card has taken is removed from Windows' notification list. Windows has already shown its banner by then; Notifi cannot stop that banner without turning off the sending app's notifications.
+
 ## Not built
 
 - Following an order by signing in to the service.
