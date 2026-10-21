@@ -128,3 +128,8 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Sign-in: one-time link from 't3 auth pairing create --json', once per run of Notifi. It gives the chat full T3 access.
 - Opens on the last chat (the chat address is saved in the app data folder). Dictate button sends Win+H. The AI question menu has a 'Prompt chat' button and the chat has 'Questions (n)'. The taskbar AI Agents bar has a chat button.
 - Checked live: chat opens in the Island, signed in, shows T3's sidebar and prompt box; after restarting Notifi it came back to the last chat. Not checked: dictation, the question-to-chat switch, light taskbar, dock mode, typing in the chat. Other hosts (Operant, OpenCode, Claude) are not built.
+
+## Bars fit their content
+- The top agents pill measures what it shows (ui/src/island/fit.ts) and widens past its 600 px base, up to 840 px, so subagent counts, extra agent logos and the running time never crowd or clip. It grows at once and only shrinks for a drop of 40 px or more, so a ticking clock does not jiggle it. Side padding is 16 px (was 12).
+- The taskbar AI Agents bar does the same and asks the window for its width (island_bar_width, 520 to 1000 px). It is no longer a fixed 640 px.
+- Checked: top pill with extra items went 600 to 834 px with no overflow; taskbar bar sized to 580 px. Not checked: the music, timer, order and activity pills, which keep their own widths.

@@ -221,6 +221,7 @@ fn main() {
             island::island_focus,
             island::island_open_agents,
             island::island_open_chat,
+            island::island_bar_width,
             chat::chat_show,
             chat::chat_hide,
             chat::chat_dictate,

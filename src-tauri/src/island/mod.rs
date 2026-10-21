@@ -100,6 +100,8 @@ struct Inner {
     rest: (f64, f64),
     visible: bool,
     bar_visible: bool,
+    /// Logical width the AI Agents bar asked for; 0 until it asks.
+    bar_w: f64,
     fullscreen: bool,
     /// The session is locked.
     locked: bool,
@@ -506,7 +508,8 @@ fn place_bar(app: &AppHandle) {
     let Some(mon) = monitor(app, &c) else { return };
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
-    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, BAR_W, f64::from(bottom - top) / scale);
+    let asked = app.state::<IslandState>().inner.lock().unwrap().bar_w;
+    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, if asked > 0.0 { asked } else { BAR_W }, f64::from(bottom - top) / scale);
     set_rect(&win, x, y, pw, ph);
     #[cfg(windows)]
     raise(&win);
@@ -997,6 +1000,21 @@ pub fn on_settings_changed(app: &AppHandle) {
 #[tauri::command]
 pub fn island_open_agents(app: AppHandle) {
     run_action(&app, "islandModuleAgents");
+}
+
+/// The taskbar bar asks to be as wide as its items need.
+#[tauri::command]
+pub fn island_bar_width(app: AppHandle, state: State<IslandState>, width: f64) {
+    let width = width.clamp(400.0, 1200.0);
+    let (changed, shown) = {
+        let mut i = state.inner.lock().unwrap();
+        let changed = (i.bar_w - width).abs() >= 0.5;
+        i.bar_w = width;
+        (changed, i.bar_visible)
+    };
+    if changed && shown {
+        place_bar(&app);
+    }
 }
 
 /// The taskbar bar's chat button: open the Island on the AI chat.

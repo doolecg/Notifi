@@ -6,6 +6,7 @@
   import { store } from '../lib/settings.svelte';
   import Glyph from './Glyph.svelte';
   import Logo, { LOGOS } from './Logo.svelte';
+  import { fit } from './fit';
   import PixelBar from './PixelBar.svelte';
   import Agents from './modules/Agents.svelte';
   import Controls from './modules/Controls.svelte';
@@ -45,6 +46,8 @@
   const THIN_HIT = { w: 160, h: 12 };
   /** The agents pill carries status, to-do count and three rings, so it is wider. */
   const AGENTS_W = 600;
+  /** The widest the agents pill grows to when its items need more room. */
+  const AGENTS_MAX = 840;
   const CELLS = Array.from({ length: 10 }, (_, n) => n);
   const compact = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : `${n}`);
   /** Gap under a docked island; matches DOCK_GAP in island/layout.rs. */
@@ -169,8 +172,13 @@
   /** Docked, the pill is inset from the taskbar's edges. */
   const pillBar = $derived(layout?.dock ? Math.max(16, bar - 2 * DOCK_GAP) : bar);
   /** The live pill is as wide as what it shows. */
+  /** How wide the agents pill's items need it to be; grows at once, shrinks only for a real drop, so a clock ticking over doesn't jiggle it. */
+  let agentsNeed = $state(0);
+  const needs = (w: number) => {
+    if (w > agentsNeed || w < agentsNeed - 40) agentsNeed = w;
+  };
   const liveW = $derived.by(() => {
-    if (selLive?.id === 'agents') return AGENTS_W;
+    if (selLive?.id === 'agents') return Math.min(AGENTS_MAX, Math.max(AGENTS_W, agentsNeed + 12));
     if (selLive?.id === 'music' && snap?.media) {
       const text = (snap.media.title || '').length + (snap.media.artist || '').length;
       return Math.round(Math.min(480, Math.max(LIVE.w, 190 + text * 7.2)));
@@ -617,7 +625,7 @@
         </div>
       {:else if showLive && selLive && !infoChosen}
         {#key selLive.id}
-          <div class="ends live-in" out:fade={swapOut()}>
+          <div class="ends live-in" out:fade={swapOut()} use:fit={selLive.id === 'agents' ? needs : null}>
             {#if selLive.id === 'agents'}<PixelBar color={pixelColor} calm={selLive.status === 'done' || selLive.status === 'idle'} period={selLive.status === 'needs' ? 900 : selLive.status === 'running' ? 2000 : 4200} {burst} />{/if}
             {#if selLive.id === 'music' && snap.media}
               <span class="prog" class:still={!snap.media.playing} style:--c={selLive.color} style:width={`${songPct}%`}></span>
@@ -644,11 +652,11 @@
             {:else if selLive.id === 'timer'}
               <span class="mid">Timer{snap.timer.phase === 'paused' ? ' paused' : ''}</span>
             {:else}
-              <span class="mid {selLive.status}">
+              <span class="mid {selLive.status}"><span class="nat">
                 {STATUS_TEXT[selLive.status] ?? ''}
                 {#if selLive.id === 'agents' && selLive.value}<small class="todo" title="Running for">{selLive.value}</small>{/if}
                 {#if selLive.todos}<small class="todo">Todo {selLive.todos[0]}/{selLive.todos[1]}</small>{/if}
-              </span>
+              </span></span>
             {/if}
             {#if selLive.id === 'agents'}
               <span class="limits">
@@ -988,7 +996,7 @@
     align-items: center;
     justify-content: space-between;
     height: 100%;
-    padding: 0 12px;
+    padding: 0 16px;
     box-sizing: border-box;
   }
   .ends > :global(*:not(.px):not(.prog)) {

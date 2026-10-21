@@ -3,6 +3,7 @@
   import { onMount, untrack } from 'svelte';
   import { applyCssVars, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
+  import { fit } from '../island/fit';
   import Glyph from '../island/Glyph.svelte';
   import Logo from '../island/Logo.svelte';
   import PixelBar from '../island/PixelBar.svelte';
@@ -11,6 +12,16 @@
   const CELLS = Array.from({ length: 10 }, (_, n) => n);
   const STATUS_TEXT: Record<string, string> = { idle: 'Idle', running: 'Running', done: 'Done', needs: 'Needs you' };
   const compact = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : `${n}`);
+
+  /** Tells the window how wide the items need it; it grows at once and shrinks only for a real drop, so a clock ticking over doesn't jiggle it. */
+  let asked = 0;
+  function needs(width: number) {
+    const target = Math.min(1000, Math.max(520, width + 16));
+    if (target > asked || target < asked - 60) {
+      asked = target;
+      invoke('island_bar_width', { width: target }).catch(() => {});
+    }
+  }
 
   const snap = $derived(island.snap);
   const cfg = $derived(snap?.config);
@@ -96,15 +107,15 @@
 
 {#if snap?.enabled && cfg}
   <div class="root" class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
-    <button class="pill" class:with-chat={cfg.chatEnabled} style:--fc={pixelColor} onclick={click}>
+    <button class="pill" class:with-chat={cfg.chatEnabled} style:--fc={pixelColor} onclick={click} use:fit={needs}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
         <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
-        <span class="mid {live.status}">
+        <span class="mid {live.status}"><span class="nat">
           {STATUS_TEXT[live.status] ?? ''}
           {#if live.value}<small class="time" title="Running for">{live.value}</small>{/if}
           {#if live.todos}<small class="todo">Todo {live.todos[0]}/{live.todos[1]}</small>{/if}
-        </span>
+        </span></span>
         <span class="limits">
           {@render limit('5h', live.sessionPct, '5 hour limit used')}
           {@render limit('7d', live.weekPct, 'Weekly limit used')}
@@ -118,7 +129,7 @@
           <span class="count">{live.terminals ? `${live.terminals} ${live.terminals === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
         </span>
       {:else}
-        <span class="mid">AI Agents</span>
+        <span class="mid"><span class="nat">AI Agents</span></span>
         <span class="count">No sessions</span>
       {/if}
     </button>
@@ -159,7 +170,7 @@
     align-items: center;
     justify-content: space-between;
     box-sizing: border-box;
-    padding: 0 12px;
+    padding: 0 16px;
     border: 0;
     border-radius: 0 999px 999px 0;
     background: var(--i-face);
