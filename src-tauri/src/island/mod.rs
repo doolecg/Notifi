@@ -102,6 +102,8 @@ struct Inner {
     bar_visible: bool,
     /// Logical width the AI Agents bar asked for; 0 until it asks.
     bar_w: f64,
+    /// Extra logical height the bar asked for above the taskbar, for the session buttons shown on hover.
+    bar_extra: f64,
     fullscreen: bool,
     /// The session is locked.
     locked: bool,
@@ -109,6 +111,8 @@ struct Inner {
     last: Option<Value>,
     /// Docked and open: the menu is stretched up to its tallest size.
     tall: bool,
+    /// Open on the AI chat: the menu has the chat's size.
+    chat: bool,
 }
 
 impl Default for IslandState {
@@ -282,6 +286,8 @@ pub struct Snapshot {
     players: Vec<MediaSession>,
     timer: TimerSnap,
     agents: Vec<AgentSnap>,
+    /// Sessions worth a button on the taskbar bar: working, waiting on you, or just finished.
+    sessions: Vec<agents::SessionChip>,
     live: Vec<Live>,
     idle: idle::Idle,
     /// 0..=1, `None` where the platform can't read it.
@@ -320,20 +326,18 @@ pub fn bottom_left(mon: (i32, i32, u32, u32), bottom: i32, scale: f64, w: f64, h
     (x.round() as i32, y.round() as i32, pw.max(1.0) as u32, ph.max(1.0) as u32)
 }
 
-fn layout_for(c: &IslandConfig, tall: bool) -> Layout {
-    let counts = (c.orbit_left.len(), c.orbit_right.len(), c.orbit_bottom.len());
+/// The Island's size and where it sits, kept inside the screen it is on.
+fn layout_for(c: &IslandConfig, tall: bool, chat: bool, screen: (f64, f64)) -> Layout {
     if c.dock == "bottomLeft" {
-        if tall {
-            let w = layout::open_size(&c.size, c.custom_width, c.custom_height).0;
-            return layout::layout_dock("custom", w, layout::MAX_H, counts);
-        }
-        layout::layout_dock(&c.size, c.custom_width, c.custom_height, counts)
-    } else if tall {
-        let w = layout::open_size(&c.size, c.custom_width, c.custom_height).0;
-        layout::layout("custom", w, layout::MAX_H, counts)
+        layout::layout_dock(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
     } else {
-        layout::layout(&c.size, c.custom_width, c.custom_height, counts)
+        layout::layout(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
     }
+}
+
+/// Logical size of the screen the Island is on; a common size when it cannot be read.
+fn screen_of(mon: Option<&tauri::Monitor>) -> (f64, f64) {
+    mon.map_or((1920.0, 1080.0), |m| (f64::from(m.size().width) / m.scale_factor(), f64::from(m.size().height) / m.scale_factor()))
 }
 
 fn monitor(app: &AppHandle, c: &IslandConfig) -> Option<tauri::Monitor> {
@@ -479,11 +483,11 @@ fn place(app: &AppHandle) {
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
     let state = app.state::<IslandState>();
-    let (open, rest, tall) = {
+    let (open, rest, tall, chat) = {
         let i = state.inner.lock().unwrap();
-        (i.open, i.rest, i.tall)
+        (i.open, i.rest, i.tall, i.chat)
     };
-    let l = layout_for(&c, tall);
+    let l = layout_for(&c, tall, chat, screen_of(Some(&mon)));
     if l.dock {
         let scale = mon.scale_factor();
         let (top, bottom) = taskbar_band(&mon);
@@ -508,8 +512,12 @@ fn place_bar(app: &AppHandle) {
     let Some(mon) = monitor(app, &c) else { return };
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
-    let asked = app.state::<IslandState>().inner.lock().unwrap().bar_w;
-    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, if asked > 0.0 { asked } else { BAR_W }, f64::from(bottom - top) / scale);
+    let state = app.state::<IslandState>();
+    let (asked, extra) = {
+        let i = state.inner.lock().unwrap();
+        (i.bar_w, i.bar_extra)
+    };
+    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, if asked > 0.0 { asked } else { BAR_W }, f64::from(bottom - top) / scale + extra);
     set_rect(&win, x, y, pw, ph);
     #[cfg(windows)]
     raise(&win);
@@ -811,6 +819,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
     let mut tracker = Tracker::default();
     let mut terminal_counter = terminals::Counter::new();
     let mut agent_snaps: Vec<AgentSnap> = Vec::new();
+    let mut chips: Vec<agents::SessionChip> = Vec::new();
     let mut next_agents = Instant::now();
     let mut next_fullscreen = Instant::now();
     let mut track: Option<String> = None;
@@ -887,6 +896,8 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             }
             agent_snaps = tracker.snapshot(home, now);
             agent_snaps.retain(|a| config::follows(&c.agents_follow, a.id));
+            chips = tracker.chips(home, now);
+            chips.retain(|s| config::follows(&c.agents_follow, s.agent));
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
@@ -936,10 +947,11 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             }
         }
 
-        let (timer, open, tall) = {
+        let (timer, open, tall, chat) = {
             let i = state.inner.lock().unwrap();
-            (i.timer, i.open, i.tall)
+            (i.timer, i.open, i.tall, i.chat)
         };
+        let screen = screen_of(monitor(&app, &c).as_ref());
         let (vol, bright) = if open { (volume(&platform), brightness(&platform)) } else { (None, None) };
         let mut idle = idle_sampler.tick(&c, &platform, &state.usage, !fullscreen, now);
         if c.idle_ai_usage {
@@ -952,7 +964,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
         let playing = media.as_ref().is_some_and(|m| m.playing);
         let snap = Snapshot {
             enabled: true,
-            layout: layout_for(&c, tall),
+            layout: layout_for(&c, tall, chat, screen),
             modules: MODULES.iter().map(|&(id, label, ready)| ModuleInfo { id, label, ready }).collect(),
             players: if media_supported { platform.media().sessions().unwrap_or_default() } else { Vec::new() },
             live: {
@@ -962,6 +974,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             },
             timer: TimerSnap { timer, left_ms: timer.remaining(now) },
             agents: agent_snaps.clone(),
+            sessions: chips.clone(),
             idle,
             config: c,
             media,
@@ -1010,6 +1023,21 @@ pub fn island_bar_width(app: AppHandle, state: State<IslandState>, width: f64) {
         let mut i = state.inner.lock().unwrap();
         let changed = (i.bar_w - width).abs() >= 0.5;
         i.bar_w = width;
+        (changed, i.bar_visible)
+    };
+    if changed && shown {
+        place_bar(&app);
+    }
+}
+
+/// The taskbar bar grows upward while it shows its session buttons.
+#[tauri::command]
+pub fn island_bar_extra(app: AppHandle, state: State<IslandState>, extra: f64) {
+    let extra = if extra.is_finite() { extra.clamp(0.0, 400.0) } else { 0.0 };
+    let (changed, shown) = {
+        let mut i = state.inner.lock().unwrap();
+        let changed = (i.bar_extra - extra).abs() >= 0.5;
+        i.bar_extra = extra;
         (changed, i.bar_visible)
     };
     if changed && shown {
@@ -1075,6 +1103,7 @@ pub fn island_shape(app: AppHandle, state: State<IslandState>, open: bool, width
         i.open = open;
         if !open {
             i.tall = false;
+            i.chat = false;
         }
         i.rest = rest;
         changed
@@ -1135,6 +1164,21 @@ pub fn island_tall(app: AppHandle, state: State<IslandState>, tall: bool) {
         let mut i = state.inner.lock().unwrap();
         let changed = i.tall != tall;
         i.tall = tall;
+        changed
+    };
+    if changed {
+        place(&app);
+        state.wake();
+    }
+}
+
+/// The AI chat tab: give the menu the chat's size, or take it back.
+#[tauri::command]
+pub fn island_chat(app: AppHandle, state: State<IslandState>, on: bool) {
+    let changed = {
+        let mut i = state.inner.lock().unwrap();
+        let changed = i.chat != on;
+        i.chat = on;
         changed
     };
     if changed {

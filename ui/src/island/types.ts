@@ -60,8 +60,8 @@ export const DEFAULT_CONFIG: IslandConfig = {
   display: 'primary',
   hideInFullscreen: true,
   size: 'compact',
-  customWidth: 500,
-  customHeight: 260,
+  customWidth: 1200,
+  customHeight: 270,
   translucent: false,
   defaultModule: 'nowPlaying',
   modules: ['controls', 'mixer', 'nowPlaying', 'clipboard', 'captures', 'shelf', 'system', 'tools', 'calendar', 'notifications', 'timer', 'camera', 'downloads', 'scratchpad', 'agents'],
@@ -127,7 +127,11 @@ export interface Layout {
   /** Docked bottom-left: orbit points are from the island's left edge and top. */
   dock: boolean;
   window: [number, number];
+  /** The size in use now: `base`, `tall` or `chat`. */
   open: [number, number];
+  base: [number, number];
+  tall: [number, number];
+  chat: [number, number];
   radius: number;
   maxLeft: number;
   maxRight: number;
@@ -288,6 +292,16 @@ export interface Idle {
   ai: number | null;
 }
 
+/** A session as a button on the taskbar bar. */
+export interface SessionChip {
+  id: string;
+  agent: string;
+  project: string | null;
+  status: 'working' | 'needs' | 'done';
+  elapsedMs: number;
+  lastTs: number;
+}
+
 export interface Snapshot {
   enabled: boolean;
   config: IslandConfig;
@@ -297,6 +311,7 @@ export interface Snapshot {
   players: Player[];
   timer: TimerSnap;
   agents: Agent[];
+  sessions: SessionChip[];
   live: Live[];
   idle: Idle;
   volume: number | null;

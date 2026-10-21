@@ -77,8 +77,8 @@
   let tall = $state(false);
   /** Height of the open menu before it is stretched; taken when it opens. */
   let baseH = $state(236);
-  /** Tallest menu height; matches DOCK_TALL in island/layout.rs. */
-  const TALL_H = 600;
+  /** Open on the AI chat: the menu has the chat's size. */
+  let chatMode = $state(false);
   let module = $state('nowPlaying');
   let lastModule = $state<string | null>(null);
   let chosenLive = $state<string | null>(null);
@@ -255,16 +255,19 @@
     if (id) module = id;
     else if (!open || collapsing) module = autoModule();
     lastModule = module;
-    if (layout && !tall && !open) baseH = layout.open[1];
-    // Questions get the tall menu so options and a reply box fit.
-    if ((module === 'ask' || module === 'chat') && !tall) {
+    if (layout && !tall && !chatMode && !open) baseH = layout.base[1];
+    // The chat gets its own size; questions get the tall menu so options and a reply box fit.
+    if (module === 'chat' && !chatMode) {
+      await invoke('island_chat', { on: true }).catch(() => {});
+      chatMode = true;
+    } else if (module === 'ask' && !tall) {
       await invoke('island_tall', { tall: true }).catch(() => {});
       tall = true;
     }
     if (open && !collapsing) return;
     clearTimeout(shrinkTimer);
     collapsing = false;
-    if (layout && !tall) baseH = layout.open[1];
+    if (layout && !tall && !chatMode) baseH = layout.base[1];
     if (!open) {
       open = true;
       await invoke('island_shape', { open: true, width: box.w, height: box.h }).catch(() => {});
@@ -283,6 +286,7 @@
       collapsing = false;
       open = false;
       tall = false;
+      chatMode = false;
     }, duration('pillCollapse'));
   }
 
@@ -298,11 +302,23 @@
     }
   }
 
+  /** The chat has its own, larger size; the window grows first and shrinks last, like the stretched menu. */
+  async function setChat(on: boolean) {
+    clearTimeout(tallTimer);
+    if (on) {
+      await invoke('island_chat', { on: true }).catch(() => {});
+      chatMode = true;
+    } else {
+      chatMode = false;
+      tallTimer = setTimeout(() => invoke('island_chat', { on: false }).catch(() => {}), duration('pillDrop') + 80);
+    }
+  }
+
   function setModule(id: string) {
     module = id;
     lastModule = id;
-    // The chat needs the room of the tall menu.
-    if (id === 'chat' && !tall) toggleTall();
+    if (id === 'chat' && !chatMode) setChat(true);
+    else if (id !== 'chat' && chatMode) setChat(false);
   }
 
   function press(id: string) {
@@ -426,17 +442,19 @@
   const buttonInfo = (id: string) =>
     id === 'nook' ? { label: 'Nook', icon: 'home' } : (BUTTONS[id] ?? { label: snap?.modules.find((m) => m.id === id)?.label ?? id, icon: MODULE_ICONS[id] ?? 'utilities' });
   const activeButton = (id: string) => module === id || (id === 'volume' && module === 'controls');
+  /** The open menu's width: the chat's own, else the normal one (the stretched menu keeps it). */
+  const openW = $derived(chatMode ? (layout?.chat[0] ?? 0) : (layout?.base[0] ?? 0));
   /** The tab names would not fit across the menu; the estimate is a name's letters at about 7 px plus the icon and padding. */
   const stripTight = $derived(
-    strip.tabs.reduce((w, id) => w + 46 + buttonInfo(id).label.length * 7.3, 0) + strip.actions.length * 36 + 40 > (layout?.open[0] ?? 0) - 36,
+    strip.tabs.reduce((w, id) => w + 46 + buttonInfo(id).label.length * 7.3, 0) + strip.actions.length * 36 + 40 > openW - 36,
   );
   /** Height of the tab strip. */
   const STRIP = 46;
   /** The menu's height: stretched, or as opened. */
-  const flyH = $derived(tall ? TALL_H : baseH);
+  const flyH = $derived(chatMode ? (layout?.chat[1] ?? baseH) : tall ? (layout?.tall[1] ?? baseH) : baseH);
   const grown = $derived(expanded && !dock);
-  const pillW = $derived(grown && layout ? layout.open[0] : rest.w);
-  const pillH = $derived(grown && layout ? (dock ? layout.open[1] : flyH) : rest.h);
+  const pillW = $derived(grown && layout ? openW : rest.w);
+  const pillH = $derived(grown && layout ? flyH : rest.h);
   const radius = $derived(grown && layout ? layout.radius : rest.h / 2);
   /** What the pill is telling you, so a change in it can flash the edge. */
   const changeKey = $derived(
@@ -576,9 +594,11 @@
       {@const b = buttonInfo(id)}
       <button class="act" title={b.label} aria-label={b.label} onclick={() => press(id)}><Glyph name={b.icon} size={16} /></button>
     {/each}
-    <button class="act" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={toggleTall}>
-      <Glyph name={tall ? 'shrink' : 'expand'} size={16} />
-    </button>
+    {#if !chatMode}
+      <button class="act" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={toggleTall}>
+        <Glyph name={tall ? 'shrink' : 'expand'} size={16} />
+      </button>
+    {/if}
   </nav>
 {/snippet}
 
@@ -607,7 +627,7 @@
     >
       {#if open && !dock}
         <div class="tabs" class:shown={expanded}>{@render tabstrip()}</div>
-        <div class="content" class:shown={expanded} style:top={`${STRIP}px`} style:width={`${layout.open[0]}px`} style:height={`${flyH - STRIP}px`}>
+        <div class="content" class:shown={expanded} style:top={`${STRIP}px`} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
       {:else if island.asks.length}
@@ -713,14 +733,14 @@
         class="fly"
         class:shown={expanded}
         style:bottom={`${bar + FLY_GAP}px`}
-        style:width={`${layout.open[0]}px`}
+        style:width={`${openW}px`}
         style:height={`${flyH}px`}
         style:border-radius={`${layout.radius}px`}
         onpointerenter={enter}
         onpointerleave={leave}
       >
         {@render tabstrip()}
-        <div class="content shown" style:top={`${STRIP}px`} style:width={`${layout.open[0]}px`} style:height={`${flyH - STRIP}px`}>
+        <div class="content shown" style:top={`${STRIP}px`} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
       </div>

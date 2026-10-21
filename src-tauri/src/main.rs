@@ -1,4 +1,4 @@
-﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod apps;
 mod apps_clean;
@@ -222,6 +222,8 @@ fn main() {
             island::island_open_agents,
             island::island_open_chat,
             island::island_bar_width,
+            island::island_bar_extra,
+            island::island_chat,
             chat::chat_show,
             chat::chat_hide,
             chat::chat_dictate,

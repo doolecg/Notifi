@@ -25,6 +25,8 @@ pub const NEEDS_MS: u64 = 8_000;
 pub const NEEDS_SLOW_MS: u64 = 120_000;
 /// How long a finished agent reads as done.
 pub const DONE_MS: u64 = 8_000;
+/// How long a finished session stays as a done chip on the taskbar bar.
+const CHIP_DONE_MS: u64 = 90_000;
 const TAIL_BYTES: u64 = 512 * 1024;
 /// Files untouched for longer than this are not followed.
 const FRESH_FOR: Duration = Duration::from_secs(24 * 3600);
@@ -408,6 +410,20 @@ pub struct AgentSnap {
     pub todos: Option<(u32, u32)>,
 }
 
+/// One session as a button on the taskbar bar.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChip {
+    /// The session log's path.
+    pub id: String,
+    pub agent: Kind,
+    pub project: Option<String>,
+    /// "working", "needs" or "done".
+    pub status: &'static str,
+    pub elapsed_ms: u64,
+    pub last_ts: u64,
+}
+
 /// A turn that just ended after running at least the notice threshold.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Finished {
@@ -423,6 +439,8 @@ pub struct Tracker {
     working: HashMap<PathBuf, u64>,
     /// When sessions stopped working, kept for [`DONE_MS`].
     ended: HashMap<PathBuf, u64>,
+    /// The same, kept for `CHIP_DONE_MS`, for the session chips.
+    recent: HashMap<PathBuf, u64>,
     primed: bool,
 }
 
@@ -501,6 +519,7 @@ impl Tracker {
             } else if let Some(&start) = self.working.get(path) {
                 if self.primed {
                     self.ended.insert(path.clone(), now);
+                    self.recent.insert(path.clone(), now);
                 }
                 let elapsed = f.session.last_ts.saturating_sub(start);
                 if self.primed && elapsed >= notice_ms {
@@ -508,10 +527,39 @@ impl Tracker {
                 }
             }
         }
-        self.working = working;
         self.ended.retain(|_, t| now.saturating_sub(*t) < DONE_MS);
+        self.recent.retain(|p, t| now.saturating_sub(*t) < CHIP_DONE_MS && !working.contains_key(p));
+        self.working = working;
         self.primed = true;
         finished
+    }
+
+    /// The sessions worth a button: working, waiting on you, or finished in the last minute and a half. Waiting first, then working, then done.
+    pub fn chips(&self, home: &Path, now: u64) -> Vec<SessionChip> {
+        let mut out: Vec<SessionChip> = self
+            .files
+            .iter()
+            .filter(|(p, _)| !is_sub(p))
+            .filter_map(|(p, f)| {
+                let s = &f.session;
+                let status = if s.working(now) {
+                    if s.needs_you(now) { "needs" } else { "working" }
+                } else if self.recent.contains_key(p) {
+                    "done"
+                } else {
+                    return None;
+                };
+                Some(SessionChip { id: p.to_string_lossy().into_owned(), agent: kind_of(home, p), project: s.project.clone(), status, elapsed_ms: s.elapsed(now), last_ts: s.last_ts })
+            })
+            .collect();
+        let rank = |s: &str| match s {
+            "needs" => 0,
+            "working" => 1,
+            _ => 2,
+        };
+        out.sort_by_key(|c| (rank(c.status), std::cmp::Reverse(c.last_ts)));
+        out.truncate(8);
+        out
     }
 
     /// Whether something is happening, so the caller can poll faster.
@@ -867,6 +915,8 @@ mod tests {
         assert!(snap[0].working);
         assert_eq!(snap[0].elapsed_ms, 1_000);
         assert_eq!(snap[0].project.as_deref(), Some("notifi"));
+        let chips = tr.chips(&home, t0 + 1_000);
+        assert_eq!((chips.len(), chips[0].status, chips[0].project.as_deref()), (1, "working", Some("notifi")));
 
         let mut more = fs::OpenOptions::new().append(true).open(&file).unwrap();
         use std::io::Write;
@@ -876,6 +926,10 @@ mod tests {
         assert_eq!(done, vec![Finished { kind: Kind::Claude, project: Some("notifi".into()), elapsed_ms: 180_000 }]);
         assert!(tr.poll(&home, t0 + 200_000, 120_000).is_empty());
         assert_eq!(tr.snapshot(&home, t0 + 180_500)[0].usage.written, 4);
+        // A finished session stays as a "done" chip for a minute and a half, then goes.
+        assert_eq!(tr.chips(&home, t0 + 200_000)[0].status, "done");
+        tr.poll(&home, t0 + 180_500 + CHIP_DONE_MS + 1_000, 120_000);
+        assert!(tr.chips(&home, t0 + 180_500 + CHIP_DONE_MS + 1_000).is_empty());
         let _ = fs::remove_dir_all(&home);
     }
 

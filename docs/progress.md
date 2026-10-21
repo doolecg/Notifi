@@ -138,3 +138,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Open Island sizes: top compact 860 x 280 (was 760), top spacious 1000 x 360 (was 900); docked compact 880 x 300 (was 820), docked spacious 1000 x 420 (was 900). Tab strip padding is 18 px, tabs 15 px, gap 6 px.
 - When the tab names would not fit across the menu, only the open tab keeps its name (estimate in Island.svelte, stripTight).
 - Checked at spacious (1000 px): all seven tab names show, no overflow, 18 px at both ends.
+
+## Sizes from the mock-up, and session buttons on the taskbar bar
+- Island sizes now follow the boxes you drew: main bar 1700 x 270 (spacious; compact is 1200 x 270), the AI chat 1340 x 1100, the stretched menu 640 tall at the main bar's width. Each is kept inside the screen it is on (screen minus 40 px at the sides, 100 px top and bottom). Custom sizes go up to 2400 x 1200. The chat has its own size mode (island_chat); the expand button is hidden while the chat is open.
+- Fixed: the stretched menu fell back to a 900 px width, so the 1000 px content was clipped at both sides.
+- Hover the taskbar AI Agents bar and your sessions appear above it as buttons (up to 8): Working (blue), Needs you (amber), Done (green, kept 90 s). Each shows the project name and, for Working, the time. Click one to bring that session's window forward, else the Island opens on AI Agents. The bar's window grows upward only while it is hovered.
+- The taskbar chat button was checked with a real click: the chat opened at full size in under half a second.
+- Not checked: a real Needs you or Done button, and clicking a button to reach a T3 Code or terminal window.

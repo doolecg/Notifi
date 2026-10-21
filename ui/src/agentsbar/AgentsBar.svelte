@@ -8,6 +8,7 @@
   import Logo from '../island/Logo.svelte';
   import PixelBar from '../island/PixelBar.svelte';
   import { island } from '../island/state.svelte';
+  import { clock, type SessionChip } from '../island/types';
 
   const CELLS = Array.from({ length: 10 }, (_, n) => n);
   const STATUS_TEXT: Record<string, string> = { idle: 'Idle', running: 'Running', done: 'Done', needs: 'Needs you' };
@@ -27,6 +28,44 @@
   const cfg = $derived(snap?.config);
   const live = $derived(snap?.live.find((l) => l.id === 'agents'));
   const workingAgents = $derived((snap?.agents ?? []).filter((a) => a.working));
+
+  /** Sessions as buttons above the bar while the pointer is over it, coloured by what they are doing. */
+  const chips = $derived(snap?.sessions ?? []);
+  const CHIP_TEXT = { working: 'Working', needs: 'Needs you', done: 'Done' } as const;
+  let hover = $state(false);
+  let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let chipsEl = $state<HTMLDivElement>();
+  let chipsH = $state(0);
+  let winH = $state(32);
+  let extra = $state(0);
+  /** The bar's own height: the window's, less the room asked for above it. */
+  const barH = $derived(Math.max(16, winH - extra));
+  $effect(() => {
+    if (!chipsEl) return;
+    const el = chipsEl;
+    const watcher = new ResizeObserver(() => (chipsH = el.offsetHeight));
+    watcher.observe(el);
+    chipsH = el.offsetHeight;
+    return () => watcher.disconnect();
+  });
+  /** The window grows upward to hold the buttons while they show. */
+  $effect(() => {
+    const want = hover && chips.length ? chipsH + 16 : 0;
+    extra = want;
+    invoke('island_bar_extra', { extra: want }).catch(() => {});
+  });
+  function enter() {
+    clearTimeout(leaveTimer);
+    hover = true;
+  }
+  function leave() {
+    clearTimeout(leaveTimer);
+    leaveTimer = setTimeout(() => (hover = false), 250);
+  }
+  async function openChip(c: SessionChip) {
+    const found = await invoke<boolean>('island_goto_agent', { agent: c.agent, project: c.project }).catch(() => false);
+    if (!found) invoke('island_open_agents').catch(() => {});
+  }
 
   /** The taskbar's colour, sampled now and then so wallpaper and theme changes follow. */
   let taskbar = $state({ bg: '#1c1c1c', light: false });
@@ -105,9 +144,20 @@
   </span>
 {/snippet}
 
+<svelte:window bind:innerHeight={winH} />
+
 {#if snap?.enabled && cfg}
-  <div class="root" class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
-    <button class="pill" class:with-chat={cfg.chatEnabled} style:--fc={pixelColor} onclick={click} use:fit={needs}>
+  <div class="root" role="group" onpointerenter={enter} onpointerleave={leave} class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
+    <div class="chips" class:show={hover && chips.length > 0} bind:this={chipsEl} style:bottom={`${barH + 8}px`}>
+      {#each chips as c (c.id)}
+        <button class="chip {c.status}" title={`${c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
+          <span class="dot"></span><Logo id={c.agent} size={13} />
+          <span class="nm">{c.project ?? 'Session'}</span>
+          <span class="st">{CHIP_TEXT[c.status]}{#if c.status === 'working' && c.elapsedMs}<span class="el">{clock(c.elapsedMs)}</span>{/if}</span>
+        </button>
+      {/each}
+    </div>
+    <button class="pill" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:--fc={pixelColor} onclick={click} use:fit={needs}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
         <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
@@ -134,7 +184,7 @@
       {/if}
     </button>
     {#if cfg.chatEnabled}
-      <button class="chat" title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
+      <button class="chat" style:bottom={`${(barH - 26) / 2}px`} title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
     {/if}
   </div>
 {/if}
@@ -165,7 +215,9 @@
   }
   .pill {
     position: absolute;
-    inset: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -179,12 +231,89 @@
     overflow: hidden;
     cursor: pointer;
   }
+  .chips {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 6px;
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition:
+      opacity var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      transform var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .chips.show {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  .chip {
+    --c: #6ea8ff;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--c) 20%, var(--i-face));
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .chip.needs {
+    --c: #f0a24a;
+  }
+  .chip.done {
+    --c: #35d6a4;
+  }
+  .chip:hover {
+    background: color-mix(in srgb, var(--c) 34%, var(--i-face));
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c);
+  }
+  .chip.working .dot,
+  .chip.needs .dot {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .nm {
+    max-width: 170px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .el {
+    margin-left: 6px;
+  }
+  .st {
+    color: var(--c);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  :global([data-reduced-motion]) .dot {
+    animation: none;
+  }
   .pill.with-chat {
     padding-right: 44px;
   }
   .chat {
     position: absolute;
-    top: 50%;
     right: 10px;
     z-index: 5;
     display: grid;
@@ -197,7 +326,6 @@
     background: none;
     color: var(--i-mut);
     cursor: pointer;
-    transform: translateY(-50%);
   }
   .chat:hover {
     background: color-mix(in srgb, var(--i-fg), transparent 88%);

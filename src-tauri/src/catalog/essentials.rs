@@ -112,8 +112,8 @@ pub const PAGES: &[Page] = &[
                 list_of("orbitRight", "Right column", "", "Module or action", &["settings", "volume"]),
                 list_of("orbitBottom", "Below the Island", "", "Module or action", &["nowPlaying"]),
                 tiles("size", "Size", "", &[ci("compact", "Compact", "island"), ci("spacious", "Spacious", "island"), ci("custom", "Custom", "customise")], "compact"),
-                num("customWidth", "Custom width", "", 380.0, 900.0, 10.0, "px", 500.0),
-                num("customHeight", "Custom height", "", 200.0, 520.0, 10.0, "px", 260.0),
+                num("customWidth", "Custom width", "", 380.0, 2400.0, 10.0, "px", 1200.0),
+                num("customHeight", "Custom height", "", 200.0, 1200.0, 10.0, "px", 270.0),
                 sw("translucent", "Translucent background", "Blurs what's behind the open Island where the system allows it.", false),
             ]),
             tab_card("Content", "Modules", &[
