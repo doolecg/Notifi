@@ -24,12 +24,12 @@ pub const MAX_H: f64 = 600.0;
 /// Size of the open island for a size setting.
 pub fn open_size(size: &str, custom_w: f64, custom_h: f64) -> (f64, f64) {
     match size {
-        "spacious" => (900.0, 360.0),
+        "spacious" => (1000.0, 360.0),
         "custom" => (
             if custom_w.is_finite() { custom_w.clamp(MIN_W, MAX_W) } else { MIN_W },
             if custom_h.is_finite() { custom_h.clamp(MIN_H, MAX_H) } else { MIN_H },
         ),
-        _ => (760.0, 280.0),
+        _ => (860.0, 280.0),
     }
 }
 
@@ -92,13 +92,13 @@ pub const DOCK_TALL: f64 = 600.0;
 
 pub fn dock_open_size(size: &str, custom_w: f64, custom_h: f64) -> (f64, f64) {
     match size {
-        "spacious" => (900.0, 420.0),
+        "spacious" => (1000.0, 420.0),
         "custom" => {
             let (w, h) = open_size(size, custom_w, custom_h);
             // The stretched menu asks for the tallest custom height.
             if h >= MAX_H { (w, DOCK_TALL) } else { (w, h) }
         }
-        _ => (820.0, 300.0),
+        _ => (880.0, 300.0),
     }
 }
 
@@ -157,8 +157,8 @@ mod tests {
 
     #[test]
     fn sizes_and_custom_clamping() {
-        assert_eq!(open_size("compact", 0.0, 0.0), (760.0, 280.0));
-        assert_eq!(open_size("spacious", 0.0, 0.0), (900.0, 360.0));
+        assert_eq!(open_size("compact", 0.0, 0.0), (860.0, 280.0));
+        assert_eq!(open_size("spacious", 0.0, 0.0), (1000.0, 360.0));
         assert_eq!(open_size("custom", 2000.0, 10.0), (MAX_W, MIN_H));
         assert_eq!(open_size("custom", f64::NAN, 300.0), (MIN_W, 300.0));
         assert_eq!(open_size("whatever", 1.0, 1.0), open_size("compact", 0.0, 0.0));
@@ -166,8 +166,8 @@ mod tests {
 
     #[test]
     fn window_holds_the_island_and_its_edge() {
-        let (w, h) = window_size((760.0, 280.0));
-        assert_eq!(w, 760.0 + 2.0 * EDGE);
+        let (w, h) = window_size((860.0, 280.0));
+        assert_eq!(w, 860.0 + 2.0 * EDGE);
         assert_eq!(h, 280.0 + EDGE);
     }
 
@@ -186,9 +186,9 @@ mod tests {
         assert!(!l.dock && l.left.is_empty() && l.right.is_empty() && l.bottom.is_empty());
         let d = layout_dock("compact", 0.0, 0.0, (2, 2, 1));
         assert!(d.dock && d.left.is_empty() && d.right.is_empty() && d.bottom.is_empty());
-        assert_eq!(d.window, (820.0 + EDGE, 300.0 + EDGE + DOCK_GAP));
-        let tall = layout_dock("custom", 820.0, MAX_H, (2, 2, 1));
-        assert_eq!(tall.open, (820.0, DOCK_TALL));
+        assert_eq!(d.window, (880.0 + EDGE, 300.0 + EDGE + DOCK_GAP));
+        let tall = layout_dock("custom", 880.0, MAX_H, (2, 2, 1));
+        assert_eq!(tall.open, (880.0, DOCK_TALL));
     }
 
     #[test]

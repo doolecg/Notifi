@@ -426,6 +426,10 @@
   const buttonInfo = (id: string) =>
     id === 'nook' ? { label: 'Nook', icon: 'home' } : (BUTTONS[id] ?? { label: snap?.modules.find((m) => m.id === id)?.label ?? id, icon: MODULE_ICONS[id] ?? 'utilities' });
   const activeButton = (id: string) => module === id || (id === 'volume' && module === 'controls');
+  /** The tab names would not fit across the menu; the estimate is a name's letters at about 7 px plus the icon and padding. */
+  const stripTight = $derived(
+    strip.tabs.reduce((w, id) => w + 46 + buttonInfo(id).label.length * 7.3, 0) + strip.actions.length * 36 + 40 > (layout?.open[0] ?? 0) - 36,
+  );
   /** Height of the tab strip. */
   const STRIP = 46;
   /** The menu's height: stretched, or as opened. */
@@ -560,7 +564,7 @@
 {/snippet}
 
 {#snippet tabstrip()}
-  <nav class="strip" style:height={`${STRIP}px`} onwheel={stripWheel}>
+  <nav class="strip" class:tight={stripTight} style:height={`${STRIP}px`} onwheel={stripWheel}>
     {#each strip.tabs as id (id)}
       {@const b = buttonInfo(id)}
       <button class="tab" class:active={activeButton(id)} title={b.label} onclick={() => press(id)}>
@@ -851,9 +855,16 @@
     z-index: 3;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     box-sizing: border-box;
-    padding: 0 14px;
+    padding: 0 18px;
+  }
+  /* When the names would not fit, only the open tab keeps its name, so the strip never crowds or clips. */
+  .strip.tight .tab:not(.active) span {
+    display: none;
+  }
+  .strip.tight .tab:not(.active) {
+    padding: 0 11px;
   }
   .spacer {
     flex: 1;
@@ -878,7 +889,7 @@
       color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
   }
   .tab {
-    padding: 0 13px 0 11px;
+    padding: 0 15px 0 13px;
   }
   .act {
     width: 30px;

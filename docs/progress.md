@@ -133,3 +133,8 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - The top agents pill measures what it shows (ui/src/island/fit.ts) and widens past its 600 px base, up to 840 px, so subagent counts, extra agent logos and the running time never crowd or clip. It grows at once and only shrinks for a drop of 40 px or more, so a ticking clock does not jiggle it. Side padding is 16 px (was 12).
 - The taskbar AI Agents bar does the same and asks the window for its width (island_bar_width, 520 to 1000 px). It is no longer a fixed 640 px.
 - Checked: top pill with extra items went 600 to 834 px with no overflow; taskbar bar sized to 580 px. Not checked: the music, timer, order and activity pills, which keep their own widths.
+
+## Wider Island and roomier tab strip
+- Open Island sizes: top compact 860 x 280 (was 760), top spacious 1000 x 360 (was 900); docked compact 880 x 300 (was 820), docked spacious 1000 x 420 (was 900). Tab strip padding is 18 px, tabs 15 px, gap 6 px.
+- When the tab names would not fit across the menu, only the open tab keeps its name (estimate in Island.svelte, stripTight).
+- Checked at spacious (1000 px): all seven tab names show, no overflow, 18 px at both ends.

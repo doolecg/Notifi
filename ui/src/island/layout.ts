@@ -11,12 +11,12 @@ export const MIN_H = 200;
 export const MAX_H = 600;
 
 export function openSize(size: string, w: number, h: number): [number, number] {
-  if (size === 'spacious') return [900, 360];
+  if (size === 'spacious') return [1000, 360];
   if (size === 'custom') {
     const c = (v: number, lo: number, hi: number) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo);
     return [c(w, MIN_W, MAX_W), c(h, MIN_H, MAX_H)];
   }
-  return [760, 280];
+  return [860, 280];
 }
 
 export const maxSide = (h: number) => Math.max(0, Math.floor((h - TOP_PAD + ORBIT_GAP) / (ORBIT_D + ORBIT_GAP)));
