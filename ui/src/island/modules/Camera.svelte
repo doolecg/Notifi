@@ -4,7 +4,7 @@
 
   let video = $state<HTMLVideoElement>();
   let stream: MediaStream | null = null;
-  let status = $state<'starting' | 'live' | 'denied' | 'none'>('starting');
+  let status = $state<'starting' | 'live' | 'denied' | 'busy' | 'none'>('starting');
   let mirrored = $state(true);
 
   async function start() {
@@ -14,7 +14,8 @@
       if (video) video.srcObject = stream;
       status = 'live';
     } catch (e) {
-      status = (e as DOMException)?.name === 'NotFoundError' ? 'none' : 'denied';
+      const name = (e as DOMException)?.name;
+      status = name === 'NotFoundError' ? 'none' : name === 'NotReadableError' || name === 'AbortError' ? 'busy' : 'denied';
     }
   }
   function stop() {
@@ -37,7 +38,7 @@
     <video bind:this={video} autoplay muted playsinline class:flip={mirrored}></video>
     {#if status !== 'live'}
       <p>
-        {#if status === 'starting'}Starting the camera…{:else if status === 'none'}No camera found.{:else}Camera access was blocked. Allow it for Notifi in Windows Settings, Privacy, Camera.{/if}
+        {#if status === 'starting'}Starting the camera…{:else if status === 'none'}No camera found.{:else if status === 'busy'}The camera is in use by another app.{:else}Camera access was blocked. Allow it for Notifi in Windows Settings, Privacy, Camera.{/if}
       </p>
       {#if status !== 'starting'}<button class="again" onclick={start}>Try again</button>{/if}
     {/if}
