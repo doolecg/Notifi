@@ -42,13 +42,14 @@ pub fn wav() -> Vec<u8> {
 /// and lowered by 2.4 dB, from -19.3 to -21.7 LUFS, the loudness of Windows' own notification sound.
 const NOTIFICATION: &[u8] = include_bytes!("../../sounds/notification.wav");
 
+/// SND_SYSTEM plays it in Windows' "System Sounds" audio session, so it follows that slider in the volume mixer, and its mute.
 #[cfg(windows)]
 fn play_memory(bytes: &'static [u8]) {
     use windows::{
         core::PCWSTR,
-        Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT},
+        Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT, SND_SYSTEM},
     };
-    let _ = unsafe { PlaySoundW(PCWSTR(bytes.as_ptr().cast()), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT) };
+    let _ = unsafe { PlaySoundW(PCWSTR(bytes.as_ptr().cast()), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT | SND_SYSTEM) };
 }
 
 /// Plays the deep click without waiting for it to finish. Windows only for now.

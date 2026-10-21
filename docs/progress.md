@@ -119,3 +119,5 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 ## Notification sound
 - Notifications play docs/sounds/universfield-new-notification-07-210334.mp3, converted to src-tauri/sounds/notification.wav and lowered 2.4 dB (-19.3 to -21.7 LUFS, the loudness of C:\Windows\Media\Windows Notify System Generic.wav, the default toast sound). Lock and unlock sounds stay the synthesized deep click.
 - The mp3's licence is the Pixabay content licence (free to use, not open source); the file name says Universfield. Not checked in the running app by ear.
+
+- The notification chime now plays in Windows' 'System sounds' audio session (PlaySound with SND_SYSTEM), so it follows the System sounds slider and mute in the volume mixer. Checked: while it played, the mixer showed activity on 'System sounds' (peak 0.29) and no Notifi session.
