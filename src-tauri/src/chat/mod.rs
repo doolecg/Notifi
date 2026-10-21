@@ -24,6 +24,45 @@ struct Host {
 /// The origin the chat was last signed in to in this run, so the one-time link is only used once per run.
 static PAIRED: Mutex<Option<String>> = Mutex::new(None);
 
+/// A chat to open next, as its address; used when a session button asks for one and the chat has not been started yet.
+static WANT: Mutex<Option<String>> = Mutex::new(None);
+
+/// A T3 Code chat behind a Claude session.
+#[derive(Clone)]
+pub struct T3Chat {
+    pub thread: String,
+    pub title: String,
+}
+
+/// T3 Code's chat for a Claude session id, read from T3's own database (read only). Remembered for 20 seconds.
+pub fn t3_chat_of(session: &str) -> Option<T3Chat> {
+    use std::{collections::HashMap, time::Instant};
+    type Cache = HashMap<String, (Instant, Option<T3Chat>)>;
+    static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
+    if session.len() < 8 || !session.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    let mut guard = CACHE.lock().unwrap();
+    let cache = guard.get_or_insert_with(HashMap::new);
+    if let Some((at, found)) = cache.get(session).filter(|(at, _)| at.elapsed() < Duration::from_secs(20)) {
+        let _ = at;
+        return found.clone();
+    }
+    let found = (|| {
+        let db = t3_home()?.join("userdata").join("statev2.sqlite");
+        let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
+        let _ = conn.busy_timeout(Duration::from_millis(300));
+        conn.query_row(
+            "select t.thread_id, t.title from orchestration_v2_projection_provider_threads p join orchestration_v2_projection_threads t on t.thread_id = p.thread_id where p.payload_json like ?1 and t.deleted_at is null limit 1",
+            [format!("%{session}%")],
+            |r| Ok(T3Chat { thread: r.get(0)?, title: r.get(1)? }),
+        )
+        .ok()
+    })();
+    cache.insert(session.to_string(), (Instant::now(), found.clone()));
+    found
+}
+
 fn t3_home() -> Option<PathBuf> {
     std::env::var_os("T3CODE_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| island::agents::home().map(|h| h.join(".t3")))
 }
@@ -105,8 +144,9 @@ pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(),
     let url = first.parse::<tauri::Url>().map_err(|e| e.to_string())?;
     let view = window.add_child(WebviewBuilder::new(WEBVIEW, WebviewUrl::External(url)), pos, size).map_err(|e| e.to_string())?;
     *PAIRED.lock().unwrap() = Some(host.origin.clone());
-    // Back to the chat that was open last, once the sign-in has landed on its start page.
-    let saved = last_file(app).and_then(|f| std::fs::read_to_string(f).ok()).map(|s| s.trim().to_string()).filter(|p| chat_path(p, &host.environment));
+    // The chat a session button asked for, else the chat that was open last, once the sign-in has landed on its start page.
+    let wanted = WANT.lock().unwrap().take();
+    let saved = wanted.or_else(|| last_file(app).and_then(|f| std::fs::read_to_string(f).ok()).map(|s| s.trim().to_string())).filter(|p| chat_path(p, &host.environment));
     if let Some(path) = saved {
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(2500));
@@ -158,6 +198,28 @@ pub fn dictate(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn chat_show(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
     show(&app, x, y, w, h).await
+}
+
+/// A session button: open the Island on this T3 Code chat.
+#[tauri::command]
+pub async fn chat_open_thread(app: AppHandle, thread: String) {
+    if !island::config(&app).chat_enabled || !thread.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return;
+    }
+    match t3_host().await {
+        Ok(host) => {
+            let path = format!("/{}/{thread}", host.environment);
+            match (app.get_webview(WEBVIEW), format!("{}{path}", host.origin).parse::<tauri::Url>()) {
+                // Already running: go to it now. Otherwise it is opened on this chat when it starts.
+                (Some(view), Ok(url)) => {
+                    let _ = view.navigate(url);
+                }
+                _ => *WANT.lock().unwrap() = Some(path),
+            }
+            island::open_chat(&app);
+        }
+        Err(e) => island::notice(&app, e),
+    }
 }
 
 #[tauri::command]

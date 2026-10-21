@@ -300,6 +300,9 @@ export interface SessionChip {
   status: 'working' | 'needs' | 'done';
   elapsedMs: number;
   lastTs: number;
+  /** The T3 Code chat this session is, with its title. */
+  title: string | null;
+  thread: string | null;
 }
 
 export interface Snapshot {

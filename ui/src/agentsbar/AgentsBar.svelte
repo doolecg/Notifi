@@ -63,6 +63,11 @@
     leaveTimer = setTimeout(() => (hover = false), 250);
   }
   async function openChip(c: SessionChip) {
+    // A T3 Code chat opens in the Island's own chat.
+    if (c.thread && cfg?.chatEnabled) {
+      invoke('chat_open_thread', { thread: c.thread }).catch(() => {});
+      return;
+    }
     const found = await invoke<boolean>('island_goto_agent', { agent: c.agent, project: c.project }).catch(() => false);
     if (!found) invoke('island_open_agents').catch(() => {});
   }
@@ -150,9 +155,9 @@
   <div class="root" role="group" onpointerenter={enter} onpointerleave={leave} class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
     <div class="chips" class:show={hover && chips.length > 0} bind:this={chipsEl} style:bottom={`${barH + 8}px`}>
       {#each chips as c (c.id)}
-        <button class="chip {c.status}" title={`${c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
+        <button class="chip {c.status}" title={`${c.title ?? c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
           <span class="dot"></span><Logo id={c.agent} size={13} />
-          <span class="nm">{c.project ?? 'Session'}</span>
+          <span class="nm">{c.title ?? c.project ?? 'Session'}</span>
           <span class="st">{CHIP_TEXT[c.status]}{#if c.status === 'working' && c.elapsedMs}<span class="el">{clock(c.elapsedMs)}</span>{/if}</span>
         </button>
       {/each}

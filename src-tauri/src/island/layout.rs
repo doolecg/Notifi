@@ -110,9 +110,11 @@ fn build(dock: bool, base: (f64, f64), tall: bool, chat: bool, screen: (f64, f64
     let stretched = fit((base.0, TALL_H.max(base.1)), screen);
     let chat_size = fit(CHAT, screen);
     let open = if chat { chat_size } else if tall { stretched } else { base };
+    // As wide as the widest size, and 4% more for the springy opening that overshoots, so the menu is never wider than its window.
+    let room = ((open.0.max(base.0).max(chat_size.0) * 1.04).round().min(screen.0 - 2.0 * EDGE), open.1);
     Layout {
         dock,
-        window: if dock { dock_window_size(open) } else { window_size(open) },
+        window: if dock { dock_window_size(room) } else { window_size(room) },
         open,
         base,
         tall: stretched,
@@ -200,7 +202,10 @@ mod tests {
         assert_eq!(layout("spacious", 0.0, 0.0, true, true, BIG).open, CHAT);
         let d = layout_dock("compact", 0.0, 0.0, false, false, BIG);
         assert!(d.dock && d.left.is_empty() && d.right.is_empty() && d.bottom.is_empty());
-        assert_eq!(d.window, (1200.0 + EDGE, 300.0 + EDGE + DOCK_GAP));
+        // The window is as wide as the widest size and a little more for the springy opening, so switching sizes never clips the menu.
+        assert_eq!(l.window.0, (1700.0f64 * 1.04).round() + 2.0 * EDGE);
+        assert_eq!(layout("spacious", 0.0, 0.0, false, true, BIG).window.0, l.window.0);
+        assert_eq!(d.window.0, (CHAT.0 * 1.04).round() + EDGE);
     }
 
     #[test]
@@ -217,7 +222,8 @@ mod tests {
         let l = layout("compact", 0.0, 0.0, false, false, BIG);
         let pieces = shape(l.window.0, l.open, OPEN_RADIUS, &[]);
         assert_eq!(pieces.len(), 1);
-        assert_eq!(bounds(l.window.0, &pieces), l.window);
+        // The shape is the island and its edge, even though the window is wider.
+        assert_eq!(bounds(l.window.0, &pieces), window_size(l.open));
         let pill = shape(l.window.0, (180.0, 32.0), 16.0, &[]);
         assert_eq!(bounds(l.window.0, &pill), (180.0 + 2.0 * EDGE, 32.0 + EDGE));
     }

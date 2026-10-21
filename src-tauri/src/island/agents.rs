@@ -422,6 +422,9 @@ pub struct SessionChip {
     pub status: &'static str,
     pub elapsed_ms: u64,
     pub last_ts: u64,
+    /// The T3 Code chat this session is, with its title; filled in by the Island loop.
+    pub title: Option<String>,
+    pub thread: Option<String>,
 }
 
 /// A turn that just ended after running at least the notice threshold.
@@ -542,6 +545,10 @@ impl Tracker {
             .filter(|(p, _)| !is_sub(p))
             .filter_map(|(p, f)| {
                 let s = &f.session;
+                // T3 Code starts a helper session just to title each chat; it is not one to open.
+                if s.project.as_deref().is_some_and(|n| n.starts_with("t3code-claude-title")) {
+                    return None;
+                }
                 let status = if s.working(now) {
                     if s.needs_you(now) { "needs" } else { "working" }
                 } else if self.recent.contains_key(p) {
@@ -549,7 +556,7 @@ impl Tracker {
                 } else {
                     return None;
                 };
-                Some(SessionChip { id: p.to_string_lossy().into_owned(), agent: kind_of(home, p), project: s.project.clone(), status, elapsed_ms: s.elapsed(now), last_ts: s.last_ts })
+                Some(SessionChip { id: p.to_string_lossy().into_owned(), agent: kind_of(home, p), project: s.project.clone(), status, elapsed_ms: s.elapsed(now), last_ts: s.last_ts, title: None, thread: None })
             })
             .collect();
         let rank = |s: &str| match s {

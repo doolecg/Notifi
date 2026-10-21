@@ -145,3 +145,9 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Hover the taskbar AI Agents bar and your sessions appear above it as buttons (up to 8): Working (blue), Needs you (amber), Done (green, kept 90 s). Each shows the project name and, for Working, the time. Click one to bring that session's window forward, else the Island opens on AI Agents. The bar's window grows upward only while it is hovered.
 - The taskbar chat button was checked with a real click: the chat opened at full size in under half a second.
 - Not checked: a real Needs you or Done button, and clicking a button to reach a T3 Code or terminal window.
+
+## Session buttons open their chat
+- A Claude session that T3 Code runs is matched to its T3 chat by reading T3's own database (statev2.sqlite, read only, remembered 20 s). The button shows the chat's title (not the folder name) and clicking it opens the Island's AI chat on that chat. T3's helper sessions that only title chats (t3code-claude-title-*) get no button.
+- Other sessions (terminals) still bring their window forward, else the Island opens on AI Agents.
+- The Island window is now as wide as the widest size plus 4% for the springy opening, so going from the chat to a wider tab no longer clips it (it did: the window stayed chat-wide until a timer fired).
+- Checked: the button showed 'Unspecified Recurring Issues'; clicking it opened the chat on that chat. Not checked: the red boxes in your last screenshot (I read them as the long folder name and helper sessions being wrong), and a Needs you or Done button.

@@ -898,6 +898,14 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             agent_snaps.retain(|a| config::follows(&c.agents_follow, a.id));
             chips = tracker.chips(home, now);
             chips.retain(|s| config::follows(&c.agents_follow, s.agent));
+            // A Claude session that T3 Code runs shows under its chat's title and opens that chat.
+            for chip in chips.iter_mut().filter(|s| s.agent == agents::Kind::Claude) {
+                let stem = std::path::Path::new(&chip.id).file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+                if let Some(t3) = crate::chat::t3_chat_of(&stem) {
+                    chip.title = Some(t3.title);
+                    chip.thread = Some(t3.thread);
+                }
+            }
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
@@ -1045,10 +1053,15 @@ pub fn island_bar_extra(app: AppHandle, state: State<IslandState>, extra: f64) {
     }
 }
 
+/// Opens the Island on the AI chat.
+pub fn open_chat(app: &AppHandle) {
+    run_action(app, "islandChat");
+}
+
 /// The taskbar bar's chat button: open the Island on the AI chat.
 #[tauri::command]
 pub fn island_open_chat(app: AppHandle) {
-    run_action(&app, "islandChat");
+    open_chat(&app);
 }
 
 /// Runs a keybind action (`island…` ids from keybinds.rs).
