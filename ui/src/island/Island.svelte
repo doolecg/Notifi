@@ -287,6 +287,16 @@
     }
   }
 
+  /** Scrolling over the tab strip steps through the tabs. */
+  function stripWheel(e: WheelEvent) {
+    const d = e.deltaY || e.deltaX;
+    const now = performance.now();
+    if (Math.abs(d) < 1 || now - lastWheel < 200 || !strip.tabs.length) return;
+    lastWheel = now;
+    const at = Math.max(0, strip.tabs.findIndex(activeButton));
+    press(strip.tabs[(at + (d > 0 ? 1 : strip.tabs.length - 1)) % strip.tabs.length]);
+  }
+
   function setDefault(id: string) {
     invoke('set_section', { section: 'island', value: { defaultModule: id } }).catch(() => {});
   }
@@ -508,7 +518,7 @@
 {/snippet}
 
 {#snippet tabstrip()}
-  <nav class="strip" style:height={`${STRIP}px`}>
+  <nav class="strip" style:height={`${STRIP}px`} onwheel={stripWheel}>
     {#each strip.tabs as id (id)}
       {@const b = buttonInfo(id)}
       <button class="tab" class:active={activeButton(id)} title={b.label} onclick={() => press(id)}>

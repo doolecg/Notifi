@@ -13,11 +13,20 @@
   const vol = $derived(pct(snap.volume === null ? null : snap.volume * 100));
   const bright = $derived(pct(snap.brightness));
 
+  const volumeTo = (n: number) => invoke('island_set_volume', { volume: n / 100 }).catch(() => {});
+  const brightnessTo = (n: number) => invoke('island_set_brightness', { percent: n }).catch(() => {});
   function setVolume(e: Event) {
-    invoke('island_set_volume', { volume: Number((e.target as HTMLInputElement).value) / 100 }).catch(() => {});
+    volumeTo(Number((e.target as HTMLInputElement).value));
   }
   function setBrightness(e: Event) {
-    invoke('island_set_brightness', { percent: Number((e.target as HTMLInputElement).value) }).catch(() => {});
+    brightnessTo(Number((e.target as HTMLInputElement).value));
+  }
+  /** Scrolling over a slider nudges it by 2 per notch; reads the slider so quick notches add up. */
+  function wheel(e: WheelEvent, to: (n: number) => void) {
+    const input = (e.currentTarget as HTMLElement).querySelector('input')!;
+    if (input.disabled || !e.deltaY) return;
+    input.value = String(Math.min(100, Math.max(0, Number(input.value) + (e.deltaY < 0 ? 2 : -2))));
+    to(Number(input.value));
   }
 </script>
 
@@ -38,12 +47,12 @@
     {/if}
   </div>
 
-  <label class="row">
+  <label class="row" onwheel={(e) => wheel(e, volumeTo)}>
     <Glyph name="speaker" size={16} />
     <input type="range" min="0" max="100" value={vol ?? 0} disabled={vol === null} oninput={setVolume} aria-label="Volume" />
     <span class="pct">{vol === null ? 'n/a' : `${vol}%`}</span>
   </label>
-  <label class="row">
+  <label class="row" onwheel={(e) => wheel(e, brightnessTo)}>
     <Glyph name="sun" size={16} />
     <input type="range" min="0" max="100" value={bright ?? 0} disabled={bright === null} oninput={setBrightness} aria-label="Brightness" />
     <span class="pct">{bright === null ? 'n/a' : `${bright}%`}</span>
