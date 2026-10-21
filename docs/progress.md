@@ -81,3 +81,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Open sizes are wider: top compact 760 x 280, spacious 900 x 360; docked compact 820 x 300, spacious 900 x 420.
 - New Nook home: Now Playing, Calendar and Scratchpad side by side. It opens first when nothing is live in docked mode.
 - Not changed: the button slot editor in Settings > Island still draws the old side slots. Tab order is left, then right, then bottom lists.
+
+## AI Agents bar on the taskbar
+- New switch Island > Behaviour > 'AI Agents bar on the taskbar' (agentsTaskbar). With the Island at the top, a separate bar for AI Agents sits at the taskbar's left; the top pill no longer shows agents. Ignored when the Island itself is docked bottom left.
+- Clicking the bar jumps to the session when it is Done or Needs you, otherwise opens the Island on AI Agents.
+- Running time now shows beside the status on the agents pill and on the bar.
+- The other working-agent logo is no longer repeated next to the main one; its count reads 'N running'.
+- Not done: the bar opens no flyout of its own.

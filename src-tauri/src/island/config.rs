@@ -76,6 +76,8 @@ pub struct IslandConfig {
     pub idle_thin_bar: bool,
     /// "top" (hangs from the top centre) or "bottomLeft" (sits on the taskbar's left, grows upward).
     pub dock: String,
+    /// With the Island at the top, keep the AI Agents bar on its own at the taskbar's left.
+    pub agents_taskbar: bool,
     /// Read Claude's 5 hour and weekly limits from Anthropic using Claude Code's saved login.
     pub claude_usage_connect: bool,
     /// How much darker than the taskbar the docked bar is, in percent.
@@ -134,6 +136,7 @@ impl Default for IslandConfig {
             idle_ai_usage: true,
             idle_thin_bar: true,
             dock: "top".into(),
+            agents_taskbar: false,
             claude_usage_connect: false,
             dock_darkness: 25.0,
             agents_follow: Vec::new(),

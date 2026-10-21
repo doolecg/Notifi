@@ -17,6 +17,7 @@ export default defineConfig({
         main: fileURLToPath(new URL('index.html', import.meta.url)),
         panel: fileURLToPath(new URL('panel.html', import.meta.url)),
         island: fileURLToPath(new URL('island.html', import.meta.url)),
+        agentsbar: fileURLToPath(new URL('agentsbar.html', import.meta.url)),
         clipboard: fileURLToPath(new URL('clipboard.html', import.meta.url)),
         snippets: fileURLToPath(new URL('snippets.html', import.meta.url)),
         shelf: fileURLToPath(new URL('shelf.html', import.meta.url)),

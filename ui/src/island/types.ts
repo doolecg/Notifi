@@ -38,6 +38,7 @@ export interface IslandConfig {
   idleAiUsage: boolean;
   idleThinBar: boolean;
   dock: 'top' | 'bottomLeft';
+  agentsTaskbar: boolean;
   claudeUsageConnect: boolean;
   dockDarkness: number;
   askInIsland: boolean;
@@ -84,6 +85,7 @@ export const DEFAULT_CONFIG: IslandConfig = {
   idleAiUsage: true,
   idleThinBar: true,
   dock: 'top',
+  agentsTaskbar: false,
   claudeUsageConnect: false,
   dockDarkness: 25,
   askInIsland: false,

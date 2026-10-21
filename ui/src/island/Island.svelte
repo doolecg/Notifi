@@ -60,7 +60,8 @@
   const snap = $derived(island.snap);
   const cfg = $derived(snap?.config);
   const layout = $derived(snap?.layout);
-  const live = $derived(snap?.live ?? []);
+  /** With the AI Agents bar on the taskbar, the top pill leaves the agents out. */
+  const live = $derived((snap?.live ?? []).filter((l) => !(l.id === 'agents' && cfg?.agentsTaskbar && !layout?.dock)));
 
   /** The window is at its open size. */
   let open = $state(false);
@@ -597,6 +598,7 @@
             {:else}
               <span class="mid {selLive.status}">
                 {STATUS_TEXT[selLive.status] ?? ''}
+                {#if selLive.id === 'agents' && selLive.value}<small class="todo" title="Running for">{selLive.value}</small>{/if}
                 {#if selLive.todos}<small class="todo">Todo {selLive.todos[0]}/{selLive.todos[1]}</small>{/if}
               </span>
             {/if}
@@ -610,13 +612,13 @@
             <span class="end value" style:color={selLive.color}>
               {#if selLive.id === 'agents'}
                 {#each workingAgents as a (a.id)}
-                  <span class="ag" title={`${a.name}: ${a.count} working`}><Logo id={a.id} size={15} />{#if a.count > 1}<small>{a.count}</small>{/if}</span>
+                  <span class="ag" title={`${a.name}: ${a.count} working`}>{#if a.id !== selLive.icon}<Logo id={a.id} size={15} />{/if}{#if a.count > 1}<small>{a.count}{a.id === selLive.icon ? ' running' : ''}</small>{/if}</span>
                 {/each}
                 {#if selLive.subagents > 0}<span class="count sub">{selLive.subagents} {selLive.subagents === 1 ? 'subagent' : 'subagents'}</span>{/if}
                 <span class="count">{selLive.terminals ? `${selLive.terminals} ${selLive.terminals === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
               {/if}
               {#if selLive.id === 'agents'}
-                <!-- elapsed time is left out on purpose -->
+                <!-- the running time sits beside the status -->
               {:else if selLive.value}
                 {selLive.value}
               {:else if selLive.id === 'music' && snap.media}

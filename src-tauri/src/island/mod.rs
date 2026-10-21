@@ -37,6 +37,9 @@ use layout::Layout;
 use timer::{Phase, Timer};
 
 pub const ISLAND: &str = "island";
+/// The AI Agents bar kept on the taskbar while the Island hangs from the top.
+pub const BAR: &str = "agentsbar";
+const BAR_W: f64 = 640.0;
 const STATE_EVENT: &str = "island://state";
 const COVER_EVENT: &str = "island://cover";
 const ACTIVITY_EVENT: &str = "island://activity";
@@ -92,6 +95,7 @@ struct Inner {
     /// Logical size of the resting shape the page asked for.
     rest: (f64, f64),
     visible: bool,
+    bar_visible: bool,
     fullscreen: bool,
     /// The session is locked.
     locked: bool,
@@ -467,21 +471,57 @@ fn place(app: &AppHandle) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
+/// The AI Agents bar sits at the taskbar's left, as tall as the taskbar.
+fn place_bar(app: &AppHandle) {
+    let Some(win) = app.get_webview_window(BAR) else { return };
+    let c = config(app);
+    let Some(mon) = monitor(app, &c) else { return };
+    let scale = mon.scale_factor();
+    let (top, bottom) = taskbar_band(&mon);
+    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, BAR_W, f64::from(bottom - top) / scale);
+    let _ = win.set_size(PhysicalSize::new(pw, ph));
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    #[cfg(windows)]
+    raise(&win);
+}
+
+fn set_bar_visible(app: &AppHandle, on: bool) {
+    let Some(win) = app.get_webview_window(BAR) else { return };
+    let state = app.state::<IslandState>();
+    let changed = {
+        let mut i = state.inner.lock().unwrap();
+        let changed = i.bar_visible != on;
+        i.bar_visible = on;
+        changed
+    };
+    if !changed {
+        return;
+    }
+    if on {
+        place_bar(app);
+        let _ = win.show();
+    } else {
+        let _ = win.hide();
+    }
+}
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    WebviewWindowBuilder::new(app, ISLAND, WebviewUrl::App("island.html".into()))
-        .title("Notifi Island")
-        .inner_size(220.0, 42.0)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .visible_on_all_workspaces(true)
-        .resizable(false)
-        .focused(false)
-        .focusable(false)
-        .visible(false)
-        .build()?;
+    for (label, url, title, size) in [(ISLAND, "island.html", "Notifi Island", (220.0, 42.0)), (BAR, "agentsbar.html", "Notifi AI Agents", (BAR_W, 32.0))] {
+        WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+            .title(title)
+            .inner_size(size.0, size.1)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .resizable(false)
+            .focused(false)
+            .focusable(false)
+            .visible(false)
+            .build()?;
+    }
     start(app);
     Ok(())
 }
@@ -588,11 +628,20 @@ fn start_raise(app: &AppHandle) {
         .name("notifi-island-raise".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_millis(250));
-            if config(&app).dock != "bottomLeft" || !app.state::<IslandState>().inner.lock().unwrap().visible {
-                continue;
+            let state = app.state::<IslandState>();
+            let (visible, bar) = {
+                let i = state.inner.lock().unwrap();
+                (i.visible, i.bar_visible)
+            };
+            if visible && config(&app).dock == "bottomLeft" {
+                if let Some(win) = app.get_webview_window(ISLAND) {
+                    raise(&win);
+                }
             }
-            if let Some(win) = app.get_webview_window(ISLAND) {
-                raise(&win);
+            if bar {
+                if let Some(win) = app.get_webview_window(BAR) {
+                    raise(&win);
+                }
             }
         })
         .expect("spawn island raise thread");
@@ -703,6 +752,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
         let c = config(&app);
         if !c.enabled {
             set_visible(&app, false);
+            set_bar_visible(&app, false);
             app.state::<IslandState>().inner.lock().unwrap().last = None;
             if matches!(wake.recv_timeout(Duration::from_secs(5)), Err(RecvTimeoutError::Disconnected)) {
                 return;
@@ -721,6 +771,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
         let fullscreen = state.inner.lock().unwrap().fullscreen;
         let paused = lock::overlays_paused(&app.state::<Store>().get(), state.inner.lock().unwrap().locked);
         set_visible(&app, !fullscreen && !paused);
+        set_bar_visible(&app, !fullscreen && !paused && c.agents_taskbar && c.dock == "top");
 
         let timer_done = state.inner.lock().unwrap().timer.tick(now);
         if timer_done && c.activity_timer {
@@ -847,6 +898,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             if i.last.as_ref() != Some(&value) {
                 i.last = Some(value.clone());
                 drop(i);
+                let _ = app.emit_to(BAR, STATE_EVENT, value.clone());
                 let _ = app.emit_to(ISLAND, STATE_EVENT, value);
             }
         }
@@ -861,6 +913,15 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
 pub fn on_settings_changed(app: &AppHandle) {
     app.state::<IslandState>().wake();
     place(app);
+    if app.state::<IslandState>().inner.lock().unwrap().bar_visible {
+        place_bar(app);
+    }
+}
+
+/// A click on the taskbar's AI Agents bar: open the Island on its AI Agents module.
+#[tauri::command]
+pub fn island_open_agents(app: AppHandle) {
+    run_action(&app, "islandModuleAgents");
 }
 
 /// Runs a keybind action (`island…` ids from keybinds.rs).

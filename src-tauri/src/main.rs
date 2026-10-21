@@ -218,6 +218,7 @@ fn main() {
             island::watch::watch_clear_area,
             island::watch::watch_read,
             island::island_focus,
+            island::island_open_agents,
             island::island_media,
             island::lyrics::island_lyrics,
             island::island_timer,
