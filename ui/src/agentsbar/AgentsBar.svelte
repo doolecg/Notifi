@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { onMount, untrack } from 'svelte';
   import { applyCssVars, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
@@ -135,6 +136,9 @@
     applyCssVars();
     store.init().catch(() => {});
     island.init(() => {});
+    // Notifi saw the pointer leave even if this page missed it.
+    const off = listen('agentsbar://leave', () => (hover = false));
+    return () => off.then((f) => f());
   });
 </script>
 

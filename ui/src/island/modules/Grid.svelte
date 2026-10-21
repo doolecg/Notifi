@@ -7,7 +7,14 @@
   let { onOpen, onBack, onSetDefault }: { onOpen: (id: string) => void; onBack: () => void; onSetDefault: (id: string) => void } =
     $props();
 
-  const PER_PAGE = 15;
+  /** One tile's room; the page holds as many as fit, so a wide, short menu shows every module at once. */
+  const TILE_W = 124;
+  const TILE_H = 64;
+  let pagerW = $state(0);
+  let pagerH = $state(0);
+  const cols = $derived(Math.max(1, Math.floor((pagerW + 4) / TILE_W)));
+  const rows = $derived(Math.max(1, Math.floor((pagerH + 4) / TILE_H)));
+  const PER_PAGE = $derived(cols * rows);
   const snap = $derived(island.snap!);
   let query = $state('');
   let searching = $state(false);
@@ -21,6 +28,8 @@
       .filter((m) => m.label.toLowerCase().includes(query.trim().toLowerCase())),
   );
   const pages = $derived(Math.max(1, Math.ceil(listed.length / PER_PAGE)));
+  /** When everything fits on one page, spread the tiles evenly over the rows instead of leaving a short last row. */
+  const spread = $derived(pages > 1 ? cols : Math.min(cols, Math.max(1, Math.ceil(listed.length / rows))));
   const visible = $derived(listed.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE));
 
   $effect(() => {
@@ -63,7 +72,7 @@
   </header>
 
   <div class="pager" onwheel={wheel}>
-    <div class="tiles">
+    <div class="tiles" bind:clientWidth={pagerW} bind:clientHeight={pagerH} style:grid-template-columns={`repeat(${spread}, minmax(0, 1fr))`} style:grid-template-rows={`repeat(${rows}, minmax(0, 1fr))`}>
       {#each visible as m (m.id)}
         <button class="tile" onclick={() => onOpen(m.id)} oncontextmenu={(e) => { e.preventDefault(); onSetDefault(m.id); }}
           title={m.ready ? m.label : `${m.label} (coming in a later version)`}>
@@ -157,8 +166,7 @@
   .tiles {
     display: grid;
     flex: 1;
-    grid-template-columns: repeat(5, 1fr);
-    grid-template-rows: repeat(3, 1fr);
+    min-height: 0;
     gap: 4px;
   }
   .tile {

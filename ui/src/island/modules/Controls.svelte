@@ -30,7 +30,7 @@
   }
 </script>
 
-<div class="controls">
+<div class="controls"><div class="body"><div class="main">
   <div class="mini">
     {#if m}
       {#if island.cover}<img src={island.cover} alt="" />{:else}<span class="ph"><Glyph name="music" /></span>{/if}
@@ -58,6 +58,7 @@
     <span class="pct">{bright === null ? 'n/a' : `${bright}%`}</span>
   </label>
 
+  </div>
   <div class="quick">
     {#each snap.config.controlsButtons as id (id)}
       {@const b = BUTTONS[id]}
@@ -66,14 +67,47 @@
       {/if}
     {/each}
   </div>
-</div>
+</div></div>
 
 <style>
   .controls {
+    height: 100%;
+    container-type: inline-size;
+  }
+  .body,
+  .main {
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+  .body {
     height: 100%;
+  }
+  /* A wide, short menu: the player and sliders on the left, the quick buttons beside them. */
+  @container (min-width: 900px) {
+    .body {
+      flex-direction: row;
+      gap: 18px;
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+      justify-content: center;
+    }
+    .quick {
+      flex: none;
+      width: 380px;
+      grid-template-columns: repeat(2, 1fr);
+      align-content: center;
+      margin-top: 0;
+    }
+    .quick button {
+      flex-direction: row;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 8px;
+      font-size: 12.5px;
+    }
   }
   .mini {
     display: flex;

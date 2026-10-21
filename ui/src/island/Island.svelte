@@ -309,8 +309,9 @@
       await invoke('island_chat', { on: true }).catch(() => {});
       chatMode = true;
     } else {
+      // Notifi keeps the old window size while the menu shrinks, so this goes at once.
       chatMode = false;
-      tallTimer = setTimeout(() => invoke('island_chat', { on: false }).catch(() => {}), duration('pillDrop') + 80);
+      invoke('island_chat', { on: false }).catch(() => {});
     }
   }
 
@@ -920,6 +921,12 @@
     background: var(--i-hover);
     color: var(--i-fg);
   }
+  /* A clicked tab keeps the keyboard, which drew a heavy ring; a soft one is enough. */
+  .tab:focus-visible,
+  .act:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--i-fg), transparent 70%);
+  }
   .tab.active {
     background: color-mix(in srgb, var(--i-fg), transparent 88%);
     color: var(--i-fg);
@@ -933,7 +940,8 @@
     scroll-snap-type: x proximity;
   }
   .nook section {
-    flex: 0 0 250px;
+    /* At least this wide, sliding sideways when the menu is narrow; sharing the spare room when it is wide. */
+    flex: 1 0 250px;
     scroll-snap-align: start;
     min-width: 0;
     padding: 0 16px;
@@ -950,7 +958,7 @@
     overflow: hidden;
   }
   .nook .wide {
-    flex-basis: 360px;
+    flex: 1.4 0 360px;
   }
 
   .dock .pill.collapsing {

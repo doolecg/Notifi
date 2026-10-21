@@ -113,6 +113,8 @@ struct Inner {
     tall: bool,
     /// Open on the AI chat: the menu has the chat's size.
     chat: bool,
+    /// A window size to keep at least until the instant, while the menu animates from one size to another.
+    hold: Option<((f64, f64), Instant)>,
 }
 
 impl Default for IslandState {
@@ -459,14 +461,11 @@ pub fn island_bar_height(app: AppHandle) -> f64 {
 }
 
 /// Moves and resizes in one step. Done as two steps, a centred pill jumps sideways for a frame every time the window changes width.
-fn set_rect(win: &tauri::WebviewWindow, x: i32, y: i32, w: u32, h: u32) {
+fn set_rect(win: &tauri::Window, x: i32, y: i32, w: u32, h: u32) {
     #[cfg(windows)]
     {
-        use windows::Win32::{
-            Foundation::HWND,
-            UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER},
-        };
-        let hwnd = HWND(crate::switcher::host_id(win) as usize as *mut std::ffi::c_void);
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER};
+        let Ok(hwnd) = win.hwnd() else { return };
         unsafe {
             let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, SWP_NOACTIVATE | SWP_NOZORDER);
         }
@@ -479,7 +478,7 @@ fn set_rect(win: &tauri::WebviewWindow, x: i32, y: i32, w: u32, h: u32) {
 }
 
 fn place(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(ISLAND) else { return };
+    let Some(win) = app.get_window(ISLAND) else { return };
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
     let state = app.state::<IslandState>();
@@ -487,7 +486,14 @@ fn place(app: &AppHandle) {
         let i = state.inner.lock().unwrap();
         (i.open, i.rest, i.tall, i.chat)
     };
-    let l = layout_for(&c, tall, chat, screen_of(Some(&mon)));
+    let mut l = layout_for(&c, tall, chat, screen_of(Some(&mon)));
+    // Just after a size change the window keeps the bigger of the old and new sizes, so the menu animating between them is never cut off.
+    if let Some((size, until)) = state.inner.lock().unwrap().hold {
+        if open && Instant::now() < until {
+            // 4% extra width for the springy menu overshooting its new size.
+            l.window = ((l.window.0 * 1.04).round().max(size.0), l.window.1.max(size.1));
+        }
+    }
     if l.dock {
         let scale = mon.scale_factor();
         let (top, bottom) = taskbar_band(&mon);
@@ -507,7 +513,7 @@ fn place(app: &AppHandle) {
 
 /// The AI Agents bar sits at the taskbar's left, as tall as the taskbar.
 fn place_bar(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(BAR) else { return };
+    let Some(win) = app.get_window(BAR) else { return };
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
     let scale = mon.scale_factor();
@@ -566,7 +572,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn set_visible(app: &AppHandle, on: bool) {
-    let Some(win) = app.get_webview_window(ISLAND) else { return };
+    let Some(win) = app.get_window(ISLAND) else { return };
     let state = app.state::<IslandState>();
     let changed = {
         let mut i = state.inner.lock().unwrap();
@@ -693,10 +699,9 @@ fn fullscreen_app(app: &AppHandle, p: &Platform, c: &IslandConfig) -> bool {
 
 /// Puts the island back above the taskbar, which jumps over other topmost windows when it is clicked.
 #[cfg(windows)]
-fn raise(win: &tauri::WebviewWindow) {
-    use windows::Win32::Foundation::HWND;
+fn raise(win: &tauri::Window) {
     use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
-    let h = HWND(crate::switcher::host_id(win) as usize as *mut std::ffi::c_void);
+    let Ok(h) = win.hwnd() else { return };
     unsafe {
         let _ = SetWindowPos(h, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
@@ -707,23 +712,41 @@ fn start_raise(app: &AppHandle) {
     let app = app.clone();
     std::thread::Builder::new()
         .name("notifi-island-raise".into())
-        .spawn(move || loop {
+        .spawn(move || {
+          let mut away = 0u32;
+          loop {
             std::thread::sleep(Duration::from_millis(250));
             let state = app.state::<IslandState>();
-            let (visible, bar) = {
+            let (visible, bar, extra) = {
                 let i = state.inner.lock().unwrap();
-                (i.visible, i.bar_visible)
+                (i.visible, i.bar_visible, i.bar_extra)
             };
+            // The bar's page can miss the pointer leaving while its window resizes; then the taller,
+            // invisible window would keep taking clicks above the taskbar. Shrink it once the pointer is away.
+            if bar && extra > 0.0 {
+                let inside = app.get_webview_window(BAR).zip(app.cursor_position().ok()).is_some_and(|(w, p)| {
+                    let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) else { return true };
+                    p.x >= f64::from(pos.x) && p.y >= f64::from(pos.y) && p.x < f64::from(pos.x) + f64::from(size.width) && p.y < f64::from(pos.y) + f64::from(size.height)
+                });
+                away = if inside { 0 } else { away + 1 };
+                if away >= 2 {
+                    away = 0;
+                    state.inner.lock().unwrap().bar_extra = 0.0;
+                    place_bar(&app);
+                    let _ = app.emit_to(BAR, "agentsbar://leave", ());
+                }
+            }
             if visible && config(&app).dock == "bottomLeft" {
-                if let Some(win) = app.get_webview_window(ISLAND) {
+                if let Some(win) = app.get_window(ISLAND) {
                     raise(&win);
                 }
             }
             if bar {
-                if let Some(win) = app.get_webview_window(BAR) {
+                if let Some(win) = app.get_window(BAR) {
                     raise(&win);
                 }
             }
+          }
         })
         .expect("spawn island raise thread");
 }
@@ -1088,7 +1111,7 @@ fn lower_first(s: &str) -> String {
 
 /// Lets the window take keys (Esc, search) after the user clicked it or pressed its shortcut.
 fn focus(app: &AppHandle) {
-    let Some(win) = app.get_webview_window(ISLAND) else { return };
+    let Some(win) = app.get_window(ISLAND) else { return };
     let _ = win.set_focusable(true);
     if !window::no_focus() {
         let _ = win.set_focus();
@@ -1109,8 +1132,9 @@ pub fn island_cover(state: State<IslandState>) -> Option<String> {
 /// The page reports whether the island is open and the logical size of the resting shape.
 #[tauri::command]
 pub fn island_shape(app: AppHandle, state: State<IslandState>, open: bool, width: f64, height: f64) {
-    let changed = {
+    let (changed, was_open) = {
         let mut i = state.inner.lock().unwrap();
+        let was_open = i.open;
         let rest = (width.clamp(40.0, 1200.0), height.clamp(8.0, 600.0));
         let changed = i.open != open || (i.rest.0 - rest.0).abs() >= 0.5 || (i.rest.1 - rest.1).abs() >= 0.5;
         i.open = open;
@@ -1119,14 +1143,24 @@ pub fn island_shape(app: AppHandle, state: State<IslandState>, open: bool, width
             i.chat = false;
         }
         i.rest = rest;
-        changed
+        (changed, was_open)
     };
     if !changed {
         return;
     }
-    place(&app);
+    if open && !was_open {
+        // The opening spring overshoots a little; give it room, then fit the window to the menu.
+        let (tall, chat) = {
+            let i = state.inner.lock().unwrap();
+            (i.tall, i.chat)
+        };
+        let w = window_for(&app, tall, chat);
+        place_holding(&app, ((w.0 * 1.04).round(), w.1 + 12.0));
+    } else {
+        place(&app);
+    }
     if !open {
-        if let Some(win) = app.get_webview_window(ISLAND) {
+        if let Some(win) = app.get_window(ISLAND) {
             let _ = win.set_focusable(false);
         }
     }
@@ -1173,14 +1207,14 @@ fn pick_agent_window(windows: &[notifi_platform::WindowInfo], agent: &str, proje
 /// The docked menu's expand button: stretch it up to its tallest size, or back.
 #[tauri::command]
 pub fn island_tall(app: AppHandle, state: State<IslandState>, tall: bool) {
-    let changed = {
+    let before = {
         let mut i = state.inner.lock().unwrap();
-        let changed = i.tall != tall;
+        let before = (i.tall, i.chat);
         i.tall = tall;
-        changed
+        (before.0 != tall).then_some(before)
     };
-    if changed {
-        place(&app);
+    if let Some((t, ch)) = before {
+        place_holding(&app, window_for(&app, t, ch));
         state.wake();
     }
 }
@@ -1188,16 +1222,36 @@ pub fn island_tall(app: AppHandle, state: State<IslandState>, tall: bool) {
 /// The AI chat tab: give the menu the chat's size, or take it back.
 #[tauri::command]
 pub fn island_chat(app: AppHandle, state: State<IslandState>, on: bool) {
-    let changed = {
+    let before = {
         let mut i = state.inner.lock().unwrap();
-        let changed = i.chat != on;
+        let before = (i.tall, i.chat);
         i.chat = on;
-        changed
+        (before.1 != on).then_some(before)
     };
-    if changed {
-        place(&app);
+    if let Some((t, ch)) = before {
+        place_holding(&app, window_for(&app, t, ch));
         state.wake();
     }
+}
+
+/// How long a size change keeps the old window size: the length of the menu's animation.
+const HOLD: Duration = Duration::from_millis(750);
+
+/// The open window's logical size for these flags.
+fn window_for(app: &AppHandle, tall: bool, chat: bool) -> (f64, f64) {
+    let c = config(app);
+    layout_for(&c, tall, chat, screen_of(monitor(app, &c).as_ref())).window
+}
+
+/// Places the window keeping at least old for the animation, then fits it to the menu again.
+fn place_holding(app: &AppHandle, old: (f64, f64)) {
+    app.state::<IslandState>().inner.lock().unwrap().hold = Some((old, Instant::now() + HOLD));
+    place(app);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(HOLD + Duration::from_millis(50));
+        place(&app);
+    });
 }
 
 /// A click on the island: take keys so Esc and search work.

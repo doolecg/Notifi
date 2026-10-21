@@ -267,7 +267,7 @@ fn hide_overlay(app: &AppHandle) {
 
 #[cfg(windows)]
 fn hwnd_of(app: &AppHandle, label: &str) -> Option<isize> {
-    app.get_webview_window(label)?.hwnd().ok().map(|h| h.0 as isize)
+    app.get_window(label)?.hwnd().ok().map(|h| h.0 as isize)
 }
 
 #[cfg(not(windows))]

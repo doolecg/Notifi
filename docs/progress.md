@@ -151,3 +151,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Other sessions (terminals) still bring their window forward, else the Island opens on AI Agents.
 - The Island window is now as wide as the widest size plus 4% for the springy opening, so going from the chat to a wider tab no longer clips it (it did: the window stayed chat-wide until a timer fired).
 - Checked: the button showed 'Unspecified Recurring Issues'; clicking it opened the chat on that chat. Not checked: the red boxes in your last screenshot (I read them as the long folder name and helper sessions being wrong), and a Needs you or Done button.
+
+## Desktop clicks and a full UI pass
+- Fixed: the Island window was kept as wide as the widest size, and its invisible part took clicks meant for the desktop. The window is now exactly the menu's size; while switching sizes it keeps the larger of the old and new size for 0.75 s (plus 4% for the springy overshoot), then fits the menu again.
+- Fixed: once the chat had opened, the Island window could no longer be resized or found (Tauri stops returning a window holding two webviews from get_webview_window; window lookups now use get_window). This was why the Island stayed chat-wide and clipped the other tabs.
+- Fixed: the taskbar bar could stay tall after the pointer left it; Notifi now checks the pointer itself and shrinks the bar back.
+- Modules fills the wide menu with as many tiles as fit (no cut-off third row); Volume puts its quick buttons beside the sliders; the Nook's sections share the width with no blank strip on the right; tab focus rings are a soft grey line, not teal.
+- Checked: Nook, AI chat, Modules, Volume and AI Agents each fit at 1700 x 270 with the window 1720 x 280; chat to Modules ended at the right size; the resting Island and the 32 px bar have no extra window area. Not checked: dock mode, and the 4% hold change in a fresh build (tests pass).
