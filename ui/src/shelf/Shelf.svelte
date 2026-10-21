@@ -104,6 +104,9 @@
 
 <div class="card" class:hover class:across class:peek={mode === 'peek'} role="region" aria-label="Shelf">
   {#if mode === 'peek'}
+    <button class="icon corner" title="Close" aria-label="Close" onclick={() => run('shelf_hide')}>
+      <Glyph name="close" size={14} />
+    </button>
     <div class="peek-mark">
       <Glyph name="folder" size={22} />
       <span>Drop here</span>
@@ -209,6 +212,11 @@
   }
   .across .peek-mark {
     flex-direction: row;
+  }
+  .corner {
+    position: absolute;
+    top: 6px;
+    right: 6px;
   }
   header {
     flex: none;
