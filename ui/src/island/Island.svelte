@@ -191,9 +191,25 @@
       : { w: rest.w, h: rest.h },
   );
 
+  /** What the window was last told, so a shrinking pill can keep its room until it has finished shrinking. */
+  let sentShape = { w: 0, h: 0 };
+  let shapeTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
-    if (!open) invoke('island_shape', { open: false, width: box.w, height: box.h }).catch(() => {});
+    const { w, h } = box;
+    clearTimeout(shapeTimer);
+    if (open) {
+      sentShape = { w: 0, h: 0 };
+      return;
+    }
+    const send = () => {
+      sentShape = { w, h };
+      invoke('island_shape', { open: false, width: w, height: h }).catch(() => {});
+    };
+    if (w < sentShape.w - 0.5 || h < sentShape.h - 0.5) shapeTimer = setTimeout(send, duration('pillDrop') + 80);
+    else send();
   });
+  /** The old text leaves quickly, so it never sits on top of the new text. */
+  const swapOut = () => ({ duration: Math.min(70, duration('hoverLift')) });
 
   /** Height of the title bar, or of the taskbar when docked; refetched when the dock changes. */
   $effect(() => {
@@ -574,24 +590,24 @@
         </div>
       {:else if island.asks.length}
         {@const a = island.asks[0]}
-        <div class="ends activity asking" out:fade={{ duration: duration('hoverLift') }}>
+        <div class="ends activity asking" out:fade={swapOut()}>
           <Glyph name="bell" size={16} />
           <span class="atext">{a.kind === 'question' ? (a.questions[0]?.question ?? 'A question') : `Allow ${a.tool}?`}</span>
           {#if island.asks.length > 1}<small class="more">+{island.asks.length - 1}</small>{/if}
         </div>
       {:else if island.activity}
-        <div class="ends activity" out:fade={{ duration: duration('hoverLift') }}>
+        <div class="ends activity" out:fade={swapOut()}>
           <span style:color={island.activity.color}><Glyph name={island.activity.icon} size={16} /></span>
           <span class="atext">{island.activity.text}</span>
         </div>
       {:else if watchChosen && snap.watch}
-        <div class="ends activity live-in" out:fade={{ duration: duration('hoverLift') }}>
+        <div class="ends activity live-in" out:fade={swapOut()}>
           <Glyph name="search" size={16} />
           <span class="atext" title={snap.watch.paused || snap.watch.text}>{snap.watch.paused ? `Watching paused: ${snap.watch.paused}` : snap.watch.text || 'Watching…'}</span>
         </div>
       {:else if showLive && selLive && !infoChosen}
         {#key selLive.id}
-          <div class="ends live-in" out:fade={{ duration: duration('hoverLift') }}>
+          <div class="ends live-in" out:fade={swapOut()}>
             {#if selLive.id === 'agents'}<PixelBar color={pixelColor} calm={selLive.status === 'done' || selLive.status === 'idle'} period={selLive.status === 'needs' ? 900 : selLive.status === 'running' ? 2000 : 4200} {burst} />{/if}
             {#if selLive.id === 'music' && snap.media}
               <span class="prog" class:still={!snap.media.playing} style:--c={selLive.color} style:width={`${songPct}%`}></span>
@@ -654,7 +670,7 @@
           </div>
         {/key}
       {:else if !thin && idleShown}
-        <div class="ends idle live-in" out:fade={{ duration: duration('hoverLift') }} class:one={!idleLeft.length || !idleRight.length}>
+        <div class="ends idle live-in" out:fade={swapOut()} class:one={!idleLeft.length || !idleRight.length}>
           {#each [idleLeft, idleRight] as side, s (s)}
             {#if side.length}
               <span class="iside">
@@ -727,6 +743,13 @@
       inset 0 0 0 1px rgb(255 255 255 / 0.06),
       inset 0 -1px 0 rgb(255 255 255 / 0.16);
     cursor: default;
+    /* The window is only as big as the resting pill, so the resting pill must not overshoot it; the bouncy drop is for the open Island. */
+    transition:
+      width var(--m-pillRise-dur) var(--m-pillRise-ease),
+      height var(--m-pillRise-dur) var(--m-pillRise-ease),
+      border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
+  }
+  .pill.expanded {
     transition:
       width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
       height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
@@ -750,10 +773,10 @@
     background: var(--i-face);
     box-shadow: none;
     transition:
-      width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      bottom var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
+      width var(--m-pillRise-dur) var(--m-pillRise-ease),
+      height var(--m-pillRise-dur) var(--m-pillRise-ease),
+      bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
+      border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
   /* The Start-menu style flyout: rises out of the taskbar. */
   .fly {
@@ -982,13 +1005,13 @@
     font-weight: 800;
   }
   .live-in {
-    animation: live-in var(--m-glassIn-dur) var(--m-glassIn-ease) 60ms backwards;
+    animation: live-in var(--m-glassIn-dur) var(--m-glassIn-ease) 80ms backwards;
   }
+  /* No blur or scale: text that is resampled while it animates looks heavier, then snaps crisp. */
   @keyframes live-in {
     from {
       opacity: 0;
-      filter: blur(8px);
-      transform: scale(0.94);
+      transform: translateY(4px);
     }
   }
   .end.value {
@@ -1078,9 +1101,6 @@
   .pill.flash::before {
     animation: edge-flash 1250ms var(--m-glassIn-ease) both;
   }
-  .pill.flash {
-    animation: pop 700ms var(--m-pillDrop-ease);
-  }
   @keyframes edge-flash {
     0% {
       opacity: 0;
@@ -1090,18 +1110,6 @@
     }
     100% {
       opacity: 0;
-    }
-  }
-  /* The independent `scale` property keeps the pill's own transform out of it. */
-  @keyframes pop {
-    0% {
-      scale: 1;
-    }
-    35% {
-      scale: 1.025;
-    }
-    100% {
-      scale: 1;
     }
   }
   :global([data-reduced-motion]) .pill.flash,

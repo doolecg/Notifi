@@ -5,13 +5,15 @@
   let { color = '#f0a24a', calm = false, period = 2200, burst = 0 }: { color?: string; calm?: boolean; period?: number; burst?: number } = $props();
 
   const PITCH = 5;
+  /** The field is always this wide and the pill clips it, so the pill growing or shrinking never redraws it. */
+  const W = 340;
   let cv = $state<HTMLCanvasElement>();
-  let w = $state(0);
   let h = $state(0);
 
   /** Dots that flicker at random, brightest at the left edge and fading out toward the middle. */
   $effect(() => {
-    if (!cv || !w || !h) return;
+    if (!cv || !h) return;
+    const w = W;
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.round(w * dpr);
     cv.height = Math.round(h * dpr);
@@ -63,8 +65,8 @@
   });
 </script>
 
-<div class="px" bind:clientWidth={w} bind:clientHeight={h} aria-hidden="true">
-  <canvas bind:this={cv} style:width={`${w}px`} style:height={`${h}px`}></canvas>
+<div class="px" bind:clientHeight={h} aria-hidden="true">
+  <canvas bind:this={cv} style:width={`${W}px`} style:height={`${h}px`}></canvas>
 </div>
 
 <style>
@@ -74,7 +76,9 @@
     bottom: 0;
     left: 0;
     width: 55%;
+    overflow: hidden;
     pointer-events: none;
+    mask-image: linear-gradient(90deg, #000 55%, transparent);
   }
   canvas {
     display: block;

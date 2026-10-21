@@ -108,3 +108,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Do Not Disturb still records notifications there but shows and sounds nothing. Privacy mode records nothing.
 - Fixed: the Shelf 'Drop here' panel could not be hidden (it was shown with a raw Windows call, so the window toolkit ignored hide). Radial, switcher and taskbar preview windows use the same show call and the same hide call; not checked for the same fault.
 - The list is kept in memory only, so it empties when Notifi restarts.
+
+## Island animation clean-up
+- Resting pill grows and shrinks with the non-overshooting spring (pillRise); the bouncy drop is only for the open Island. Before, the pill overshot by about 8% and the window clipped it (18 px past a window 20 px wider than the pill target), then it bounced back over about 900 ms.
+- The window moves and resizes in one Windows call, and waits for a shrinking pill to finish before it shrinks.
+- Old text leaves in 70 ms before the new text comes in; the text swap no longer blurs or scales text. The edge-flash 'pop' scale on every change is gone (the glow stays).
+- The agents dot field is a fixed 340 px canvas clipped by the pill, so it is no longer rebuilt every frame while the pill resizes.
+- Measured over the debug port: thin to pill, 120 to 363 px, peak 364.5 px, no clipped frames, one window change, worst frame gap 8 ms. Not measured: the agents dot field, open and close, the taskbar bar.

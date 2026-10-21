@@ -30,7 +30,7 @@ use std::{
 use notifi_platform::{DeviceDirection, MediaSession, NowPlaying, PlaybackState, Platform};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::{settings::Store, window};
 use agents::{AgentSnap, Tracker};
@@ -452,6 +452,26 @@ pub fn island_bar_height(app: AppHandle) -> f64 {
     }
 }
 
+/// Moves and resizes in one step. Done as two steps, a centred pill jumps sideways for a frame every time the window changes width.
+fn set_rect(win: &tauri::WebviewWindow, x: i32, y: i32, w: u32, h: u32) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::{
+            Foundation::HWND,
+            UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER},
+        };
+        let hwnd = HWND(crate::switcher::host_id(win) as usize as *mut std::ffi::c_void);
+        unsafe {
+            let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+}
+
 fn place(app: &AppHandle) {
     let Some(win) = app.get_webview_window(ISLAND) else { return };
     let c = config(app);
@@ -469,16 +489,14 @@ fn place(app: &AppHandle) {
         // Open, the island floats above the taskbar; resting, it sits inside it.
         let (w, h) = if open { (l.window.0.max(rest.0), l.window.1 - layout::DOCK_GAP + bar + layout::FLY_GAP) } else { (rest.0, rest.1 + 2.0 * layout::DOCK_GAP) };
         let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, w, h);
-        let _ = win.set_size(PhysicalSize::new(pw, ph));
-        let _ = win.set_position(PhysicalPosition::new(x, y));
+        set_rect(&win, x, y, pw, ph);
         #[cfg(windows)]
         raise(&win);
         return;
     }
     let (w, h) = if open { l.window } else { layout::bounds(l.window.0.max(rest.0), &layout::shape(l.window.0.max(rest.0), rest, rest.1 / 2.0, &[])) };
     let (x, y, pw, ph) = top_centre(mon_rect(&mon), mon.scale_factor(), w, h);
-    let _ = win.set_size(PhysicalSize::new(pw, ph));
-    let _ = win.set_position(PhysicalPosition::new(x, y));
+    set_rect(&win, x, y, pw, ph);
 }
 
 /// The AI Agents bar sits at the taskbar's left, as tall as the taskbar.
@@ -489,8 +507,7 @@ fn place_bar(app: &AppHandle) {
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
     let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, BAR_W, f64::from(bottom - top) / scale);
-    let _ = win.set_size(PhysicalSize::new(pw, ph));
-    let _ = win.set_position(PhysicalPosition::new(x, y));
+    set_rect(&win, x, y, pw, ph);
     #[cfg(windows)]
     raise(&win);
 }
