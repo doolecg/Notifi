@@ -57,14 +57,17 @@
   function follow() {
     if (stopped) return;
     const r = slot?.getBoundingClientRect();
-    const box = slot?.closest('.content')?.getBoundingClientRect();
+    const content = slot?.closest<HTMLElement>('.content');
+    const box = content?.getBoundingClientRect();
     const now = slot?.closest('.pill')?.getBoundingClientRect();
     if (closing || !r || busy || r.width <= 40 || r.height <= 40) {
       // Nothing to do this frame.
-    } else if (!placed && pill && box && now) {
-      // The window is the chat's size before the area is placed, so its final spot is known.
+    } else if (!placed && pill && content && box && now && slot) {
+      // Where the area ends up once the menu has settled. The content comes in slightly scaled down, so the
+      // on-screen box is unscaled first (a later resize would make the chat page lay itself out again).
       if (innerWidth >= pill.openW) {
-        const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left), top: r.top, width: r.width, height: r.height };
+        const k = content.offsetWidth / box.width;
+        const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left) * k, top: content.offsetTop + (r.top - box.top) * k, width: slot.offsetWidth, height: slot.offsetHeight };
         last = seen = key(end);
         place(end, morph(end, now.width, now.height, 'pillDrop'));
       }

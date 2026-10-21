@@ -113,8 +113,10 @@ struct Inner {
     tall: bool,
     /// Open on the AI chat: the menu has the chat's size.
     chat: bool,
-    /// A window size to keep at least until the instant, while the menu animates from one size to another.
-    hold: Option<((f64, f64), Instant)>,
+    /// The window's size and the menu sizes, for the pointer check.
+    geo: Geo,
+    /// The window's last physical rect, so it is only moved when that changes.
+    placed: Option<(i32, i32, u32, u32)>,
 }
 
 impl Default for IslandState {
@@ -477,38 +479,73 @@ fn set_rect(win: &tauri::Window, x: i32, y: i32, w: u32, h: u32) {
     }
 }
 
+/// The window's one size: the biggest menu, with room for the spring overshooting it. Resizing a see-through
+/// WebView2 window flickers and shifts what it shows, so the window keeps this size while the Island is up and
+/// lets clicks through wherever the pill or menu is not (see `start_hit`).
+fn frame(l: &Layout, bar: f64) -> (f64, f64) {
+    let most = (l.base.0.max(l.tall.0).max(l.chat.0), l.base.1.max(l.tall.1).max(l.chat.1));
+    let (w, h) = if l.dock { layout::dock_window_size(most) } else { layout::window_size(most) };
+    // Docked, the menu opens above the taskbar and the pill sits in it.
+    let h = if l.dock { h - layout::DOCK_GAP + bar + layout::FLY_GAP } else { h };
+    ((w * 1.04).round(), h + 12.0)
+}
+
+/// Where the window is and what it holds, kept for the pointer check.
+#[derive(Clone, Copy, Default)]
+struct Geo {
+    dock: bool,
+    frame: (f64, f64),
+    /// Taskbar height (logical px) when docked.
+    bar: f64,
+    base: (f64, f64),
+    tall: (f64, f64),
+    chat: (f64, f64),
+}
+
+/// Extra room around the shape that still takes the pointer, so a fast move off the edge is still seen by the page.
+const HIT_SLACK: f64 = 8.0;
+
+/// The part of the window that takes the pointer now, as (x, y, w, h) in logical px from its top-left.
+fn hit_rect(g: &Geo, open: bool, tall: bool, chat: bool, rest: (f64, f64)) -> (f64, f64, f64, f64) {
+    let menu = if chat { g.chat } else if tall { g.tall } else { g.base };
+    let (fw, fh) = g.frame;
+    let s = HIT_SLACK;
+    if g.dock {
+        let pill = (0.0, fh - layout::DOCK_GAP - rest.1 - s, rest.0 + s, rest.1 + layout::DOCK_GAP + s);
+        if !open {
+            return pill;
+        }
+        // The flyout above the taskbar down to the pill in it.
+        let top = fh - (menu.1 + layout::EDGE + g.bar + layout::FLY_GAP) - s;
+        return (0.0, top.max(0.0), (menu.0 + layout::EDGE + s).max(pill.2), fh - top.max(0.0));
+    }
+    let (w, h) = if open { menu } else { rest };
+    ((fw - w) / 2.0 - s, 0.0, w + 2.0 * s, h + s)
+}
+
 fn place(app: &AppHandle) {
     let Some(win) = app.get_window(ISLAND) else { return };
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
+    let l = layout_for(&c, false, false, screen_of(Some(&mon)));
+    let scale = mon.scale_factor();
+    let (top, bottom) = taskbar_band(&mon);
+    let bar = if l.dock { f64::from(bottom - top) / scale } else { 0.0 };
+    let (w, h) = frame(&l, bar);
+    let rect = if l.dock { bottom_left(mon_rect(&mon), bottom, scale, w, h) } else { top_centre(mon_rect(&mon), scale, w, h) };
     let state = app.state::<IslandState>();
-    let (open, rest, tall, chat) = {
-        let i = state.inner.lock().unwrap();
-        (i.open, i.rest, i.tall, i.chat)
+    let moved = {
+        let mut i = state.inner.lock().unwrap();
+        i.geo = Geo { dock: l.dock, frame: (w, h), bar, base: l.base, tall: l.tall, chat: l.chat };
+        std::mem::replace(&mut i.placed, Some(rect)) != Some(rect)
     };
-    let mut l = layout_for(&c, tall, chat, screen_of(Some(&mon)));
-    // Just after a size change the window keeps the bigger of the old and new sizes, so the menu animating between them is never cut off.
-    if let Some((size, until)) = state.inner.lock().unwrap().hold {
-        if open && Instant::now() < until {
-            // 4% extra width for the springy menu overshooting its new size.
-            l.window = ((l.window.0 * 1.04).round().max(size.0), l.window.1.max(size.1));
-        }
+    if moved {
+        set_island_rect(app, &win, rect.0, rect.1, rect.2, rect.3);
     }
+    #[cfg(windows)]
     if l.dock {
-        let scale = mon.scale_factor();
-        let (top, bottom) = taskbar_band(&mon);
-        let bar = f64::from(bottom - top) / scale;
-        // Open, the island floats above the taskbar; resting, it sits inside it.
-        let (w, h) = if open { (l.window.0.max(rest.0), l.window.1 - layout::DOCK_GAP + bar + layout::FLY_GAP) } else { (rest.0, rest.1 + 2.0 * layout::DOCK_GAP) };
-        let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, w, h);
-        set_island_rect(app, &win, x, y, pw, ph);
-        #[cfg(windows)]
         raise(&win);
-        return;
     }
-    let (w, h) = if open { l.window } else { layout::bounds(l.window.0.max(rest.0), &layout::shape(l.window.0.max(rest.0), rest, rest.1 / 2.0, &[])) };
-    let (x, y, pw, ph) = top_centre(mon_rect(&mon), mon.scale_factor(), w, h);
-    set_island_rect(app, &win, x, y, pw, ph);
 }
 
 /// The chat sits at a fixed spot in the window, so when the window moves it is moved back the same amount and stays still on screen.
@@ -802,6 +839,38 @@ pub fn island_claude_usage_refresh(state: State<IslandState>) {
     state.claude_refresh.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// The window keeps one size, so it lets clicks through unless the pointer is over the pill or the open menu.
+/// Checked about 60 times a second; the pointer moving off the shape is still seen by the page first (HIT_SLACK).
+fn start_hit(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::Builder::new()
+        .name("notifi-island-hit".into())
+        .spawn(move || {
+            let mut taking: Option<bool> = None;
+            loop {
+                std::thread::sleep(Duration::from_millis(16));
+                let Some(win) = app.get_window(ISLAND) else { continue };
+                let state = app.state::<IslandState>();
+                let (visible, open, tall, chat, rest, geo) = {
+                    let i = state.inner.lock().unwrap();
+                    (i.visible, i.open, i.tall, i.chat, i.rest, i.geo)
+                };
+                if !visible {
+                    taking = None;
+                    continue;
+                }
+                let (Ok(p), Ok(at), Ok(scale)) = (app.cursor_position(), win.outer_position(), win.scale_factor()) else { continue };
+                let (x, y) = ((p.x - f64::from(at.x)) / scale, (p.y - f64::from(at.y)) / scale);
+                let (rx, ry, rw, rh) = hit_rect(&geo, open, tall, chat, rest);
+                let over = x >= rx && y >= ry && x < rx + rw && y < ry + rh;
+                if taking != Some(over) && win.set_ignore_cursor_events(!over).is_ok() {
+                    taking = Some(over);
+                }
+            }
+        })
+        .expect("spawn island hit thread");
+}
+
 fn start(app: &AppHandle) {
     let Some(wake) = app.state::<IslandState>().wake_rx.lock().unwrap().take() else { return };
     start_usage(app);
@@ -810,6 +879,7 @@ fn start(app: &AppHandle) {
     dynamic::start(app);
     #[cfg(windows)]
     start_raise(app);
+    start_hit(app);
     let app = app.clone();
     let platform = app.state::<Platform>().inner().clone();
     std::thread::Builder::new()
@@ -1141,9 +1211,8 @@ pub fn island_cover(state: State<IslandState>) -> Option<String> {
 /// The page reports whether the island is open and the logical size of the resting shape.
 #[tauri::command]
 pub fn island_shape(app: AppHandle, state: State<IslandState>, open: bool, width: f64, height: f64) {
-    let (changed, was_open) = {
+    let changed = {
         let mut i = state.inner.lock().unwrap();
-        let was_open = i.open;
         let rest = (width.clamp(40.0, 1200.0), height.clamp(8.0, 600.0));
         let changed = i.open != open || (i.rest.0 - rest.0).abs() >= 0.5 || (i.rest.1 - rest.1).abs() >= 0.5;
         i.open = open;
@@ -1152,21 +1221,10 @@ pub fn island_shape(app: AppHandle, state: State<IslandState>, open: bool, width
             i.chat = false;
         }
         i.rest = rest;
-        (changed, was_open)
+        changed
     };
     if !changed {
         return;
-    }
-    if open && !was_open {
-        // The opening spring overshoots a little; give it room, then fit the window to the menu.
-        let (tall, chat) = {
-            let i = state.inner.lock().unwrap();
-            (i.tall, i.chat)
-        };
-        let w = window_for(&app, tall, chat);
-        place_holding(&app, ((w.0 * 1.04).round(), w.1 + 12.0));
-    } else {
-        place(&app);
     }
     if !open {
         if let Some(win) = app.get_window(ISLAND) {
@@ -1215,52 +1273,20 @@ fn pick_agent_window(windows: &[notifi_platform::WindowInfo], agent: &str, proje
 
 /// The docked menu's expand button: stretch it up to its tallest size, or back.
 #[tauri::command]
-pub fn island_tall(app: AppHandle, state: State<IslandState>, tall: bool) {
-    let before = {
-        let mut i = state.inner.lock().unwrap();
-        let before = (i.tall, i.chat);
-        i.tall = tall;
-        (before.0 != tall).then_some(before)
-    };
-    if let Some((t, ch)) = before {
-        place_holding(&app, window_for(&app, t, ch));
+pub fn island_tall(state: State<IslandState>, tall: bool) {
+    let changed = std::mem::replace(&mut state.inner.lock().unwrap().tall, tall) != tall;
+    if changed {
         state.wake();
     }
 }
 
 /// The AI chat tab: give the menu the chat's size, or take it back.
 #[tauri::command]
-pub fn island_chat(app: AppHandle, state: State<IslandState>, on: bool) {
-    let before = {
-        let mut i = state.inner.lock().unwrap();
-        let before = (i.tall, i.chat);
-        i.chat = on;
-        (before.1 != on).then_some(before)
-    };
-    if let Some((t, ch)) = before {
-        place_holding(&app, window_for(&app, t, ch));
+pub fn island_chat(state: State<IslandState>, on: bool) {
+    let changed = std::mem::replace(&mut state.inner.lock().unwrap().chat, on) != on;
+    if changed {
         state.wake();
     }
-}
-
-/// How long a size change keeps the old window size: the length of the menu's animation.
-const HOLD: Duration = Duration::from_millis(750);
-
-/// The open window's logical size for these flags.
-fn window_for(app: &AppHandle, tall: bool, chat: bool) -> (f64, f64) {
-    let c = config(app);
-    layout_for(&c, tall, chat, screen_of(monitor(app, &c).as_ref())).window
-}
-
-/// Places the window keeping at least old for the animation, then fits it to the menu again.
-fn place_holding(app: &AppHandle, old: (f64, f64)) {
-    app.state::<IslandState>().inner.lock().unwrap().hold = Some((old, Instant::now() + HOLD));
-    place(app);
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(HOLD + Duration::from_millis(50));
-        place(&app);
-    });
 }
 
 /// A click on the island: take keys so Esc and search work.
@@ -1473,6 +1499,17 @@ mod tests {
         assert_eq!(clock(36_400), "0:36");
         assert_eq!(clock(61_000), "1:01");
         assert_eq!(clock(3_600_000 + 5_000), "1:00:05");
+    }
+
+    #[test]
+    fn only_the_shape_takes_the_pointer() {
+        let g = Geo { dock: false, frame: (1768.0, 1122.0), bar: 0.0, base: (1700.0, 270.0), tall: (1700.0, 640.0), chat: (1340.0, 1100.0) };
+        let s = HIT_SLACK;
+        assert_eq!(hit_rect(&g, false, false, false, (200.0, 32.0)), (784.0 - s, 0.0, 200.0 + 2.0 * s, 32.0 + s));
+        assert_eq!(hit_rect(&g, true, false, true, (200.0, 32.0)), (214.0 - s, 0.0, 1340.0 + 2.0 * s, 1100.0 + s));
+        let d = Geo { dock: true, bar: 48.0, ..g };
+        let (x, y, w, h) = hit_rect(&d, false, false, false, (300.0, 48.0));
+        assert_eq!((x, y + h, w), (0.0, 1122.0, 300.0 + s));
     }
 
     #[test]
