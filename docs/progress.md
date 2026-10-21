@@ -102,3 +102,9 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - One sound: a deep click made in code (src-tauri/src/island/click.rs). It replaces the toast ding and the lock/unlock beeps and plays on pill notifications ('Deep click sound', on).
 - Notifications taken by a progress card are removed from the Windows list; the banner itself cannot be stopped.
 - Checked live: privacy toggle holds back and releases pill notifications. Not checked: Do Not Disturb live, hearing the click, alerts routing, lock sounds.
+
+## Past notifications in the Nook
+- The Nook has a Notifications column (past notifications since Notifi started, newest first, up to 100, 3 lines each). The Nook now scrolls sideways: wheel over it, or drag a trackpad; lists inside it scroll up and down as before.
+- Do Not Disturb still records notifications there but shows and sounds nothing. Privacy mode records nothing.
+- Fixed: the Shelf 'Drop here' panel could not be hidden (it was shown with a raw Windows call, so the window toolkit ignored hide). Radial, switcher and taskbar preview windows use the same show call and the same hide call; not checked for the same fault.
+- The list is kept in memory only, so it empties when Notifi restarts.

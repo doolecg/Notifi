@@ -192,7 +192,7 @@ mod listener {
             }
         }
         if c.dynamic_other && !backlog {
-            activity(app, c, "bell", AGENT_COLOR, format!("{who} \u{b7} {}", texts.first().map_or("", String::as_str)));
+            activity(app, c, "bell", AGENT_COLOR, format!("{} \u{b7} {who}", texts.first().map_or("", String::as_str)));
         }
         false
     }

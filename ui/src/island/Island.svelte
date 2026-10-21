@@ -287,6 +287,13 @@
     }
   }
 
+  /** The Nook's widgets sit side by side and run past the edge; scrolling over it slides them, except inside a list that scrolls itself. */
+  function nookWheel(e: WheelEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.scrollWidth <= el.clientWidth || (e.target as Element).closest('.list, .scroll, textarea, input')) return;
+    el.scrollLeft += e.deltaY || e.deltaX;
+  }
+
   /** Scrolling over the tab strip steps through the tabs. */
   function stripWheel(e: WheelEvent) {
     const d = e.deltaY || e.deltaX;
@@ -469,9 +476,10 @@
 
 {#snippet body()}
   {#if module === 'nook'}
-    <div class="nook">
+    <div class="nook" onwheel={nookWheel}>
       <section class="wide"><NowPlaying onSetDefault={setDefault} /></section>
       <section><Calendar /></section>
+      <section><Notifications /></section>
       <section><Scratchpad /></section>
     </div>
   {:else if module === 'nowPlaying'}
@@ -848,9 +856,13 @@
     display: flex;
     height: 100%;
     min-height: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
   }
   .nook section {
-    flex: 1 1 0;
+    flex: 0 0 250px;
+    scroll-snap-align: start;
     min-width: 0;
     padding: 0 16px;
     border-left: 1px solid color-mix(in srgb, var(--i-fg), transparent 90%);
@@ -866,7 +878,7 @@
     overflow: hidden;
   }
   .nook .wide {
-    flex: 1.9 1 0;
+    flex-basis: 360px;
   }
 
   .dock .pill.collapsing {

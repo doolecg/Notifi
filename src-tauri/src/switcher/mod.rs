@@ -679,7 +679,7 @@ mod os {
     #[cfg(windows)]
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
     #[cfg(windows)]
@@ -705,11 +705,20 @@ mod os {
             let _ = SetWindowPos(h, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     }
+
+    /// Hides a window `show_inactive` showed. Tao never saw that show, so its own `hide` thinks the window is already hidden and does nothing.
+    #[cfg(windows)]
+    pub fn hide_shown(window: &tauri::WebviewWindow) {
+        let _ = window.hide();
+        unsafe {
+            let _ = ShowWindow(hwnd(window), SW_HIDE);
+        }
+    }
 }
 
 pub(crate) use os::host_id;
 #[cfg(windows)]
-pub(crate) use os::{prepare as prepare_window, show_inactive};
+pub(crate) use os::{hide_shown, prepare as prepare_window, show_inactive};
 
 #[cfg(target_os = "linux")]
 mod linux {

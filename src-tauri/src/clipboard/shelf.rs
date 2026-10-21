@@ -201,6 +201,9 @@ fn show(app: &AppHandle, mode: Mode, at: Option<(f64, f64)>, gesture: bool) {
 
 fn hide(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(WINDOW) {
+        #[cfg(windows)]
+        crate::switcher::hide_shown(&window);
+        #[cfg(not(windows))]
         let _ = window.hide();
     }
     *app.state::<ShelfState>().view.lock().unwrap() = View { mode: Mode::Hidden, gesture: false };

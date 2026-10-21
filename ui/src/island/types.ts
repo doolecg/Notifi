@@ -316,6 +316,8 @@ export interface Activity {
   color: string;
   text: string;
   ms: number;
+  /** Held back by Do Not Disturb: goes to the list of past notifications only. */
+  quiet?: boolean;
 }
 
 /** Keybind action for each module that has one (see keybinds.rs). */

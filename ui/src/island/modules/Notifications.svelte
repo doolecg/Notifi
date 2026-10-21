@@ -91,9 +91,12 @@
     place-items: center;
   }
   .tx {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    line-height: 1.25;
   }
   .when {
     color: var(--i-mut);
