@@ -88,3 +88,10 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Running time now shows beside the status on the agents pill and on the bar.
 - The other working-agent logo is no longer repeated next to the main one; its count reads 'N running'.
 - Not done: the bar opens no flyout of its own.
+
+## Dynamic notifications
+- Spec: spec/apps/dynamic-notifications.md. Code: src-tauri/src/island/dynamic.rs.
+- Island > Activity > 'Dynamic notifications': off by default. Reads Windows toasts (browser push included) with the UserNotificationListener, Windows only. Just Eat, Uber Eats, Uber and Deliveroo notifications that name a stage become one live card on the pill: service, stage, progress fill, minutes left. Other notifications can flash on the pill.
+- Tried live with a test Just Eat toast: card showed 'On the way', 12 min, 70% fill. Windows did not ask for permission on this machine.
+- Not built: signing in to the services, a browser extension, more than one card at a time, Linux.
+- Also fixed a flaky Disk space test (parallel tests shared one temp folder).

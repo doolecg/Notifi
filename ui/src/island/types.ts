@@ -39,6 +39,9 @@ export interface IslandConfig {
   idleThinBar: boolean;
   dock: 'top' | 'bottomLeft';
   agentsTaskbar: boolean;
+  dynamicNotifications: boolean;
+  dynamicOther: boolean;
+  dynamicApps: string[];
   claudeUsageConnect: boolean;
   dockDarkness: number;
   askInIsland: boolean;
@@ -86,6 +89,9 @@ export const DEFAULT_CONFIG: IslandConfig = {
   idleThinBar: true,
   dock: 'top',
   agentsTaskbar: false,
+  dynamicNotifications: false,
+  dynamicOther: false,
+  dynamicApps: ['Just Eat', 'Uber Eats', 'Uber', 'Deliveroo'],
   claudeUsageConnect: false,
   dockDarkness: 25,
   askInIsland: false,
@@ -258,6 +264,10 @@ export interface Live {
   terminals: number;
   /** Subagents running for the agent shown. */
   subagents: number;
+  /** 0 to 1 on an order or ride card. */
+  progress: number | null;
+  /** The stage of an order or ride card. */
+  detail: string | null;
 }
 
 /** Whole percents for the resting pill's ends; null when off or not readable. */

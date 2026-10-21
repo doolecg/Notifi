@@ -151,6 +151,11 @@ pub const PAGES: &[Page] = &[
                 sw("hideTimerCountdown", "Hide the timer countdown on the resting pill", "", false),
                 slider("activityMs", "Show events for", "", 1000.0, 15000.0, 500.0, "ms", 3000.0),
             ]),
+            tab_card("Activity", "Dynamic notifications", &[
+                sw("dynamicNotifications", "Follow Windows notifications", "Reads the notifications Windows shows, including ones from websites in your browser. Windows asks for access the first time. Nothing is stored or sent anywhere.", false),
+                list_of("dynamicApps", "Show live progress for", "Delivery and ride notifications from these services become a progress card on the Island. Matched by app name or notification text.", "Service", &["Just Eat", "Uber Eats", "Uber", "Deliveroo"]),
+                sw("dynamicOther", "Flash other notifications on the pill", "", false),
+            ]),
             Card { title: "Companion", tab: "Activity", feature: "companion", options: &[
                 sw("hideWhenIdle", "Hide when nothing is happening", "", true),
                 sw("commandBarInPill", "Command Bar comes out of the Island", "", false),
@@ -181,7 +186,7 @@ pub const PAGES: &[Page] = &[
                 sw("lockedNotice", "Show a short notice before locking", "", false),
             ] },
         ],
-        specs: &["everyday/island.md", "everyday/top-pill.md", "everyday/companion.md", "everyday/watch.md", "everyday/lock-screen.md"],
+        specs: &["apps/dynamic-notifications.md", "everyday/island.md", "everyday/top-pill.md", "everyday/companion.md", "everyday/watch.md", "everyday/lock-screen.md"],
         ..PAGE
     },
     super::monitor::MONITOR,

@@ -577,7 +577,9 @@ mod tests {
     }
 
     fn sample() -> (PathBuf, Arc<Mutex<Tree>>) {
-        let root = std::env::temp_dir().join(format!("notifi-space-{}", std::process::id()));
+        // Tests run in parallel in one process, so each call gets its own folder.
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!("notifi-space-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("a/deep")).unwrap();
         fs::create_dir_all(root.join("b")).unwrap();

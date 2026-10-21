@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod claude_limits;
 pub mod config;
+pub mod dynamic;
 pub mod files;
 pub mod idle;
 pub mod layout;
@@ -86,6 +87,8 @@ pub struct IslandState {
     claude: Mutex<claude_limits::ClaudeUsage>,
     /// Set by the settings page to check Claude's limits now.
     claude_refresh: std::sync::atomic::AtomicBool,
+    /// Delivery and ride cards read from Windows notifications.
+    orders: Mutex<dynamic::Orders>,
 }
 
 #[derive(Default)]
@@ -108,7 +111,7 @@ struct Inner {
 impl Default for IslandState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), claude: Mutex::default(), claude_refresh: Default::default() }
+        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), claude: Mutex::default(), claude_refresh: Default::default(), orders: Mutex::default() }
     }
 }
 
@@ -208,6 +211,10 @@ pub struct Live {
     pub terminals: u32,
     /// Subagents running for the agent shown.
     pub subagents: u32,
+    /// 0..=1 for an order or ride card.
+    pub progress: Option<f64>,
+    /// The stage of an order or ride card.
+    pub detail: Option<String>,
 }
 
 /// `m:ss`, or `h:mm:ss` from an hour up.
@@ -242,20 +249,20 @@ pub fn live(playing: bool, timer: &Timer, hide_countdown: bool, agents: &[AgentS
             "done"
         };
         let value = if a.working { clock(a.elapsed_ms) } else { String::new() };
-        out.push(Live { id: "agents", label: "AI Agents", icon, color, value, status, count, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents });
+        out.push(Live { id: "agents", label: "AI Agents", icon, color, value, status, count, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents, progress: None, detail: None });
     }
     if matches!(timer.phase, Phase::Running | Phase::Paused) {
         let value = if hide_countdown { String::new() } else { clock(timer.remaining(now).div_ceil(1000) * 1000) };
-        out.push(Live { id: "timer", label: "Timer", icon: "timer", color: TIMER_COLOR, value, status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0 });
+        out.push(Live { id: "timer", label: "Timer", icon: "timer", color: TIMER_COLOR, value, status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0, progress: None, detail: None });
     }
     if playing {
-        out.push(Live { id: "music", label: "Music", icon: "music", color: MUSIC_COLOR, value: String::new(), status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0 });
+        out.push(Live { id: "music", label: "Music", icon: "music", color: MUSIC_COLOR, value: String::new(), status: "", count: 0, todos: None, tokens: 0, session_pct: None, week_pct: None, project: None, terminals: 0, subagents: 0, progress: None, detail: None });
     }
     // With nothing running, the agent that was used last still shows its limits, after the other items.
     if lead.is_none() {
         if let Some(a) = agents.iter().filter(|a| a.supported && a.last_active > 0).max_by_key(|a| a.last_active) {
             let (icon, color) = look(a);
-            out.push(Live { id: "agents", label: "AI Agents", icon, color, value: String::new(), status: "idle", count: 0, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents });
+            out.push(Live { id: "agents", label: "AI Agents", icon, color, value: String::new(), status: "idle", count: 0, todos: a.todos, tokens: a.usage.read + a.usage.written, session_pct: a.session_limit.map(|l| l.used_percent), week_pct: a.week_limit.map(|l| l.used_percent), project: a.project.clone(), terminals: a.terminals, subagents: a.subagents, progress: None, detail: None });
         }
     }
     out
@@ -694,6 +701,7 @@ fn start(app: &AppHandle) {
     start_usage(app);
     start_claude_limits(app);
     watch::start(app);
+    dynamic::start(app);
     #[cfg(windows)]
     start_raise(app);
     let app = app.clone();
@@ -881,7 +889,11 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             layout: layout_for(&c, tall),
             modules: MODULES.iter().map(|&(id, label, ready)| ModuleInfo { id, label, ready }).collect(),
             players: if media_supported { platform.media().sessions().unwrap_or_default() } else { Vec::new() },
-            live: live(playing, &timer, c.hide_timer_countdown, &agent_snaps, now),
+            live: {
+                let mut l = live(playing, &timer, c.hide_timer_countdown, &agent_snaps, now);
+                l.extend(state.orders.lock().unwrap().live(now));
+                l
+            },
             timer: TimerSnap { timer, left_ms: timer.remaining(now) },
             agents: agent_snaps.clone(),
             idle,

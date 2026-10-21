@@ -78,6 +78,12 @@ pub struct IslandConfig {
     pub dock: String,
     /// With the Island at the top, keep the AI Agents bar on its own at the taskbar's left.
     pub agents_taskbar: bool,
+    /// Read Windows notifications for delivery and ride progress (off until the user turns it on).
+    pub dynamic_notifications: bool,
+    /// Also flash other notifications on the pill.
+    pub dynamic_other: bool,
+    /// Services followed as live progress, by name.
+    pub dynamic_apps: Vec<String>,
     /// Read Claude's 5 hour and weekly limits from Anthropic using Claude Code's saved login.
     pub claude_usage_connect: bool,
     /// How much darker than the taskbar the docked bar is, in percent.
@@ -137,6 +143,9 @@ impl Default for IslandConfig {
             idle_thin_bar: true,
             dock: "top".into(),
             agents_taskbar: false,
+            dynamic_notifications: false,
+            dynamic_other: false,
+            dynamic_apps: ["Just Eat", "Uber Eats", "Uber", "Deliveroo"].map(String::from).to_vec(),
             claude_usage_connect: false,
             dock_darkness: 25.0,
             agents_follow: Vec::new(),

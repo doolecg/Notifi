@@ -145,7 +145,7 @@
     clearTimeout(quietTimer);
     quietTimer = setTimeout(() => (awake = false), QUIET_MS);
   }
-  const news = $derived(live.map((l) => l.id).join() + '|' + (snap?.media?.title ?? ''));
+  const news = $derived(live.map((l) => l.id + (l.detail ?? '')).join() + '|' + (snap?.media?.title ?? ''));
   $effect(() => {
     news;
     wake();
@@ -587,6 +587,8 @@
             {#if selLive.id === 'agents'}<PixelBar color={pixelColor} calm={selLive.status === 'done' || selLive.status === 'idle'} period={selLive.status === 'needs' ? 900 : selLive.status === 'running' ? 2000 : 4200} {burst} />{/if}
             {#if selLive.id === 'music' && snap.media}
               <span class="prog" class:still={!snap.media.playing} style:--c={selLive.color} style:width={`${songPct}%`}></span>
+            {:else if selLive.id === 'order'}
+              <span class="prog" style:--c={selLive.color} style:width={`${(selLive.progress ?? 0) * 100}%`}></span>
             {/if}
             <span class="end" style:color={selLive.color}>
               {#if selLive.id === 'music' && island.cover}
@@ -603,6 +605,8 @@
               <span class="mid track">
                 <b>{snap.media.title || 'Unknown title'}</b>{#if snap.media.artist}<em>{snap.media.artist}</em>{/if}
               </span>
+            {:else if selLive.id === 'order'}
+              <span class="mid track"><b>{selLive.label}</b><em>{selLive.detail}</em></span>
             {:else if selLive.id === 'timer'}
               <span class="mid">Timer{snap.timer.phase === 'paused' ? ' paused' : ''}</span>
             {:else}
