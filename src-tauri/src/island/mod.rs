@@ -600,7 +600,7 @@ fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'stat
     }
     let held = system_dnd();
     if c.activity_sound && !held {
-        click::play();
+        click::notify();
     }
     let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms, quiet: held });
 }
@@ -618,7 +618,7 @@ pub fn deliver(app: &AppHandle, title: &str, body: &str, sound: bool) -> bool {
     }
     let text = if body.is_empty() { title.to_string() } else { format!("{title} \u{b7} {body}") };
     if sound && !held {
-        click::play();
+        click::notify();
     }
     let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms, quiet: held });
     true

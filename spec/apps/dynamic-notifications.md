@@ -23,7 +23,7 @@ Written for Notifi from how phones show live delivery and ride progress. No thir
 
 - While Windows Do Not Disturb or Notifi's Privacy mode is on, Notifi shows and sounds nothing of its own: no pill notices, no alerts, no click. Privacy mode is a switch in the Island settings and a quick toggle with a shortcut. AI questions still show, because they wait for an answer.
 - Notifi's own alerts show on the Island when it is on screen, so no Windows toast is sent. If the Island is off or hidden the alert is a Windows toast, as before.
-- Notifi's only sound is a short deep click, made in code. It replaces the system ding on alerts and the lock and unlock beeps, and plays when a notification shows on the pill (switch: "Deep click sound", on by default).
+- Notifications use one sound, the chime in docs/sounds, lowered to the loudness of Windows' own notification sound. It replaces the system ding on alerts and plays when a notification shows on the pill (switch: "Notification sound", on by default). The lock and unlock sounds stay a short deep click made in code.
 - A notification a progress card has taken is removed from Windows' notification list. Windows has already shown its banner by then; Notifi cannot stop that banner without turning off the sending app's notifications.
 
 ## Not built

@@ -38,22 +38,39 @@ pub fn wav() -> Vec<u8> {
     out
 }
 
-/// Plays the click without waiting for it to finish. Windows only for now.
+/// The notification sound: docs/sounds/universfield-new-notification-07-210334.mp3 turned into a WAV
+/// and lowered by 2.4 dB, from -19.3 to -21.7 LUFS, the loudness of Windows' own notification sound.
+const NOTIFICATION: &[u8] = include_bytes!("../../sounds/notification.wav");
+
 #[cfg(windows)]
-pub fn play() {
-    use std::sync::OnceLock;
+fn play_memory(bytes: &'static [u8]) {
     use windows::{
         core::PCWSTR,
         Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT},
     };
+    let _ = unsafe { PlaySoundW(PCWSTR(bytes.as_ptr().cast()), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT) };
+}
+
+/// Plays the deep click without waiting for it to finish. Windows only for now.
+#[cfg(windows)]
+pub fn play() {
+    use std::sync::OnceLock;
     // The buffer must outlive the playback, so it is kept for the life of the program.
     static BYTES: OnceLock<Vec<u8>> = OnceLock::new();
-    let bytes = BYTES.get_or_init(wav);
-    let _ = unsafe { PlaySoundW(PCWSTR(bytes.as_ptr().cast()), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT) };
+    play_memory(BYTES.get_or_init(wav));
+}
+
+/// Plays the notification sound without waiting for it to finish. Windows only for now.
+#[cfg(windows)]
+pub fn notify() {
+    play_memory(NOTIFICATION);
 }
 
 #[cfg(not(windows))]
 pub fn play() {}
+
+#[cfg(not(windows))]
+pub fn notify() {}
 
 #[cfg(test)]
 mod tests {
@@ -70,5 +87,17 @@ mod tests {
         let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
         assert!((6_000..26_000).contains(&peak), "peak {peak}");
         assert!(samples.last().unwrap().unsigned_abs() < 50);
+    }
+
+    #[test]
+    fn notification_sound_is_a_stereo_wav_about_1_8_seconds_long() {
+        let w = NOTIFICATION;
+        assert_eq!(&w[..4], b"RIFF");
+        assert_eq!(&w[8..12], b"WAVE");
+        let channels = u16::from_le_bytes([w[22], w[23]]);
+        let rate = u32::from_le_bytes([w[24], w[25], w[26], w[27]]);
+        let seconds = (w.len() - 44) as f64 / f64::from(rate) / f64::from(channels) / 2.0;
+        assert_eq!(channels, 2);
+        assert!((1.7..1.9).contains(&seconds), "{seconds}");
     }
 }

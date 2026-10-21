@@ -115,3 +115,7 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Old text leaves in 70 ms before the new text comes in; the text swap no longer blurs or scales text. The edge-flash 'pop' scale on every change is gone (the glow stays).
 - The agents dot field is a fixed 340 px canvas clipped by the pill, so it is no longer rebuilt every frame while the pill resizes.
 - Measured over the debug port: thin to pill, 120 to 363 px, peak 364.5 px, no clipped frames, one window change, worst frame gap 8 ms. Not measured: the agents dot field, open and close, the taskbar bar.
+
+## Notification sound
+- Notifications play docs/sounds/universfield-new-notification-07-210334.mp3, converted to src-tauri/sounds/notification.wav and lowered 2.4 dB (-19.3 to -21.7 LUFS, the loudness of C:\Windows\Media\Windows Notify System Generic.wav, the default toast sound). Lock and unlock sounds stay the synthesized deep click.
+- The mp3's licence is the Pixabay content licence (free to use, not open source); the file name says Universfield. Not checked in the running app by ear.

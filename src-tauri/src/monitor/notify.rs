@@ -14,7 +14,7 @@ pub fn send(title: String, body: String, sound: bool) {
     }
     // A toast on Windows is silent and Notifi's own click plays instead of the system ding.
     if sound && cfg!(windows) {
-        crate::island::click::play();
+        crate::island::click::notify();
     }
     let sound = sound && !cfg!(windows);
     std::thread::spawn(move || {
