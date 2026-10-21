@@ -221,7 +221,7 @@
   function autoModule() {
     if (island.asks.length) return 'ask';
     const lead = live[0]?.id;
-    return lead === 'agents' ? 'agents' : lead === 'timer' ? 'timer' : lead === 'music' ? 'nowPlaying' : 'grid';
+    return lead === 'agents' ? 'agents' : lead === 'timer' ? 'timer' : lead === 'music' ? 'nowPlaying' : dock ? 'nook' : 'grid';
   }
 
   async function openIsland(id?: string) {
@@ -366,23 +366,18 @@
     return () => window.removeEventListener('keydown', key);
   });
 
-  const orbits = $derived.by(() => {
-    if (!cfg || !layout) return [];
-    const at = (ids: string[], pts: [number, number][], side: string) =>
-      pts.map((p, i) => ({ id: ids[i], x: p[0], y: p[1], key: `${side}${i}` }));
-    const out = [
-      ...at(cfg.orbitLeft, layout.left, 'l'),
-      // Docked, the left and bottom buttons join the right column.
-      ...at(layout.dock ? [...cfg.orbitLeft, ...cfg.orbitRight, ...cfg.orbitBottom] : cfg.orbitRight, layout.right, 'r'),
-      ...at(cfg.orbitBottom, layout.bottom, 'b'),
-    ];
-    // Inside a module the first button becomes "back" to the grid.
-    if (out[0] && (out[0].key === 'l0' || (layout.dock && out[0].key === 'r0')) && module !== 'grid') out[0] = { ...out[0], id: 'back' };
-    return out;
-  });
-
   /** Docked, the bar stays in the taskbar and the open menu is a separate flyout above it. */
   const dock = $derived(!!layout?.dock);
+  /** The buttons are a tab strip along the top of the open menu: modules as tabs, the rest as icons at the right. */
+  const strip = $derived.by(() => {
+    const ids = [...new Set(['nook', ...(cfg?.orbitLeft ?? []), ...(cfg?.orbitRight ?? []), ...(cfg?.orbitBottom ?? [])])];
+    return { tabs: ids.filter((id) => !OUTSIDE.has(id)), actions: ids.filter((id) => OUTSIDE.has(id)) };
+  });
+  const buttonInfo = (id: string) =>
+    id === 'nook' ? { label: 'Nook', icon: 'home' } : (BUTTONS[id] ?? { label: snap?.modules.find((m) => m.id === id)?.label ?? id, icon: MODULE_ICONS[id] ?? 'utilities' });
+  const activeButton = (id: string) => module === id || (id === 'volume' && module === 'controls');
+  /** Height of the tab strip. */
+  const STRIP = 46;
   /** The menu's height: stretched, or as opened. */
   const flyH = $derived(tall ? TALL_H : baseH);
   const grown = $derived(expanded && !dock);
@@ -462,7 +457,13 @@
 {/snippet}
 
 {#snippet body()}
-  {#if module === 'nowPlaying'}
+  {#if module === 'nook'}
+    <div class="nook">
+      <section class="wide"><NowPlaying onSetDefault={setDefault} /></section>
+      <section><Calendar /></section>
+      <section><Scratchpad /></section>
+    </div>
+  {:else if module === 'nowPlaying'}
     <NowPlaying onSetDefault={setDefault} />
   {:else if module === 'grid'}
     <Grid onOpen={setModule} onBack={collapse} onSetDefault={setDefault} />
@@ -505,6 +506,25 @@
   {/if}
 {/snippet}
 
+{#snippet tabstrip()}
+  <nav class="strip" style:height={`${STRIP}px`}>
+    {#each strip.tabs as id (id)}
+      {@const b = buttonInfo(id)}
+      <button class="tab" class:active={activeButton(id)} title={b.label} onclick={() => press(id)}>
+        <Glyph name={b.icon} size={16} /><span>{b.label}</span>
+      </button>
+    {/each}
+    <span class="spacer"></span>
+    {#each strip.actions as id (id)}
+      {@const b = buttonInfo(id)}
+      <button class="act" title={b.label} aria-label={b.label} onclick={() => press(id)}><Glyph name={b.icon} size={16} /></button>
+    {/each}
+    <button class="act" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={toggleTall}>
+      <Glyph name={tall ? 'shrink' : 'expand'} size={16} />
+    </button>
+  </nav>
+{/snippet}
+
 {#if snap?.enabled && cfg && layout}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="root" class:translucent={cfg.translucent} class:dock={layout.dock}
@@ -529,12 +549,10 @@
       onwheel={wheel}
     >
       {#if open && !dock}
-        <div class="content" class:shown={expanded} style:width={`${layout.open[0]}px`} style:height={`${flyH}px`}>
+        <div class="tabs" class:shown={expanded}>{@render tabstrip()}</div>
+        <div class="content" class:shown={expanded} style:top={`${STRIP}px`} style:width={`${layout.open[0]}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
-        <button class="grab low" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={(e) => { e.stopPropagation(); toggleTall(); }}>
-          <Glyph name={tall ? 'expand' : 'shrink'} size={14} />
-        </button>
       {:else if island.asks.length}
         {@const a = island.asks[0]}
         <div class="ends activity asking" out:fade={{ duration: duration('hoverLift') }}>
@@ -639,36 +657,13 @@
         onpointerenter={enter}
         onpointerleave={leave}
       >
-        <div class="content shown" style:width={`${layout.open[0]}px`} style:height={`${flyH}px`}>
+        {@render tabstrip()}
+        <div class="content shown" style:top={`${STRIP}px`} style:width={`${layout.open[0]}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
-        <button class="grab" aria-label={tall ? 'Make the menu shorter' : 'Make the menu taller'} title={tall ? 'Shorter' : 'Taller'} onclick={toggleTall}>
-          <Glyph name={tall ? 'shrink' : 'expand'} size={14} />
-        </button>
       </div>
     {/if}
 
-    {#if open}
-      {#each orbits as o, i (o.key)}
-        {@const b = o.id === 'back' ? { label: 'Back', icon: 'back' } : (BUTTONS[o.id] ?? { label: o.id, icon: MODULE_ICONS[o.id] ?? 'utilities' })}
-        <button
-          class="orbit"
-          class:shown={expanded}
-          class:active={module === o.id || (o.id === 'volume' && module === 'controls')}
-          style:--i={i}
-          style:left={layout.dock ? `${o.x - 20}px` : `calc(50% + ${o.x - 20}px)`}
-          style:top={layout.dock ? undefined : `${o.y - 20}px`}
-          style:bottom={layout.dock ? `${bar + FLY_GAP + flyH - o.y - 20}px` : undefined}
-          aria-label={b.label}
-          title={b.label}
-          onpointerenter={enter}
-          onpointerleave={leave}
-          onclick={() => (o.id === 'back' ? setModule('grid') : press(o.id))}
-        >
-          <Glyph name={b.icon} size={18} />
-        </button>
-      {/each}
-    {/if}
   </div>
 {/if}
 
@@ -764,35 +759,100 @@
       transform var(--m-pillDrop-dur) var(--m-pillDrop-ease),
       height var(--m-pillDrop-dur) var(--m-pillDrop-ease);
   }
-  .grab {
+  .tabs {
     position: absolute;
-    top: 4px;
-    left: 50%;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 16px;
-    padding: 0;
+    opacity: 0;
+    filter: blur(10px);
+    transition:
+      opacity 80ms linear,
+      filter 80ms linear;
+  }
+  .tabs.shown {
+    opacity: 1;
+    filter: blur(0);
+    transition:
+      opacity var(--m-glassIn-dur) var(--m-glassIn-ease) 80ms,
+      filter var(--m-glassIn-dur) var(--m-glassIn-ease) 80ms;
+  }
+  .strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    padding: 0 14px;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .tab,
+  .act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 30px;
     border: 0;
     border-radius: 99px;
-    background: color-mix(in srgb, var(--i-fg), transparent 90%);
+    background: none;
     color: var(--i-mut);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    transform: translateX(-50%);
+    transition:
+      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
   }
-  .grab.low {
-    top: auto;
-    bottom: 4px;
+  .tab {
+    padding: 0 13px 0 11px;
   }
-  .grab:hover {
-    background: color-mix(in srgb, var(--i-fg), transparent 80%);
+  .act {
+    width: 30px;
+    padding: 0;
+  }
+  .tab:hover,
+  .act:hover {
+    background: var(--i-hover);
     color: var(--i-fg);
   }
-  .dock .orbit {
-    background: var(--tb-bg);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--i-fg), transparent 88%);
+  .tab.active {
+    background: color-mix(in srgb, var(--i-fg), transparent 88%);
+    color: var(--i-fg);
   }
+  .nook {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+  }
+  .nook section {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 16px;
+    border-left: 1px solid color-mix(in srgb, var(--i-fg), transparent 90%);
+  }
+  .nook section:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .nook section:last-child {
+    padding-right: 0;
+  }
+  .nook section {
+    overflow: hidden;
+  }
+  .nook .wide {
+    flex: 1.9 1 0;
+  }
+
   .dock .pill.collapsing {
     transition:
       width var(--m-pillRise-dur) var(--m-pillRise-ease),
@@ -1225,44 +1285,6 @@
       opacity var(--m-pillRise-dur) var(--m-pillRise-ease),
       filter var(--m-pillRise-dur) var(--m-pillRise-ease),
       transform var(--m-pillRise-dur) var(--m-pillRise-ease);
-  }
-  .orbit {
-    position: absolute;
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: var(--i-bg);
-    color: var(--i-fg);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
-    cursor: pointer;
-    opacity: 0;
-    filter: blur(6px);
-    transform: scale(0.4);
-    transition:
-      opacity var(--m-pillRise-dur) var(--m-pillRise-ease),
-      filter var(--m-pillRise-dur) var(--m-pillRise-ease),
-      transform var(--m-pillRise-dur) var(--m-pillRise-ease),
-      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
-      bottom var(--m-pillDrop-dur) var(--m-pillDrop-ease);
-  }
-  .orbit.shown {
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
-    transition:
-      opacity var(--m-glassIn-dur) var(--m-glassIn-ease) calc(120ms + var(--i) * 45ms),
-      filter var(--m-glassIn-dur) var(--m-glassIn-ease) calc(120ms + var(--i) * 45ms),
-      transform var(--m-pillDrop-dur) var(--m-pillDrop-ease) calc(120ms + var(--i) * 45ms),
-      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
-      bottom var(--m-pillDrop-dur) var(--m-pillDrop-ease);
-  }
-  .orbit:hover,
-  .orbit.active {
-    background: #1b1e1f;
   }
   .later {
     display: flex;

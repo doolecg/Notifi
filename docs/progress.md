@@ -75,3 +75,9 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 ## Disk space (space map)
 - New Disk space tab in the App tools window, feature id `spaceMap`: scanner `src-tauri/src/apps/space.rs`, UI `ui/src/apps/Space.svelte` and `space-layout.ts`, spec `spec/apps/space-map.md`. Clean-room from the public SpaceSniffer page only.
 - Tried live: scan, nested treemap, filter, tags, text report, C: drive scan stays responsive. Not built: NTFS alternate streams, several views, saved filters, MFT reading.
+
+## Island tab strip
+- The round side buttons are gone. Both docked and top Islands now have a tab strip across the top of the open menu: Nook first, then your module buttons as tabs, Settings, Mixer and Keep awake as icons at the right, and the taller/shorter toggle.
+- Open sizes are wider: top compact 760 x 280, spacious 900 x 360; docked compact 820 x 300, spacious 900 x 420.
+- New Nook home: Now Playing, Calendar and Scratchpad side by side. It opens first when nothing is live in docked mode.
+- Not changed: the button slot editor in Settings > Island still draws the old side slots. Tab order is left, then right, then bottom lists.
