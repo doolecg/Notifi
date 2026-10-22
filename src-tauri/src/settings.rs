@@ -569,21 +569,21 @@ mod tests {
     #[test]
     fn feature_options_merge_and_validate() {
         let mut s = Settings::default();
-        assert!(!s.enabled("appSwitcher"));
-        s.set_section("appSwitcher", json!({ "enabled": true, "layout": "icons" })).unwrap();
-        assert!(s.enabled("appSwitcher"));
-        assert_eq!(s.option("appSwitcher", "layout"), Some(&json!("icons")));
-        assert_eq!(s.option("appSwitcher", "thumbnailSize"), Some(&json!("normal")));
-        assert!(s.set_section("appSwitcher", json!({ "layout": "huge" })).is_err());
-        assert!(s.set_section("appSwitcher", json!({ "nope": 1 })).is_err());
-        assert!(s.set_section("appSwitcher", json!({ "trigger": "not a key" })).is_err());
-        s.set_section("appSwitcher", json!({ "appearDelay": 99999 })).unwrap();
-        assert_eq!(s.option("appSwitcher", "appearDelay"), Some(&json!(1000)));
-        s.reset_section("appSwitcher").unwrap();
+        assert!(!s.enabled("fillScreen"));
+        s.set_section("fillScreen", json!({ "enabled": true, "cover": "display" })).unwrap();
+        assert!(s.enabled("fillScreen"));
+        assert_eq!(s.option("fillScreen", "cover"), Some(&json!("display")));
+        assert_eq!(s.option("fillScreen", "gap"), Some(&json!(0)));
+        assert!(s.set_section("fillScreen", json!({ "cover": "huge" })).is_err());
+        assert!(s.set_section("fillScreen", json!({ "nope": 1 })).is_err());
+        assert!(s.set_section("fillScreen", json!({ "shortcut": "not a key" })).is_err());
+        s.set_section("fillScreen", json!({ "gap": 99999 })).unwrap();
+        assert_eq!(s.option("fillScreen", "gap"), Some(&json!(200)));
+        s.reset_section("fillScreen").unwrap();
         // The options are back to their defaults but the feature stays installed.
-        assert!(s.enabled("appSwitcher"));
-        assert_ne!(s.option("appSwitcher", "layout"), Some(&json!("icons")));
-        assert_ne!(s.option("appSwitcher", "appearDelay"), Some(&json!(1000)));
+        assert!(s.enabled("fillScreen"));
+        assert_ne!(s.option("fillScreen", "cover"), Some(&json!("display")));
+        assert_ne!(s.option("fillScreen", "gap"), Some(&json!(200)));
     }
 
     #[test]

@@ -53,7 +53,6 @@ pub(crate) fn strings(app: &AppHandle, namespace: &str, key: &str) -> Vec<String
 const VIEWS: &[(&str, &str)] = &[
     ("appUpdates", "updates"),
     ("packageManager", "packages"),
-    ("portManager", "ports"),
     ("killProcess", "processes"),
     ("spaceMap", "space"),
 ];

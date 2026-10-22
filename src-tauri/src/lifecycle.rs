@@ -39,7 +39,6 @@ const WINDOWED: &[Windowed] = &[
     Windowed { features: &["textSnippets"], labels: &[crate::clipboard::SNIPPETS_WINDOW], build: crate::clipboard::build_snippets_window },
     Windowed { features: &["shelf"], labels: &[crate::clipboard::shelf::WINDOW], build: crate::clipboard::shelf::build_window },
     Windowed { features: &["windowLayout"], labels: &[crate::windows_mgmt::overlay::LABEL], build: crate::windows_mgmt::overlay::create },
-    Windowed { features: &["appSwitcher"], labels: &[crate::switcher::WINDOW], build: crate::switcher::build_window },
     Windowed {
         features: &["taskbarPreview", "taskbarClicks"],
         labels: &[crate::switcher::taskbar::WINDOW],

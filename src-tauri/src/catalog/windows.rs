@@ -2,48 +2,6 @@ use super::*;
 
 pub const PAGES: &[Page] = &[
     Page {
-        id: "appSwitcher",
-        label: "App switcher",
-        icon: "window",
-        blurb: "A better Alt+Tab with live previews, search and filters for apps and individual windows.",
-        tabs: &["General", "Previews", "Filters"],
-        cards: &[
-            tab_card("General", "Shortcuts", &[
-                sw("replaceSystem", "Replace the system switcher", "Off leaves the system Alt+Tab alone and uses the shortcut below instead.", true),
-                key("trigger", "Open the switcher", "Hold it and tap Tab to move; release to switch.", "Alt+Tab"),
-                key("sameAppKey", "Cycle windows of one app", "", "Alt+`"),
-            ]),
-            tab_card("General", "Behaviour", &[
-                tiles("layout", "Layout", "Simple mode needs no screen capture.", &[ci("previews", "Previews", "image"), ci("icons", "Large icons", "apps"), ci("simple", "Simple list", "text")], "previews"),
-                num("appearDelay", "Delay before it appears", "A quick flip goes straight to the last window.", 0.0, 1000.0, 50.0, "ms", 0.0),
-                sw("skipAnimations", "Skip animations", "Selection and resize happen instantly.", false),
-                sw("wheelBrowse", "Browse with the wheel or touchpad", "", true),
-                sw("hoverButtons", "Close buttons on cards", "Also middle-click to close, W to close, Q to quit.", true),
-            ]),
-            tab_card("Previews", "Thumbnails", &[
-                pick("thumbnailSize", "Thumbnail size", "", &[c("normal", "Normal"), c("large", "Large"), c("extraLarge", "Extra large"), c("minimal", "Minimal")], "normal"),
-                num("maxColumns", "Maximum columns", "0 picks the number automatically.", 0.0, 12.0, 1.0, "", 0.0),
-                list("pauseApps", "Pause thumbnails for", "Apps and other programs whose previews should freeze.", "App or program name"),
-            ]),
-            tab_card("Filters", "Which windows are listed", &[
-                sw("currentDesktopOnly", "Current desktop only", "", false),
-                sw("currentDisplayOnly", "Current display only", "Does not open if that display is empty.", false),
-                sw("showMinimised", "Show minimised windows", "", true),
-                sw("showHiddenApps", "Show apps hidden to the tray", "", true),
-                sw("showOtherDesktopFullscreen", "Include fullscreen windows from other desktops", "", false),
-                sw("hideFileManager", "Hide the file manager when it has no windows", "", false),
-            ]),
-            tab_card("Filters", "Apps and tabs", &[
-                sw("showAppsWithoutWindows", "List apps without windows", "Shown after the windowed apps.", false),
-                list("windowOnlyApps", "Apps to keep window-only", "These are never listed without a window.", "App name"),
-                sw("mergeTabs", "Merge tabs into one entry", "For apps whose tabs are separate windows.", false),
-                sw("browserTabs", "Browser tabs as entries", "Needs a browser extension or remote debugging.", false),
-            ]),
-        ],
-        specs: &["windows/app-switcher.md", "windows/switcher-options.md"],
-        ..PAGE
-    },
-    Page {
         id: "windowLayout",
         label: "Window layout",
         icon: "layout",

@@ -5,7 +5,7 @@ use tauri::{AppHandle, Listener};
 use crate::keybinds::{self, FEATURE_SHORTCUTS};
 
 /// Pages whose own settings page is the tool (nothing separate to open), or that apps::start already opens.
-const NO_WINDOW: &[&str] = &["uninstaller", "cleaner", "displays", "appUpdates", "packageManager", "portManager", "killProcess"];
+const NO_WINDOW: &[&str] = &["uninstaller", "cleaner", "displays", "appUpdates", "packageManager", "killProcess"];
 
 /// Whether a tool page has something to open.
 pub fn openable(page: &str) -> bool {
