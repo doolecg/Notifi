@@ -69,7 +69,7 @@ Building it yourself? See [Install](#install).
 A pill that opens into the Nook (now playing, calendar, notifications, scratchpad), Now Playing, Timer, Volume, AI Agents and a grid of modules. Idle, it shows the weather, a notification count and quick AI prompts. Esc, the close button, or a click outside puts it away.
 
 **AI agents**<br>
-Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI, with session time, token use and plan limits. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
+Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI, with session time, token use, Codex's own limits and a Claude limit you set, worked out from your local logs. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
 
 **AI chat**<br>
 T3 Code's own chat inside the Island, opened on the chat you used last, with Escape to close and Windows voice typing.
@@ -188,7 +188,6 @@ Notifi has no account and no server of its own. It is built so that nothing outs
 | Updates (GitHub) | Nothing about you; the request is for the newest release | Every few hours. Turn off "Update automatically" to stop it. |
 | Lyrics ([LRCLIB](https://lrclib.net)) | The song's title, artist, album and length | When lyrics are on (they are by default) and a song plays |
 | Weather ([Open-Meteo](https://open-meteo.com)) | The city you typed, then its coordinates | Off until you type a city; every 15 minutes after |
-| Claude plan limits ([Anthropic](https://www.anthropic.com)) | The login Claude Code saved on your PC, to read your 5-hour and weekly use | Off until you turn it on. The login is read for each request and never stored by Notifi. |
 | Speed test ([LibreSpeed](https://librespeed.org)) | Test data | Only when you start a test |
 | Share links (a server you set) | The capture or recording you share, and your token | Only when you ask, and only to that server |
 
@@ -205,7 +204,7 @@ Every feature is optional, and a feature you remove uses none of this. Settings 
 | Windows notifications | Dynamic cards on the Island. Windows asks first. Nothing is stored or sent. |
 | Clipboard | Clipboard history, plain text and files on your PC |
 | Other apps' menus | The command bar, through Windows UI Automation |
-| AI tool files | Session logs your coding agents write, and (only if you turn on plan limits) their saved login |
+| AI tool files | Session logs your coding agents write, and the plan name from Claude Code's login file. The login itself is never sent anywhere. |
 | Deleting files | The uninstaller, cleaner and Disk space, after you confirm |
 
 Found a security problem? Please open an issue titled "Security" without the details, and a private way to send them will be agreed there.
@@ -265,4 +264,4 @@ Back up your work before using it. You use it at your own risk. The uninstaller,
 
 Notifi is an independent project. It is not made by, affiliated with or endorsed by Vorssaint, Anthropic, OpenAI, GitHub, Microsoft, Spotify, Amazon, Just Eat, Uber, Deliveroo, the makers of T3 Code or OpenCode, or the services it talks to (LRCLIB, Open-Meteo, LibreSpeed). Their names and trademarks belong to their owners and are used only to say what Notifi works with.
 
-AI agents' output can be wrong; check it before relying on it. When you use Notifi with a website, service or app, you are responsible for following its terms of use. Turning on Claude plan limits sends the login Claude Code saved on your PC to Anthropic; check that this is allowed by the terms you accepted with Anthropic before you turn it on.
+AI agents' output can be wrong; check it before relying on it. When you use Notifi with a website, service or app, you are responsible for following its terms of use.

@@ -27,7 +27,7 @@
     <span class="name">Not affiliated<small>Notifi is not made by, affiliated with or endorsed by Vorssaint, Anthropic, OpenAI, GitHub, the makers of T3 Code or OpenCode, Microsoft, Spotify, Amazon, Just Eat, Uber, Deliveroo, LRCLIB, Open-Meteo or LibreSpeed. Their names belong to their owners and are only used to say what Notifi works with. AI agents' output can be wrong; check it before relying on it.</small></span>
   </div>
   <div class="row">
-    <span class="name">Your data<small>Most of Notifi works only on this PC. It uses the internet for updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo, only once you set a city), Claude plan limits (Anthropic, only if you turn it on), speed tests (LibreSpeed) and share links (your own server). Clipboard history, notes and captures are saved unencrypted on this PC.</small></span>
+    <span class="name">Your data<small>Most of Notifi works only on this PC. It uses the internet for updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo, only once you set a city), speed tests (LibreSpeed) and share links (your own server). Clipboard history, notes and captures are saved unencrypted on this PC.</small></span>
   </div>
   <div class="row">
     <span class="name">Deleting files<small>The app cleaner, the uninstaller and Disk space can delete files. Each shows what it will remove and asks first. Anything permanently deleted cannot be undone, so back up what you cannot replace.</small></span>

@@ -39,26 +39,6 @@
     !hooksStatus ? 'Checking…' : hooksStatus.installed ? `Added to ${hooksStatus.settingsPath}.` : 'Not added yet. Questions will stay in the terminal until you add them.',
   );
 
-  // ---- Claude usage ----
-  type ClaudeUsage = { status: string; session: { usedPercent: number } | null; week: { usedPercent: number } | null; checked: number };
-  let claude = $state<ClaudeUsage | null>(null);
-  const readClaude = () => invoke<ClaudeUsage>('island_claude_usage').then((u) => (claude = u)).catch(() => {});
-  $effect(() => {
-    if (option.id !== 'claudeUsage' || !cfg.claudeUsageConnect) return;
-    readClaude();
-    const id = setInterval(readClaude, 5000);
-    return () => clearInterval(id);
-  });
-  const claudeText = $derived.by(() => {
-    const c = claude;
-    if (!c || c.status === 'off' || c.status === 'waiting') return 'Checking…';
-    if (c.status === 'noLogin') return 'No Claude Code login found. Sign in to Claude Code once, then check again.';
-    if (c.status === 'expired') return 'The saved login has expired. Open Claude Code once so it renews, then check again.';
-    if (c.status === 'failed') return 'Could not read your limits just now. Notifi tries again in a few minutes.';
-    const p = (l: { usedPercent: number } | null) => (l ? `${Math.round(l.usedPercent)}%` : 'not reported');
-    return `Connected. 5 hour ${p(c.session)}, weekly ${p(c.week)}.`;
-  });
-
   // ---- Layout ----
   const PREVIEW_W = 520;
   const KEYS: Record<Side, 'orbitLeft' | 'orbitRight' | 'orbitBottom'> = { left: 'orbitLeft', right: 'orbitRight', bottom: 'orbitBottom' };
@@ -288,17 +268,6 @@
   </div>
   {#if hooksError}<p class="hint">{hooksError}</p>{/if}
   <p class="hint">Works with Claude Code only: it is the one agent that lets another app answer its questions. Codex and OpenCode questions stay in their terminals.</p>
-{:else if option.id === 'claudeUsage'}
-  <div class="row">
-    <div><strong>Connect Claude usage</strong><span class="sub">Uses the login Claude Code saved on this PC to ask Anthropic for your 5 hour and weekly limits. Nothing is copied or stored, and your login is never refreshed by Notifi.</span></div>
-    <Switch checked={cfg.claudeUsageConnect} label="Connect Claude usage" onchange={(on) => { set('claudeUsageConnect', on); if (on) setTimeout(readClaude, 2500); }} />
-  </div>
-  {#if cfg.claudeUsageConnect}
-    <div class="row">
-      <span class="sub">{claudeText}</span>
-      <button class="ghost" onclick={() => { invoke('island_claude_usage_refresh').catch(() => {}); setTimeout(readClaude, 2500); }}>Check now</button>
-    </div>
-  {/if}
 {:else if option.id === 'preview'}
   <button class="ghost" disabled={!cfg.enabled} onclick={() => invoke('island_preview').catch(() => {})}>Open the Island</button>
 {:else if option.id === 'pickArea'}

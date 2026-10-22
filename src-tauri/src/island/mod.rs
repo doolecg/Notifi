@@ -4,7 +4,6 @@
 //! transparent area around a resting pill never blocks clicks.
 
 pub mod agents;
-pub mod claude_limits;
 pub mod click;
 pub mod config;
 pub mod dynamic;
@@ -90,9 +89,6 @@ pub struct IslandState {
     wake: Mutex<Sender<()>>,
     wake_rx: Mutex<Option<Receiver<()>>>,
     usage: Arc<Mutex<usage::History>>,
-    claude: Mutex<claude_limits::ClaudeUsage>,
-    /// Set by the settings page to check Claude's limits now.
-    claude_refresh: std::sync::atomic::AtomicBool,
     /// Delivery and ride cards read from Windows notifications.
     orders: Mutex<dynamic::Orders>,
     /// The latest weather for the city in settings, and why there is none when there isn't.
@@ -141,7 +137,7 @@ struct Inner {
 impl Default for IslandState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), claude: Mutex::default(), claude_refresh: Default::default(), orders: Mutex::default(), weather: Mutex::default() }
+        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), orders: Mutex::default(), weather: Mutex::default() }
     }
 }
 
@@ -866,38 +862,6 @@ fn start_raise(app: &AppHandle) {
         .expect("spawn island raise thread");
 }
 
-/// Asks Anthropic for Claude's 5 hour and weekly limits every few minutes while the switch is on.
-fn start_claude_limits(app: &AppHandle) {
-    use std::sync::atomic::Ordering;
-    let app = app.clone();
-    std::thread::Builder::new()
-        .name("notifi-claude-limits".into())
-        .spawn(move || {
-            let mut next = Instant::now();
-            loop {
-                std::thread::sleep(Duration::from_secs(2));
-                let state = app.state::<IslandState>();
-                if !config(&app).claude_usage_connect {
-                    *state.claude.lock().unwrap() = Default::default();
-                    next = Instant::now();
-                    continue;
-                }
-                let asked = state.claude_refresh.swap(false, Ordering::Relaxed);
-                if !asked && Instant::now() < next {
-                    continue;
-                }
-                let Some(home) = agents::home() else { continue };
-                let last = state.claude.lock().unwrap().clone();
-                let fresh = tauri::async_runtime::block_on(claude_limits::check(&home, now_ms(), &last));
-                // A failed check backs off for longer than a good one.
-                next = Instant::now() + if fresh.status == "ok" { Duration::from_secs(300) } else { Duration::from_secs(600) };
-                *state.claude.lock().unwrap() = fresh;
-                state.wake();
-            }
-        })
-        .expect("spawn claude limits thread");
-}
-
 /// How often the weather is read, and how long to wait after a failed read.
 const WEATHER_EVERY: Duration = Duration::from_secs(15 * 60);
 const WEATHER_RETRY: Duration = Duration::from_secs(5 * 60);
@@ -975,16 +939,6 @@ fn ai_prompt(app: &AppHandle, index: usize) -> Result<(), String> {
     })?;
     open_chat(app);
     Ok(())
-}
-
-#[tauri::command]
-pub fn island_claude_usage(state: State<IslandState>) -> claude_limits::ClaudeUsage {
-    state.claude.lock().unwrap().clone()
-}
-
-#[tauri::command]
-pub fn island_claude_usage_refresh(state: State<IslandState>) {
-    state.claude_refresh.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// The part of the bar window that takes the pointer: the bar along its bottom, and the session buttons above it while shown.
@@ -1066,7 +1020,6 @@ fn start_hit(app: &AppHandle) {
 fn start(app: &AppHandle) {
     let Some(wake) = app.state::<IslandState>().wake_rx.lock().unwrap().take() else { return };
     start_usage(app);
-    start_claude_limits(app);
     watch::start(app);
     dynamic::start(app);
     start_weather(app);
@@ -1204,15 +1157,6 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
-            }
-            if c.claude_usage_connect {
-                let cl = state.claude.lock().unwrap().clone();
-                if cl.status == "ok" || cl.session.is_some() {
-                    for a in agent_snaps.iter_mut().filter(|a| a.id == agents::Kind::Claude) {
-                        a.session_limit = renewed(cl.session, now).or(a.session_limit);
-                        a.week_limit = renewed(cl.week, now).or(a.week_limit);
-                    }
-                }
             }
             for a in &agent_snaps {
                 for (i, (label, limit)) in [("session", a.session_limit), ("week", a.week_limit)].into_iter().enumerate() {
@@ -1626,14 +1570,6 @@ pub struct AgentStats {
     codex_session: Option<LimitView>,
     codex_week: Option<LimitView>,
     summary: usage::Summary,
-}
-
-/// A limit whose window has passed reads as empty until the next check.
-fn renewed(l: Option<agents::Limit>, now: u64) -> Option<agents::Limit> {
-    l.map(|l| match l.resets_at {
-        Some(r) if r <= now => agents::Limit { used_percent: 0.0, resets_at: None, ..l },
-        _ => l,
-    })
 }
 
 fn limit_view(l: Option<agents::Limit>, default_window: u64, now: u64) -> Option<LimitView> {

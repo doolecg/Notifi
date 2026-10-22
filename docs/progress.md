@@ -15,7 +15,7 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Edge highlight, pop and pixel burst fire on any change.
 - Clicking the bar opens a flyout above the taskbar. Grid of 15 modules opens when nothing is live. Extend button at the top of the flyout stretches it to 520 px.
 - Modules working: Controls, Now Playing, Timer, AI Agents, Mixer, System, Tools, Calendar, Clipboard, Scratchpad, Files, Captures, Downloads, Camera, Notifications.
-- Claude 5h and 7d limits come from Anthropic's usage endpoint using Claude Code's saved login (read per request, never stored).
+- Claude limits: removed in the final pass. The usage endpoint was undocumented and needed Claude Code's login, which Anthropic's terms keep to its own apps. Claude now shows a limit you set (`claudePlanLimitUsd`) against your local logs.
 
 ## Wave 1 (written and compiled, not yet tried live)
 - Input: click filter, key debounce, mouse buttons, scroll direction, smooth and linear scrolling, sideways scroll, pointer acceleration, Super key, touchpad settings link. Code in `src-tauri/src/input`.

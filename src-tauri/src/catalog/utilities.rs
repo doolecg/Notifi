@@ -368,7 +368,7 @@ pub const PAGES: &[Page] = &[
         id: "aiAgents",
         label: "AI agents",
         icon: "bot",
-        blurb: "See what your coding agents are doing, their usage and plan limits. It reads their local logs and sends nothing, unless you turn on Claude plan limits in the Island settings, which sends the login Claude Code saved to Anthropic.",
+        blurb: "See what your coding agents are doing, their usage and plan limits. It reads their local logs and sends nothing anywhere.",
         tool: true,
         cards: &[
             card("Agents", &[

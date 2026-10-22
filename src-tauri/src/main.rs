@@ -226,8 +226,6 @@ fn main() {
             island::files::island_recent_files,
             island::files::island_file_thumb,
             island::files::island_open_path,
-            island::island_claude_usage,
-            island::island_claude_usage_refresh,
             island::watch::watch_area,
             island::watch::watch_screen,
             island::watch::watch_set_area,

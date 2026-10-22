@@ -48,7 +48,6 @@ export interface IslandConfig {
   activitySound: boolean;
   alertsInIsland: boolean;
   privacyMode: boolean;
-  claudeUsageConnect: boolean;
   askInIsland: boolean;
 }
 
@@ -103,7 +102,6 @@ export const DEFAULT_CONFIG: IslandConfig = {
   activitySound: true,
   alertsInIsland: true,
   privacyMode: false,
-  claudeUsageConnect: false,
   askInIsland: false,
 };
 

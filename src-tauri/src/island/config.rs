@@ -98,8 +98,6 @@ pub struct IslandConfig {
     pub alerts_in_island: bool,
     /// Stops Notifi's notifications while on.
     pub privacy_mode: bool,
-    /// Read Claude's 5 hour and weekly limits from Anthropic using Claude Code's saved login.
-    pub claude_usage_connect: bool,
     /// How much darker than the taskbar the docked bar is, in percent.
     /// From the AI agents settings page (`features.aiAgents`).
     pub agents_follow: Vec<String>,
@@ -165,7 +163,6 @@ impl Default for IslandConfig {
             activity_sound: true,
             alerts_in_island: true,
             privacy_mode: false,
-            claude_usage_connect: false,
             agents_follow: Vec::new(),
             log_folders: Vec::new(),
             limit_shown: "closest".into(),
