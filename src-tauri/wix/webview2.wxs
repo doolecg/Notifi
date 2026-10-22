@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Asks before installing Microsoft WebView2 (Notifi's windows need it), then installs it with a time limit.
+     Replaces Tauri's silent download step, which showed no progress and could hang. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Feature Id="NotifiWebView2" Level="1" Title="WebView2 check" Absent="allow" AllowAdvertise="no" />
+
+    <Property Id="NOTIFI_WV2_VERSION">
+      <RegistrySearch Id="NotifiWv2SystemX64" Root="HKLM" Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+      <RegistrySearch Id="NotifiWv2SystemX86" Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+      <RegistrySearch Id="NotifiWv2User" Root="HKCU" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+    </Property>
+
+    <!-- [\[] and [\]] are the MSI escapes for [ and ]. Downloads for at most 2 minutes, waits for the setup for at most 15, then checks WebView2 is really there (the setup's own exit code is non-zero when it is already installed) so a failure stops the install. -->
+    <CustomAction Id="NotifiInstallWebView2" Directory="INSTALLDIR" Execute="deferred" Return="check"
+      ExeCommand="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command &quot;$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [\[]Net.ServicePointManager[\]]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'MicrosoftEdgeWebview2Setup.exe'; Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $f -TimeoutSec 120; $p=Start-Process -FilePath $f -ArgumentList '/silent','/install' -PassThru; $null=$p.WaitForExit(900000); $k='HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\[\{]F3017226-FE2A-4295-8BDF-00C3A9A7E4C5[\}]'; $u='HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\[\{]F3017226-FE2A-4295-8BDF-00C3A9A7E4C5[\}]'; exit [\[]int[\]](-not ((Test-Path $k) -or (Test-Path $u)))&quot;" />
+
+    <InstallExecuteSequence>
+      <Custom Action="NotifiInstallWebView2" Before="InstallFinalize"><![CDATA[NOT (REMOVE OR NOTIFI_WV2_VERSION)]]></Custom>
+    </InstallExecuteSequence>
+
+    <UI>
+      <ProgressText Action="NotifiInstallWebView2">Downloading and installing Microsoft WebView2. This can take a few minutes.</ProgressText>
+
+      <Dialog Id="NotifiWebView2Dlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Microsoft WebView2 is needed" />
+        <Control Id="Subtitle" Type="Text" X="25" Y="23" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="[ProductName] shows its windows with it, and it was not found on this PC." />
+
+        <Control Id="What" Type="Text" X="20" Y="54" Width="330" Height="52" Transparent="yes" NoPrefix="yes"
+          Text="If you choose Yes, setup downloads Microsoft's WebView2 installer from go.microsoft.com (a few MB, then about 130 MB for the runtime) and runs it for all users. You need an internet connection. It can take a few minutes and may look stuck while it works." />
+        <Control Id="Disclaimer" Type="Text" X="20" Y="110" Width="330" Height="76" Transparent="yes" NoPrefix="yes"
+          Text="WebView2 is Microsoft software under Microsoft's own licence terms, and [ProductName] is not affiliated with Microsoft. [ProductName] is provided &quot;as is&quot;, without warranty, under the MIT licence. To the extent permitted by law, the authors are not liable for any loss or damage from installing or using it. Back up your work first. You install it at your own risk." />
+        <Control Id="Question" Type="Text" X="20" Y="196" Width="330" Height="30" Transparent="yes" NoPrefix="yes"
+          Text="{\WixUI_Font_Bigger}Install WebView2 and continue? If you choose No, setup is cancelled and nothing is installed." />
+
+        <Control Id="Back" Type="PushButton" X="116" Y="243" Width="56" Height="17" Text="Back">
+          <Publish Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        </Control>
+        <Control Id="Yes" Type="PushButton" X="176" Y="243" Width="84" Height="17" Default="yes" Text="Yes, install it">
+          <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        </Control>
+        <Control Id="No" Type="PushButton" X="264" Y="243" Width="90" Height="17" Cancel="yes" Text="No, cancel setup">
+          <Publish Event="EndDialog" Value="Exit">1</Publish>
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="NotifiWebView2Dlg" Order="3"><![CDATA[NOT Installed AND NOT NOTIFI_WV2_VERSION]]></Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="NotifiWebView2Dlg" Order="3"><![CDATA[NOT Installed AND NOT NOTIFI_WV2_VERSION]]></Publish>
+    </UI>
+  </Fragment>
+</Wix>

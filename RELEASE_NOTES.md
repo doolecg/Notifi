@@ -1,3 +1,15 @@
+# Notifi 0.3.1
+
+## Changed
+
+- The installer now asks before it installs Microsoft WebView2 on a PC that doesn't have it. It says what will be downloaded, shows the disclaimer, and installs only if you choose Yes. No cancels setup.
+
+## Fixed
+
+- Setup could look frozen on a new PC: the WebView2 download ran hidden with no progress and no time limit. It now shows a progress line, gives up on the download after 2 minutes, and stops with an error if WebView2 is still missing afterwards.
+
+---
+
 # Notifi 0.3.0
 
 ## New
