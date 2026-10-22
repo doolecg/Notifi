@@ -469,7 +469,9 @@
     return invoke<boolean>('island_goto_agent', { agent: l.icon, project: l.project }).catch(() => false);
   }
 
-  async function clickPill() {
+  async function clickPill(e: MouseEvent) {
+    // Clicks inside the open menu (its tabs and buttons) are theirs: they must not reach here and reopen a menu they just closed.
+    if ((e.target as Element).closest('.tabs, .content')) return;
     if (open && !collapsing) {
       if (dock) collapse();
       return;

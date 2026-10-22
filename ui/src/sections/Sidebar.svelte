@@ -30,12 +30,13 @@
   /** Installed and Install features sit above everything, then the core pages, then only what you have installed. */
   const pinned = $derived(['installed', 'features'].map((id) => store.page(id)).filter((p): p is Page => !!p));
   const installedCount = $derived(store.featureGroups().reduce((n, g) => n + g.pages.filter((p) => store.installed(p.id)).length, 0));
-  const sections = $derived([
-    { id: 'core', label: 'Core', pages: store.corePages() },
-    ...store.featureGroups()
-      .map((g) => ({ ...g, pages: g.pages.filter((p) => store.installed(p.id)) }))
-      .filter((g) => g.pages.length),
-  ]);
+  const sections = $derived([{ id: 'core', label: 'Core', pages: store.corePages() }]);
+  /** The sidebar row that is lit: a feature page opened from the lists lights Installed (or Install features). */
+  const lit = $derived.by(() => {
+    const page = store.page(active);
+    if (!page?.feature || page.id === 'island') return active;
+    return store.installed(page.id) ? 'installed' : 'features';
+  });
 
   const matches = $derived.by((): Match[] => {
     const q = query.trim().toLowerCase();
@@ -80,12 +81,12 @@
   }
 
   $effect(() => {
-    void active;
+    void lit;
     void query;
     void collapsed;
     void groups.length;
     tick().then(() => {
-      const el = rows[active];
+      const el = rows[lit];
       if (!el || !nav?.contains(el)) {
         indicator.set({ ...indicator.target, show: 0 }, { instant: true });
         return;
@@ -131,7 +132,7 @@
         style:opacity={indicator.current.show}
       ></span>
       {#each pinned as page (page.id)}
-        <button class="item pinned" class:active={active === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
+        <button class="item pinned" class:active={lit === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
           <PageIcon {page} group="essentials" size={22} />
           <span class="text"><span>{page.label}</span></span>
           {#if page.id === 'installed'}<span class="badge">{installedCount}</span>{/if}
@@ -144,7 +145,7 @@
         </button>
         {#if !collapsed[g.id]}
           {#each g.pages as page (page.id)}
-            <button class="item" class:active={active === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
+            <button class="item" class:active={lit === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
               <PageIcon {page} group={groupOf[page.id] ?? g.id} size={22} />
               <span class="text"><span>{page.label}</span></span>
             </button>

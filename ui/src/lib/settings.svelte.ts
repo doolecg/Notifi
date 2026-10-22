@@ -190,9 +190,13 @@ class SettingsStore {
       .filter((g) => g.pages.length);
   }
 
-  /** Pages that are always there: General, Tray and panel, Shortcuts and the like. */
+  /** Pages in the sidebar: General, Tray and panel, Shortcuts and the like, plus the Island (the dynamic bar) once installed. Every other feature opens from Installed. */
   corePages(): Page[] {
-    return this.pages().filter((p) => !p.feature && !['installed', 'features'].includes(p.id));
+    const core = this.pages().filter((p) => !p.feature && !['installed', 'features'].includes(p.id));
+    const island = this.installed('island') ? this.page('island') : undefined;
+    if (!island) return core;
+    const at = core.findIndex((p) => p.id === 'about');
+    return at < 0 ? [...core, island] : [...core.slice(0, at), island, ...core.slice(at)];
   }
 
   /** A feature is installed when it is on; installing and uninstalling keep its options. */

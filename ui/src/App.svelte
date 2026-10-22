@@ -24,7 +24,7 @@
   const crumbs = $derived.by(() => {
     if (!page) return [];
     const trail: { label: string; id?: string }[] = [{ label: 'Settings', id: 'general' }];
-    if (page.feature) trail.push(store.installed(page.id) ? { label: 'Installed', id: 'installed' } : { label: 'Install features', id: 'features' });
+    if (page.feature && page.id !== 'island') trail.push(store.installed(page.id) ? { label: 'Installed', id: 'installed' } : { label: 'Install features', id: 'features' });
     trail.push({ label: page.label });
     return trail;
   });
