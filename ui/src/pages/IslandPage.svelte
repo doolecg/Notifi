@@ -39,6 +39,36 @@
     !hooksStatus ? 'Checking…' : hooksStatus.installed ? `Added to ${hooksStatus.settingsPath}.` : 'Not added yet. Questions will stay in the terminal until you add them.',
   );
 
+  // ---- Claude limits (from Claude Code's own status line) ----
+  type LimitsStatus = { installed: boolean; reportedAt: number | null; session: number | null; week: number | null };
+  let limits = $state<LimitsStatus | null>(null);
+  let limitsBusy = $state(false);
+  let limitsError = $state('');
+  const readLimits = () => invoke<LimitsStatus>('claude_limits_status').then((s) => (limits = s)).catch(() => {});
+  $effect(() => {
+    if (option.id !== 'claudeLimits') return;
+    readLimits();
+    const id = setInterval(readLimits, 5000);
+    return () => clearInterval(id);
+  });
+  async function setLimits(on: boolean) {
+    limitsBusy = true;
+    limitsError = '';
+    try {
+      limits = await invoke<LimitsStatus>(on ? 'claude_limits_install' : 'claude_limits_remove');
+    } catch (e) {
+      limitsError = String(e);
+    }
+    limitsBusy = false;
+  }
+  const limitsText = $derived.by(() => {
+    const l = limits;
+    if (!l?.installed) return '';
+    if (l.reportedAt === null) return 'Waiting for Claude Code. Send a message in a Claude Code session and the limits appear here. They are only reported on Pro and Max plans.';
+    const p = (v: number | null) => (v === null ? 'not reported' : `${Math.round(v)}%`);
+    return `5 hour ${p(l.session)}, weekly ${p(l.week)}.`;
+  });
+
   // ---- Layout ----
   const PREVIEW_W = 520;
   const KEYS: Record<Side, 'orbitLeft' | 'orbitRight' | 'orbitBottom'> = { left: 'orbitLeft', right: 'orbitRight', bottom: 'orbitBottom' };
@@ -268,6 +298,13 @@
   </div>
   {#if hooksError}<p class="hint">{hooksError}</p>{/if}
   <p class="hint">Works with Claude Code only: it is the one agent that lets another app answer its questions. Codex and OpenCode questions stay in their terminals.</p>
+{:else if option.id === 'claudeLimits'}
+  <div class="row">
+    <div><strong>Show Claude plan limits</strong><span class="sub">Claude Code hands Notifi your 5 hour and weekly use through its own status line, so nothing leaves your PC and no login is read. This adds Notifi to the status line setting in your Claude Code settings.json and keeps your own status line running; a backup of the file is made. Turn it off to put your own back.</span></div>
+    <Switch checked={!!limits?.installed} label="Show Claude plan limits" onchange={setLimits} />
+  </div>
+  {#if limitsText}<p class="hint">{limitsText}</p>{/if}
+  {#if limitsError}<p class="hint">{limitsError}</p>{/if}
 {:else if option.id === 'preview'}
   <button class="ghost" disabled={!cfg.enabled} onclick={() => invoke('island_preview').catch(() => {})}>Open the Island</button>
 {:else if option.id === 'pickArea'}

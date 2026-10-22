@@ -4,6 +4,7 @@
 //! transparent area around a resting pill never blocks clicks.
 
 pub mod agents;
+pub mod claude_status;
 pub mod click;
 pub mod config;
 pub mod dynamic;
@@ -1157,6 +1158,12 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
+            }
+            if let Some((session, week)) = claude_status::read(now) {
+                for a in agent_snaps.iter_mut().filter(|a| a.id == agents::Kind::Claude) {
+                    a.session_limit = session.or(a.session_limit);
+                    a.week_limit = week.or(a.week_limit);
+                }
             }
             for a in &agent_snaps {
                 for (i, (label, limit)) in [("session", a.session_limit), ("week", a.week_limit)].into_iter().enumerate() {

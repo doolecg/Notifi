@@ -129,7 +129,7 @@ pub fn status(path: &Path, port: u16, token: &str) -> (bool, bool) {
 }
 
 /// The settings document; `{}` when the file is missing or blank. Invalid JSON is an error so nothing gets overwritten.
-fn read_root(path: &Path) -> Result<Value, String> {
+pub(crate) fn read_root(path: &Path) -> Result<Value, String> {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(json!({})),
@@ -143,7 +143,7 @@ fn read_root(path: &Path) -> Result<Value, String> {
 }
 
 /// Writes the document through a temp file. The first write copies the old file to `settings.json.notifi-backup`; an existing backup is kept.
-fn write(path: &Path, root: &Value) -> Result<(), String> {
+pub(crate) fn write(path: &Path, root: &Value) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("Could not write {}: {e}", path.display());
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(fail)?;

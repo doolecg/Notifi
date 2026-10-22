@@ -3,7 +3,7 @@
 //! Claude Code calls a local HTTP hook (`server`), the call waits in `AskState`, and the Island
 //! answers through the commands below. `hooks` installs the hooks in Claude Code's settings.
 
-mod hooks;
+pub(crate) mod hooks;
 mod logic;
 mod server;
 

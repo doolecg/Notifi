@@ -37,7 +37,7 @@ use tauri::{Manager, RunEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 fn main() {
-    if apps_clean::elevated_main() {
+    if island::claude_status::statusline_main() || apps_clean::elevated_main() {
         return;
     }
     let app = tauri::Builder::default()
@@ -233,6 +233,9 @@ fn main() {
             island::watch::watch_read,
             island::island_focus,
             island::island_open_agents,
+            island::claude_status::claude_limits_status,
+            island::claude_status::claude_limits_install,
+            island::claude_status::claude_limits_remove,
             island::island_ai_send,
             island::island_open_chat,
             island::island_ai_prompt,

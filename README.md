@@ -69,7 +69,7 @@ Building it yourself? See [Install](#install).
 A pill that opens into the Nook (now playing, calendar, notifications, scratchpad), Now Playing, Timer, Volume, AI Agents and a grid of modules. Idle, it shows the weather, a notification count and quick AI prompts. Esc, the close button, or a click outside puts it away.
 
 **AI agents**<br>
-Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI, with session time, token use, Codex's own limits and a Claude limit you set, worked out from your local logs. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
+Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI, with session time, token use and plan limits. Claude's 5-hour and weekly limits come from Claude Code's own status line (one switch in the Island settings); Codex's come from its logs. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
 
 **AI chat**<br>
 T3 Code's own chat inside the Island, opened on the chat you used last, with Escape to close and Windows voice typing.
@@ -147,6 +147,7 @@ Linux (KDE and GNOME, X11 and Wayland) builds from source. There is no Linux dow
 
 - **T3 Code.** The AI chat shows T3 Code running on your own PC (it talks to `127.0.0.1` only). Install and start T3 Code, then turn on the AI chat button in the Island settings.
 - **Claude Code and other agents.** The AI Agents tab reads the session files those tools already write on your PC. Nothing needs installing in them.
+- **Claude plan limits.** Optional. One switch in Settings > Island adds Notifi to the status line setting in Claude Code's settings.json. Claude Code then hands Notifi its 5-hour and weekly use, which it documents for Pro and Max plans. Your own status line keeps running, a backup is made, and the same switch puts things back. Nothing is sent anywhere and no login is read.
 - **Questions from Claude Code.** Optional. Settings > Island can add Notifi's hooks to Claude Code's settings so its questions and permission prompts show on the Island. Your other hooks are kept, a backup is made, and the same switch removes them.
 
 ## Configuration
@@ -204,7 +205,7 @@ Every feature is optional, and a feature you remove uses none of this. Settings 
 | Windows notifications | Dynamic cards on the Island. Windows asks first. Nothing is stored or sent. |
 | Clipboard | Clipboard history, plain text and files on your PC |
 | Other apps' menus | The command bar, through Windows UI Automation |
-| AI tool files | Session logs your coding agents write, and the plan name from Claude Code's login file. The login itself is never sent anywhere. |
+| AI tool files | Session logs your coding agents write, and the plan name from Claude Code's login file. With the Claude limits switch on, it also edits the status line setting in Claude Code's settings.json. The login is never sent anywhere. |
 | Deleting files | The uninstaller, cleaner and Disk space, after you confirm |
 
 Found a security problem? Please open an issue titled "Security" without the details, and a private way to send them will be agreed there.

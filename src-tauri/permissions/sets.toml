@@ -101,6 +101,7 @@ permissions = [
   "allow-watch-read",
   "allow-island-focus",
   "allow-island-open-agents",
+  "allow-claude-limits-status",
   "allow-island-ai-send",
   "allow-island-open-chat",
   "allow-island-ai-prompt",
@@ -256,4 +257,6 @@ permissions = [
   "allow-import-settings",
   "allow-ask-hooks-install",
   "allow-capture-share-file",
+  "allow-claude-limits-install",
+  "allow-claude-limits-remove",
 ]
