@@ -241,7 +241,7 @@
     box-sizing: border-box;
     padding: 0 16px;
     border: 0;
-    border-radius: 999px;
+    border-radius: 0 999px 999px 0;
     background: var(--i-face);
     color: inherit;
     font: inherit;

@@ -616,7 +616,7 @@
       style:width={`${pillW}px`}
       style:height={`${pillH}px`}
       style:bottom={layout.dock ? `${DOCK_GAP}px` : undefined}
-      style:border-radius={layout.dock ? `${radius}px` : rise ? (grown ? `${radius}px ${radius}px 0 0` : `${radius}px`) : `0 0 ${radius}px ${radius}px`}
+      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? (grown ? `${radius}px ${radius}px 0 0` : `${radius}px`) : `0 0 ${radius}px ${radius}px`}
       onpointerenter={enter}
       onpointerleave={leave}
       onclick={clickPill}

@@ -1536,8 +1536,8 @@ mod tests {
 
     #[test]
     fn docked_box_sits_on_the_given_bottom_edge() {
-        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.0, 200.0, 32.0), (8, 1408, 200, 32));
-        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.5, 200.0, 32.0), (12, 1392, 300, 48));
+        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.0, 200.0, 32.0), (0, 1408, 200, 32));
+        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.5, 200.0, 32.0), (0, 1392, 300, 48));
     }
 
 
