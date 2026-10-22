@@ -36,8 +36,6 @@
   /** The idle info pill is sized from what it shows (rough widths of each item), between these. */
   const IDLE_MIN = 190;
   const IDLE_MAX = 820;
-  const IDLE_GAP = 14;
-  const IDLE_PAD = 32;
   /** The thin bar shown when idle, and the taller area around it that catches the pointer. */
   const THIN = { w: 120, h: 4 };
   const THIN_HIT = { w: 160, h: 12 };
@@ -88,38 +86,126 @@
   const workingCount = $derived((snap?.agents ?? []).filter((a) => a.working).length);
   const selLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
 
-  /** One thing on the resting pill: the time, the weather, the notification count, a quick AI button or a system meter. `w` is its rough width. */
-  type IdleItem = { key: string; kind: 'weather' | 'bell' | 'prompt' | 'stat'; text: string; label?: string; icon?: string; tip?: string; pct?: number; index?: number; w: number };
-  const idleItems = $derived.by(() => {
+  /** One thing on the resting pill. `w` is its rough width, for sizing the pill. */
+  type IdleItem = {
+    key: string;
+    kind: 'weather' | 'bell' | 'stat' | 'ask' | 'agents';
+    text: string;
+    label?: string;
+    icon?: string;
+    tip?: string;
+    pct?: number;
+    /** A meter: a ring with the value inside, a small bar, or plain text. */
+    look?: 'ring' | 'bar' | 'text';
+    /** The Ask AI button: a chip with a chevron, bare text, a search-style field, or just the icon. */
+    ask?: 'chev' | 'plain' | 'field' | 'icon';
+    dot?: string;
+    w: number;
+  };
+  const pillStyle = $derived(cfg?.pillStyle ?? 'calm');
+  /** The pill's contents in the chosen style, as one group per black pill (only "chips" has more than one). */
+  const idleGroups = $derived.by((): IdleItem[][] => {
     if (!cfg) return [];
-    const out: IdleItem[] = [];
+    const s = pillStyle;
+    const first: IdleItem[] = [];
+    const stats: IdleItem[] = [];
+    const bell: IdleItem[] = [];
+    const ask: IdleItem[] = [];
+    const stat = (key: string, label: string | undefined, v: number, look: 'ring' | 'bar' | 'text', icon?: string, tip?: string): IdleItem => {
+      const l = label ? label.length * 6.2 + 4 : 0;
+      const digits = String(v).length;
+      return { key, kind: 'stat', label, icon, text: `${v}%`, pct: v, look, tip, w: look === 'ring' ? 22 + (label ? l + 4 : 0) : look === 'bar' ? (label ? l : 17) + 30 + digits * 6.8 + 8 : (label ? l : 17) + (digits + 1) * 6.8 };
+    };
+    if (s === 'agents') {
+      const n = (snap?.agents ?? []).filter((a) => a.working).reduce((t, a) => t + a.count, 0);
+      const l = snap?.live.find((x) => x.id === 'agents');
+      const dot = l?.status === 'needs' ? 'var(--i-agent)' : l?.status === 'done' ? '#35d6a4' : n ? 'var(--i-acc)' : 'var(--i-mut)';
+      const text = n ? `${n} agent${n === 1 ? '' : 's'} working` : 'Agents idle';
+      first.push({ key: 'agents', kind: 'agents', text, dot, w: 16 + text.length * 6.4 });
+      const pct = l?.sessionPct ?? snap?.idle.ai ?? null;
+      if (cfg.idleAiUsage && pct !== null) stats.push(stat('five', '5h', Math.round(pct), 'bar', undefined, 'Share of the 5 hour limit used'));
+    }
     const wx = snap?.weather;
-    if (wx) out.push({ key: 'wx', kind: 'weather', icon: wx.icon, text: `${wx.temp}°`, tip: `${wx.city}: ${wx.label}`, w: 22 + String(wx.temp).length * 8 });
-    else if (cfg.weatherCity && snap?.weatherError) out.push({ key: 'wx', kind: 'weather', icon: 'cloud', text: '--', tip: snap.weatherError, w: 40 });
-    const waiting = island.history.length;
-    if (cfg.idleNotifications && waiting) out.push({ key: 'bell', kind: 'bell', text: String(waiting), tip: 'Notifications', w: 22 + String(waiting).length * 7.5 });
-    if (cfg.chatEnabled) cfg.aiPrompts.forEach((p, index) => out.push({ key: `ai${index}`, kind: 'prompt', text: p, index, w: 34 + Math.min(96, p.length * 6.4) }));
+    if (wx) first.push({ key: 'wx', kind: 'weather', icon: wx.icon, text: `${wx.temp}°`, tip: `${wx.city}: ${wx.label}`, w: 22 + String(wx.temp).length * 8 });
+    else if (cfg.weatherCity && snap?.weatherError) first.push({ key: 'wx', kind: 'weather', icon: 'cloud', text: '--', tip: snap.weatherError, w: 40 });
     const i = snap?.idle;
     if (i) {
-      const stat = (key: string, label: string | undefined, v: number | null, icon?: string, tip?: string) => {
-        if (v !== null) out.push({ key, kind: 'stat', label, icon, text: `${v}%`, pct: v, tip, w: (label ? label.length * 6.2 + 4 : 17) + 30 + String(v).length * 6.8 + 8 });
+      const look = s === 'calm' || s === 'rings' ? 'ring' : 'text';
+      const label = (l: string) => (s === 'rings' ? undefined : l);
+      const add = (key: string, l: string, v: number | null, tip?: string) => {
+        if (v !== null) stats.push(stat(key, label(l), v, look, undefined, tip));
       };
-      if (cfg.idleAiUsage) stat('ai', 'AI', i.ai, undefined, 'Share of the Claude 5 hour session used');
-      if (cfg.idleCpuRam) {
-        stat('cpu', 'CPU', i.cpu);
-        stat('mem', 'RAM', i.mem);
-      }
-      if (cfg.idleBattery) {
-        if (i.battery !== null) stat('battery', undefined, i.battery, i.charging ? 'bolt' : 'battery', i.charging ? 'Charging' : 'Battery');
-        else if (!cfg.idleCpuRam) stat('cpu', 'CPU', i.cpu);
+      if (s === 'field') {
+        if (cfg.idleAiUsage && i.ai !== null) stats.push(stat('ai', undefined, i.ai, 'ring', undefined, 'Share of the Claude 5 hour session used'));
+      } else if (s === 'agents') {
+        if (cfg.idleCpuRam) add('cpu', 'CPU', i.cpu);
+      } else {
+        if (cfg.idleAiUsage) add('ai', 'AI', i.ai, 'Share of the Claude 5 hour session used');
+        if (cfg.idleCpuRam) {
+          add('cpu', 'CPU', i.cpu);
+          add('mem', 'RAM', i.mem);
+        }
+        if (cfg.idleBattery) {
+          if (i.battery !== null) stats.push(stat('battery', undefined, i.battery, 'text', i.charging ? 'bolt' : 'battery', i.charging ? 'Charging' : 'Battery'));
+          else if (!cfg.idleCpuRam) add('cpu', 'CPU', i.cpu);
+        }
       }
     }
-    return out;
+    const waiting = island.history.length;
+    if (cfg.idleNotifications && waiting) bell.push({ key: 'bell', kind: 'bell', text: String(waiting), tip: 'Notifications', w: 22 + String(waiting).length * 7.5 });
+    if (cfg.chatEnabled && s !== 'agents') {
+      const look = { calm: 'chev', chips: 'plain', native: 'plain', field: 'field', rings: 'icon' }[s as string] as 'chev' | 'plain' | 'field' | 'icon';
+      ask.push({ key: 'ask', kind: 'ask', ask: look, text: 'Ask AI', w: { chev: 100, plain: 56, field: 190, icon: 22 }[look] });
+    }
+    const groups = s === 'chips' ? [first, [...stats, ...bell], ask] : s === 'field' ? [[...first, ...ask, ...stats, ...bell]] : [[...first, ...stats, ...bell, ...ask]];
+    return groups.filter((g) => g.length);
   });
-  const idleShown = $derived(idleItems.length > 0);
+  const idleShown = $derived(idleGroups.length > 0);
+  /** Rough width of the pill in the chosen style: each style spaces its items its own way. */
+  const idleTotal = $derived.by(() => {
+    const sum = (g: IdleItem[]) => g.reduce((w, it) => w + it.w, 0);
+    if (pillStyle === 'chips') return idleGroups.reduce((t, g) => t + sum(g) + (g.length - 1) * 12 + 24, 0) + (idleGroups.length - 1) * 8;
+    const items = idleGroups.flat();
+    if (pillStyle === 'native') return items.reduce((t, it) => t + it.w + 24, 0);
+    return 28 + sum(items) + (items.length - 1) * 14;
+  });
 
   /** A quick AI button: the prompt is copied and the chat opens (Notifi shows a notice if that fails). */
   const askAi = (index: number) => invoke('island_ai_prompt', { index }).catch(() => {});
+  /** The prompt list under the Ask AI button; it opens above the pill on the taskbar and below it at the top. */
+  let pop = $state<{ left: number; y: number; up: boolean } | null>(null);
+  const POP_W = 190;
+  const POP_ROW = 32;
+  const popH = $derived(pop && cfg ? cfg.aiPrompts.length * POP_ROW + 12 : 0);
+  function askClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (!cfg?.aiPrompts.length) {
+      invoke('island_open_chat').catch(() => {});
+      return;
+    }
+    if (pop) {
+      pop = null;
+      return;
+    }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    // Clear of the whole pill, not just of the button.
+    const pr = (e.currentTarget as HTMLElement).closest('.pill')?.getBoundingClientRect() ?? r;
+    const up = !!(layout?.rise || layout?.dock);
+    pop = { left: Math.max(8, Math.min(window.innerWidth - POP_W - 8, r.left + r.width / 2 - POP_W / 2)), y: up ? window.innerHeight - pr.top + 8 : pr.bottom + 8, up };
+  }
+  function pickPrompt(index: number) {
+    pop = null;
+    askAi(index);
+  }
+  // The list closes soon after the pointer leaves, and in any case after a while.
+  $effect(() => {
+    if (!pop) return;
+    const t = setTimeout(() => (pop = null), near ? 8000 : 700);
+    return () => clearTimeout(t);
+  });
+  $effect(() => {
+    if (open) pop = null;
+  });
   /** The clock/CPU page is one more page to scroll to when something is live. */
   const watchChosen = $derived(chosenLive === 'watch' && !!snap?.watch);
   const infoChosen = $derived(!watchChosen && chosenLive === 'info' && idleShown && live.length > 0);
@@ -131,8 +217,7 @@
   const selPage = $derived(watchChosen ? 'watch' : infoChosen ? 'info' : (selLive?.id ?? ''));
   const idleW = $derived(
     idleShown
-      ? Math.round(Math.min(IDLE_MAX, Math.max(IDLE_MIN,
-          IDLE_PAD + idleItems.reduce((w, it) => w + it.w, 0) + (idleItems.length - 1) * IDLE_GAP)))
+      ? Math.round(Math.min(IDLE_MAX, Math.max(IDLE_MIN, idleTotal)))
       : REST.w,
   );
 
@@ -194,7 +279,7 @@
   const box = $derived(
     thin
       ? THIN_HIT
-      : { w: barCap(rest.w), h: rest.h },
+      : { w: barCap(rest.w), h: rest.h + (pop ? popH + 8 : 0) },
   );
 
   /** What the window was last told, so a shrinking pill can keep its room until it has finished shrinking. */
@@ -417,7 +502,10 @@
     store.init();
     island.init(command);
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') collapse();
+      if (e.key === 'Escape') {
+        pop = null;
+        collapse();
+      }
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
@@ -581,6 +669,35 @@
   {/if}
 {/snippet}
 
+{#snippet idleRow(group: IdleItem[])}
+  {#each group as it (it.key)}
+    {#if it.kind === 'weather'}
+      <span class="iwx" title={it.tip}><Glyph name={it.icon ?? 'cloud'} size={15} />{it.text}</span>
+    {:else if it.kind === 'bell'}
+      <span class="ibell" title={it.tip}><Glyph name="bell" size={14} />{it.text}</span>
+    {:else if it.kind === 'agents'}
+      <span class="iag"><i class="idot" style:background={it.dot}></i>{it.text}</span>
+    {:else if it.kind === 'ask'}
+      {#if it.ask === 'field'}
+        <button class="ifield" onclick={askClick}><Glyph name="sparkle" size={13} />Ask AI...</button>
+      {:else}
+        <button class="iask" class:plain={pillStyle === 'chips' || pillStyle === 'native'} class:icon={it.ask === 'icon'} aria-label="Ask AI" title="Ask AI" onclick={askClick}>
+          <Glyph name="sparkle" size={13} />{#if it.ask !== 'icon'}Ask AI{/if}{#if it.ask === 'chev'}<Glyph name={layout?.rise || layout?.dock ? 'expand' : 'shrink'} size={13} />{/if}
+        </button>
+      {/if}
+    {:else}
+      <span class="istat" class:warn={(it.pct ?? 0) >= 70} class:hot={(it.pct ?? 0) >= 90} title={it.tip ?? it.label}>
+        {#if it.look === 'ring'}
+          <span class="iring"><svg viewBox="0 0 22 22" aria-hidden="true"><circle class="t" cx="11" cy="11" r="8.5" /><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray={`${((it.pct ?? 0) / 100) * 53.4} 53.4`} /></svg>{it.pct}</span>
+          {#if it.label}<small>{it.label}</small>{/if}
+        {:else}
+          {#if it.icon}<Glyph name={it.icon} size={13} />{/if}{#if it.label}<small>{it.label}</small>{/if}{#if it.look === 'bar'}<i class="ibar"><u style:width={`${it.pct}%`}></u></i>{/if}{it.text}
+        {/if}
+      </span>
+    {/if}
+  {/each}
+{/snippet}
+
 {#snippet tabstrip()}
   <nav class="strip" class:tight={stripTight} style:height={`${STRIP}px`} onwheel={stripWheel}>
     {#each strip.tabs as id (id)}
@@ -710,23 +827,25 @@
           </div>
         {/key}
       {:else if !thin && idleShown}
-        <div class="ends idle live-in" out:fade={swapOut()}>
-          {#each idleItems as it (it.key)}
-            {#if it.kind === 'weather'}
-              <span class="iwx" title={it.tip}><Glyph name={it.icon ?? 'cloud'} size={15} />{it.text}</span>
-            {:else if it.kind === 'bell'}
-              <span class="ibell" title={it.tip}><Glyph name="bell" size={14} />{it.text}</span>
-            {:else if it.kind === 'prompt'}
-              <button class="iprompt" title={it.text} onclick={(e) => { e.stopPropagation(); askAi(it.index ?? 0); }}><Glyph name="sparkle" size={12} /><span>{it.text}</span></button>
+        <div class="ends idle live-in {pillStyle}" class:bare={pillStyle === 'chips' || pillStyle === 'native'} out:fade={swapOut()}>
+          {#each idleGroups as group, g (g)}
+            {#if pillStyle === 'chips'}
+              <div class="ichip">{@render idleRow(group)}</div>
             {:else}
-              <span class="istat" class:warn={(it.pct ?? 0) >= 70} class:hot={(it.pct ?? 0) >= 90} title={it.tip}>
-                {#if it.icon}<Glyph name={it.icon} size={13} />{/if}{#if it.label}<small>{it.label}</small>{/if}<i class="ibar"><u style:width={`${it.pct}%`}></u></i>{it.text}
-              </span>
+              {@render idleRow(group)}
             {/if}
           {/each}
         </div>
       {/if}
     </div>
+
+    {#if pop && !open}
+      <div class="askpop" style:left={`${pop.left}px`} style:bottom={pop.up ? `${pop.y}px` : undefined} style:top={pop.up ? undefined : `${pop.y}px`} in:fade={{ duration: 120 }}>
+        {#each cfg.aiPrompts as p, i (i)}
+          <button onclick={() => pickPrompt(i)}>{p}</button>
+        {/each}
+      </div>
+    {/if}
 
     {#if open && dock}
       <div
@@ -1352,7 +1471,7 @@
   .idle {
     justify-content: center;
     gap: 14px;
-    padding: 0 16px;
+    padding: 0 14px;
     font-size: 12px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
@@ -1365,36 +1484,23 @@
   }
   .iwx,
   .ibell,
-  .istat {
+  .istat,
+  .iag {
     display: inline-flex;
     align-items: center;
     gap: 4px;
   }
+  .iag {
+    gap: 8px;
+  }
+  .idot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
   .ibell {
     color: var(--i-agent);
-  }
-  .iprompt {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    max-width: 130px;
-    height: 22px;
-    padding: 0 10px 0 8px;
-    border: 0;
-    border-radius: 99px;
-    background: color-mix(in srgb, var(--i-fg), transparent 90%);
-    color: var(--i-fg);
-    font: inherit;
-    font-size: 11.5px;
-    cursor: pointer;
-    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
-  }
-  .iprompt:hover {
-    background: color-mix(in srgb, var(--i-acc), transparent 78%);
-  }
-  .iprompt span {
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .istat {
     --c: var(--i-acc);
@@ -1418,6 +1524,149 @@
     border-radius: inherit;
     background: var(--c);
     transition: width var(--m-glassIn-dur) var(--m-glassIn-ease);
+  }
+  .iring {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-right: 4px;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .iring svg {
+    position: absolute;
+    inset: 0;
+    transform: rotate(-90deg);
+  }
+  .iring circle {
+    fill: none;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+  }
+  .iring .t {
+    stroke: rgb(255 255 255 / 0.14);
+  }
+  .iring .v {
+    stroke: var(--c);
+    transition: stroke-dasharray var(--m-glassIn-dur) var(--m-glassIn-ease);
+  }
+  /* Ask AI: a chip, bare text, a search-style field or just the icon, by style. */
+  .iask,
+  .ifield {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    border: 0;
+    color: var(--i-fg);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .iask {
+    gap: 6px;
+    padding: 0 10px 0 8px;
+    border-radius: 99px;
+    background: rgb(255 255 255 / 0.1);
+  }
+  .iask:hover {
+    background: color-mix(in srgb, var(--i-acc), transparent 78%);
+  }
+  .iask.plain {
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .iask.plain:hover {
+    color: var(--i-acc);
+  }
+  .iask.icon {
+    padding: 0 7px;
+  }
+  .ifield {
+    gap: 8px;
+    width: 190px;
+    padding: 0 10px;
+    border-radius: 99px;
+    background: var(--i-raised);
+    color: var(--i-mut);
+    text-align: left;
+  }
+  .ifield:hover {
+    background: color-mix(in srgb, var(--i-raised), var(--i-fg) 8%);
+  }
+  .ifield :global(.glyph) {
+    color: var(--i-fg);
+  }
+  /* Three chips: separate small black pills; the pill behind them is not drawn. */
+  .idle.chips {
+    gap: 8px;
+  }
+  .ichip {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    height: 100%;
+    padding: 0 12px;
+    border-radius: 99px;
+    background: var(--i-bg);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+  /* Native text: no black at all, thin dividers between the parts. */
+  .idle.bare {
+    padding: 0;
+  }
+  .idle.native {
+    gap: 0;
+  }
+  .idle.native > :global(*) {
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 12px;
+  }
+  .idle.native > :global(* + *) {
+    border-left: 1px solid rgb(255 255 255 / 0.16);
+  }
+  .pill:has(> .idle.bare) {
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  /* The prompt list under the Ask AI button. */
+  .askpop {
+    position: absolute;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    width: 190px;
+    padding: 6px;
+    border-radius: 14px;
+    background: var(--i-bg);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.07),
+      0 6px 18px rgb(0 0 0 / 0.35);
+    font-size: 12.5px;
+  }
+  .askpop button {
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 9px;
+    background: none;
+    color: var(--i-fg);
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .askpop button:hover {
+    background: rgb(255 255 255 / 0.08);
   }
   .activity {
     justify-content: center;

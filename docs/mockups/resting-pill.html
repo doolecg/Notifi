@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notifi resting pill: six options</title>
+<style>
+  :root { --i-bg:#000; --i-raised:#1b1e1f; --i-fg:#f2f4f3; --i-mut:#9aa1a3; --i-acc:#2cc9b2; --i-agent:#f0a24a; }
+  body { max-width: 728px; margin: 0; font-family: var(--font-sans, "Segoe UI", system-ui, sans-serif); line-height: 1.5; }
+  h1 { margin: 0 0 8px; font-size: 20px; font-weight: 650; }
+  h2 { margin: 36px 0 8px; font-size: 15px; font-weight: 650; }
+  p, li { color: var(--muted-foreground); font-size: 13.5px; margin: 0 0 6px; }
+  ol { margin: 0 0 8px; padding-left: 20px; }
+  .read { margin: 14px 0 6px; }
+  .read strong { color: var(--foreground); }
+
+  /* The taskbar: the real left and right ends of yours, the middle is where the pill goes. */
+  .stage { padding: 16px; border-radius: var(--radius); background: #211f1f; }
+  .strip { display: flex; align-items: stretch; height: 32px; background: #211f1f; }
+  .end-l { width: 120px; background: url("E:/REPOS/PROGRAMS/Notifi/docs/mockups/taskbar-left.png") 0 0 no-repeat; }
+  .end-r { width: 96px; background: url("E:/REPOS/PROGRAMS/Notifi/docs/mockups/taskbar-right.png") right 0 no-repeat; }
+  .mid { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .pop { display: flex; justify-content: center; margin-bottom: 10px; }
+  .menu { width: 190px; padding: 6px; border-radius: 14px; background: var(--i-bg); color: var(--i-fg); font-size: 12.5px;
+          box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07), 0 -6px 18px rgb(0 0 0 / .35); }
+  .menu div { padding: 7px 10px; border-radius: 9px; }
+  .menu div:first-child { background: rgb(255 255 255 / .08); }
+
+  /* Pills, in the Island's own palette. */
+  .pill { display: inline-flex; align-items: center; gap: 14px; height: 32px; padding: 0 14px; border-radius: 16px; background: var(--i-bg);
+          box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06), inset 0 1px 0 rgb(255 255 255 / .12);
+          color: var(--i-fg); font-size: 12px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .group { display: inline-flex; align-items: center; gap: 8px; }
+  svg.g { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  small { color: var(--i-mut); font-size: 10.5px; font-weight: 600; }
+  .bell { color: var(--i-agent); display: inline-flex; align-items: center; gap: 4px; }
+  .ask { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 8px; border-radius: 99px; background: rgb(255 255 255 / .1); }
+  .ask svg.g { width: 13px; height: 13px; }
+  .ring { position: relative; width: 22px; height: 22px; display: inline-grid; place-items: center; font-size: 9px; font-weight: 700; }
+  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+  .ring .t { stroke: rgb(255 255 255 / .14); }
+  .ring .v { stroke: var(--i-acc); }
+  .ring.warn .v { stroke: var(--i-agent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--i-acc); }
+  .bar { width: 26px; height: 4px; border-radius: 99px; background: rgb(255 255 255 / .14); overflow: hidden; display: inline-block; }
+  .bar i { display: block; height: 100%; background: var(--i-acc); }
+  .field { display: inline-flex; align-items: center; gap: 8px; height: 22px; width: 190px; padding: 0 10px; border-radius: 99px; background: var(--i-raised); color: var(--i-mut); }
+  .field svg.g { color: var(--i-fg); width: 13px; height: 13px; }
+  .row8 { display: inline-flex; gap: 8px; }
+
+  /* Option C sits straight on the taskbar, no black. */
+  .plain { display: inline-flex; align-items: center; height: 32px; color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .plain > * { padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .plain > * + * { border-left: 1px solid rgb(255 255 255 / .16); }
+  .plain small { color: rgb(255 255 255 / .6); }
+
+  .facts { display: grid; grid-template-columns: 78px 1fr; gap: 2px 12px; margin-top: 12px; font-size: 13px; }
+  .facts dt { color: var(--foreground); font-weight: 600; margin: 0; }
+  .facts dd { color: var(--muted-foreground); margin: 0; }
+  .pick { color: var(--foreground); font-weight: 650; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="rain" viewBox="0 0 24 24"><path d="M7 14.5h10a3.5 3.5 0 0 0 .5-6.95A5.5 5.5 0 0 0 7 7.1 3.7 3.7 0 0 0 7 14.5Z M8.5 17.5l-1 2.5 M12.5 17.5l-1 2.5 M16.5 17.5l-1 2.5"/></symbol>
+  <symbol id="spark" viewBox="0 0 24 24"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8Z M18.5 4v3 M17 5.5h3"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M6.5 16v-5a5.5 5.5 0 0 1 11 0v5l1.5 2H5Z M10 20.5h4"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="M6 14.5l6-6 6 6"/></symbol>
+</svg>
+
+<h1>The resting pill: six options</h1>
+<p class="read"><strong>Read this first</strong></p>
+<ol>
+  <li>Each mockup is the pill on your real taskbar (its left and right ends are from a screenshot of it), at its real height of 32 px.</li>
+  <li>The numbers shown are the live ones: weather 8°, CPU 8%, RAM 33%, AI 54%, two notifications.</li>
+  <li>Pick a letter, or mix: "A, but with the rings from F".</li>
+</ol>
+<p><span class="pick">My pick: A.</span> It drops the cramped row of three prompt chips for one Ask AI button, and the rings read at a glance. Everything else about the pill stays.</p>
+
+<h2>A. Calm</h2>
+<div class="stage">
+  <div class="pop"><div class="menu"><div>Explain this</div><div>Summarize this</div><div>Fix this</div></div></div>
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="pill">
+      <span class="group"><svg class="g"><use href="#rain"/></svg>8°</span>
+      <span class="group"><span class="ring"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="4.3 53.4"/></svg>8</span><small>CPU</small></span>
+      <span class="group"><span class="ring"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="17.6 53.4"/></svg>33</span><small>RAM</small></span>
+      <span class="group"><span class="ring"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="28.8 53.4"/></svg>54</span><small>AI</small></span>
+      <span class="bell"><svg class="g"><use href="#bell"/></svg>2</span>
+      <span class="ask"><svg class="g"><use href="#spark"/></svg>Ask AI<svg class="g" style="transform:rotate(180deg)"><use href="#chev"/></svg></span>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 400 px.</dd><dt>Tap Ask AI</dt><dd>A small list of your prompts opens above it (shown). Pick one: it is copied and the chat opens.</dd><dt>Rings</dt><dd>Amber from 70%, red from 90%.</dd></dl>
+
+<h2>B. Three chips</h2>
+<div class="stage">
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="row8">
+      <div class="pill" style="gap:10px;padding:0 12px"><svg class="g"><use href="#rain"/></svg>8°</div>
+      <div class="pill" style="gap:12px;padding:0 12px"><span class="group"><small>CPU</small>8%</span><span class="group"><small>RAM</small>33%</span><span class="group"><small>AI</small>54%</span><span class="bell"><svg class="g"><use href="#bell"/></svg>2</span></div>
+      <div class="pill" style="padding:0 12px 0 10px;gap:6px"><svg class="g"><use href="#spark"/></svg>Ask AI</div>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 420 px in three separate pills.</dd><dt>Why</dt><dd>Looks lighter than one big black bar, and each part can be hidden on its own. The gaps show the taskbar through.</dd></dl>
+
+<h2>C. Native text</h2>
+<div class="stage">
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="plain">
+      <span><svg class="g"><use href="#rain"/></svg>8°</span>
+      <span><small>CPU</small>8%</span>
+      <span><small>RAM</small>33%</span>
+      <span><small>AI</small>54%</span>
+      <span style="color:var(--i-agent)"><svg class="g"><use href="#bell"/></svg>2</span>
+      <span><svg class="g"><use href="#spark"/></svg>Ask AI</span>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 380 px.</dd><dt>Why</dt><dd>No black shape at all: it reads like part of the taskbar, in the taskbar's own text colour. The pill appears only while the menu is open.</dd><dt>Catch</dt><dd>Least recognisable as the Island, and the agent status colours are harder to see.</dd></dl>
+
+<h2>D. Agents first</h2>
+<div class="stage">
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="pill">
+      <span class="group"><span class="dot"></span>2 agents working</span>
+      <span class="group"><span class="bar"><i style="width:54%"></i></span><small>5h</small>54%</span>
+      <span class="group"><svg class="g"><use href="#rain"/></svg>8°</span>
+      <span class="group"><small>CPU</small>8%</span>
+      <span class="bell"><svg class="g"><use href="#bell"/></svg>2</span>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 430 px.</dd><dt>Why</dt><dd>You run agents all day, so they lead: how many are working and how much of the 5 hour limit is used. The dot turns amber when one needs you, and green when one is done.</dd><dt>Catch</dt><dd>No AI prompt buttons; Ask AI moves into the menu.</dd></dl>
+
+<h2>E. Ask field</h2>
+<div class="stage">
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="pill" style="padding:0 10px 0 12px">
+      <span class="group"><svg class="g"><use href="#rain"/></svg>8°</span>
+      <span class="field"><svg class="g"><use href="#spark"/></svg>Ask AI...</span>
+      <span class="group"><span class="ring"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="28.8 53.4"/></svg>54</span></span>
+      <span class="bell"><svg class="g"><use href="#bell"/></svg>2</span>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 380 px.</dd><dt>Why</dt><dd>The AI is the main thing: a field that looks like a search box. Click it and the chat opens, with your prompts listed on the way (as in A).</dd><dt>Catch</dt><dd>CPU and RAM drop out of the pill and stay in the System tab. Only the AI ring is kept.</dd></dl>
+
+<h2>F. Rings only</h2>
+<div class="stage">
+  <div class="strip"><div class="end-l"></div><div class="mid">
+    <div class="pill" style="gap:12px;padding:0 12px">
+      <span class="group"><svg class="g"><use href="#rain"/></svg>8°</span>
+      <span class="ring" title="CPU"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="4.3 53.4"/></svg>8</span>
+      <span class="ring" title="RAM"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="17.6 53.4"/></svg>33</span>
+      <span class="ring" title="AI"><svg viewBox="0 0 22 22"><circle class="t" cx="11" cy="11" r="8.5"/><circle class="v" cx="11" cy="11" r="8.5" stroke-dasharray="28.8 53.4"/></svg>54</span>
+      <span class="bell"><svg class="g"><use href="#bell"/></svg>2</span>
+      <span class="ask" style="padding:0 7px"><svg class="g"><use href="#spark"/></svg></span>
+    </div>
+  </div><div class="end-r"></div></div>
+</div>
+<dl class="facts"><dt>Width</dt><dd>About 230 px, the smallest.</dd><dt>Why</dt><dd>Takes the least taskbar. Labels show on hover; the sparkle button opens the prompt list.</dd><dt>Catch</dt><dd>You have to learn which ring is which.</dd></dl>
+
+<p style="margin-top:28px">Colours, heights and the black are the Island's own, so any of these sits with the rest of Notifi.</p>
+</body>
+</html>

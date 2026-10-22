@@ -117,7 +117,6 @@ pub const PAGES: &[Page] = &[
                 sw("translucent", "Translucent background", "Blurs what's behind the open Island where the system allows it.", false),
             ]),
             tab_card("Content", "Modules", &[
-                custom("modules", "Modules", "Which modules are in the grid, their order and the default one."),
                 list_of("modules", "Modules in the grid", "In this order.", "Module", MODULE_IDS),
                 pick("defaultModule", "Opens on", "", MODULES, "nowPlaying"),
                 list_of("controlsButtons", "Controls quick buttons", "", "Module or action", &["mixer", "keepAwake", "timer", "calendar"]),
@@ -130,6 +129,7 @@ pub const PAGES: &[Page] = &[
                 sw("idleAiUsage", "AI usage", "Share of the Claude 5-hour session used.", true),
                 sw("idleCpuRam", "CPU and memory", "", true),
                 sw("idleBattery", "Battery", "Shows CPU instead on computers without a battery.", true),
+                pick("pillStyle", "Pill style", "How the resting pill looks. Calm: weather, rings and one Ask AI button. Three chips: separate small pills. Native text: no black shape, like the taskbar. Agents first: how many agents are working leads. Ask field: a search-style Ask AI box. Rings only: the smallest.", &[c("calm", "Calm"), c("chips", "Three chips"), c("native", "Native text"), c("agents", "Agents first"), c("field", "Ask field"), c("rings", "Rings only")], "calm"),
                 sw("idleNotifications", "Notification count", "A bell with the number of notifications waiting in the list.", true),
                 text("weatherCity", "Weather city", "Shows the weather on the pill. Only this city name is sent, to Open-Meteo (open-meteo.com), a free weather service. Leave empty for no weather and no internet use.", "For example Manchester", ""),
                 list_of("aiPrompts", "Quick AI prompts", "Up to four buttons on the pill. A tap copies the prompt (with any text you had copied after it) and opens the AI chat, ready to paste. Needs the AI chat button turned on.", "Prompt", &["Explain this", "Summarize this", "Fix this"]),

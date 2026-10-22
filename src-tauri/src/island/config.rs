@@ -70,6 +70,8 @@ pub struct IslandConfig {
     pub idle_battery: bool,
     pub idle_cpu_ram: bool,
     pub idle_ai_usage: bool,
+    /// How the resting pill looks: "calm", "chips", "native", "agents", "field" or "rings".
+    pub pill_style: String,
     /// Notifications waiting in the list, as a count on the pill.
     pub idle_notifications: bool,
     /// The city whose weather shows on the pill; empty means no weather and nothing is sent anywhere.
@@ -149,6 +151,7 @@ impl Default for IslandConfig {
             idle_battery: true,
             idle_cpu_ram: true,
             idle_ai_usage: true,
+            pill_style: "calm".into(),
             idle_notifications: true,
             weather_city: String::new(),
             ai_prompts: s(&["Explain this", "Summarize this", "Fix this"]),
@@ -252,6 +255,9 @@ impl IslandConfig {
         }
         if !matches!(c.agents_period.as_str(), "today" | "7d" | "30d") {
             c.agents_period = "7d".into();
+        }
+        if !matches!(c.pill_style.as_str(), "calm" | "chips" | "native" | "agents" | "field" | "rings") {
+            c.pill_style = "calm".into();
         }
         c.weather_city = c.weather_city.trim().chars().take(80).collect();
         // Up to four prompts fit on the pill.
@@ -442,5 +448,15 @@ mod tests {
         let c = IslandConfig::from_settings(&json!({ "island": { "weatherCity": "  Leeds ", "aiPrompts": [" a ", "", "b", "c", "d", "e"] } }));
         assert_eq!(c.weather_city, "Leeds");
         assert_eq!(c.ai_prompts, ["a", "b", "c", "d"]);
+    }
+
+    #[test]
+    fn pill_style_is_one_of_the_six() {
+        assert_eq!(IslandConfig::default().pill_style, "calm");
+        let style = |v: &str| IslandConfig::from_settings(&json!({ "island": { "pillStyle": v } })).pill_style;
+        for ok in ["calm", "chips", "native", "agents", "field", "rings"] {
+            assert_eq!(style(ok), ok);
+        }
+        assert_eq!(style("neon"), "calm");
     }
 }

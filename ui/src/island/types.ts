@@ -34,6 +34,7 @@ export interface IslandConfig {
   idleBattery: boolean;
   idleCpuRam: boolean;
   idleAiUsage: boolean;
+  pillStyle: 'calm' | 'chips' | 'native' | 'agents' | 'field' | 'rings';
   idleNotifications: boolean;
   weatherCity: string;
   aiPrompts: string[];
@@ -88,6 +89,7 @@ export const DEFAULT_CONFIG: IslandConfig = {
   idleBattery: true,
   idleCpuRam: true,
   idleAiUsage: true,
+  pillStyle: 'calm',
   idleNotifications: true,
   weatherCity: '',
   aiPrompts: ['Explain this', 'Summarize this', 'Fix this'],
