@@ -380,7 +380,7 @@ fn record_copy(app: &AppHandle, s: &Settings, cap: Capture) {
     if cap.concealed || ignored(&cap.app, &opt_list(s, "clipboardHistory", "ignoredApps")) {
         return;
     }
-    if opt_bool(s, "clipboardHistory", "sensitiveFilter", false) && cap.text.as_deref().is_some_and(history::looks_sensitive) {
+    if opt_bool(s, "clipboardHistory", "sensitiveFilter", true) && cap.text.as_deref().is_some_and(history::looks_sensitive) {
         return;
     }
     let keep_media = opt_bool(s, "clipboardHistory", "saveImagesAndFiles", true);

@@ -131,7 +131,7 @@ pub const PAGES: &[Page] = &[
                 list_of("modules", "Modules in the grid", "In this order.", "Module", MODULE_IDS),
                 pick("defaultModule", "Opens on", "", MODULES, "nowPlaying"),
                 list_of("controlsButtons", "Controls quick buttons", "", "Module or action", &["mixer", "keepAwake", "timer", "calendar"]),
-                sw("showLyrics", "Lyrics", "Only where the player provides them.", true),
+                sw("showLyrics", "Lyrics", "Only where the player provides them. Sends the song's title, artist, album and length to LRCLIB (lrclib.net) to find the lyrics.", true),
                 sw("equaliser", "Equaliser", "", true),
                 text("preferredPlayer", "Player to prefer", "When several are playing.", "Any player", ""),
             ]),

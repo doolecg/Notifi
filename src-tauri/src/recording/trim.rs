@@ -212,11 +212,17 @@ pub fn open(app: &AppHandle, path: &Path) {
     });
 }
 
+/// The origin Notifi's own pages are served from, the only one allowed to read the recording.
+/// The most one reply to the video element carries.
+const CHUNK: u64 = 8 * 1024 * 1024;
+
+const APP_ORIGIN: &str = if cfg!(windows) { "http://tauri.localhost" } else { "tauri://localhost" };
+
 /// Serves the recording being trimmed to the page's video element, with range support. It serves
 /// only that one file, whatever the address says.
 pub fn media(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     let reply = |status: StatusCode| -> Response<Cow<'static, [u8]>> {
-        Response::builder().status(status).header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*").body(Cow::Borrowed(&[][..])).unwrap()
+        Response::builder().status(status).header(header::ACCESS_CONTROL_ALLOW_ORIGIN, APP_ORIGIN).body(Cow::Borrowed(&[][..])).unwrap()
     };
     let Ok(path) = target(app) else { return reply(StatusCode::NOT_FOUND) };
     if is_gif(&path) {
@@ -225,10 +231,12 @@ pub fn media(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Cow<'stati
     let Ok(mut file) = File::open(&path) else { return reply(StatusCode::NOT_FOUND) };
     let Ok(len) = file.metadata().map(|m| m.len()) else { return reply(StatusCode::NOT_FOUND) };
     let ranged = request.headers().get(header::RANGE).and_then(|v| v.to_str().ok()).map(|h| byte_range(h, len));
+    // At most CHUNK bytes a reply, so a big recording is never read into memory whole; the player asks for the rest.
     let (from, to, status) = match ranged {
-        Some(Some((a, b))) => (a, b, StatusCode::PARTIAL_CONTENT),
+        Some(Some((a, b))) => (a, b.min(a.saturating_add(CHUNK - 1)), StatusCode::PARTIAL_CONTENT),
         Some(None) => return reply(StatusCode::RANGE_NOT_SATISFIABLE),
         None if len == 0 => return reply(StatusCode::NOT_FOUND),
+        None if len > CHUNK => (0, CHUNK - 1, StatusCode::PARTIAL_CONTENT),
         None => (0, len - 1, StatusCode::OK),
     };
     let mut body = vec![0u8; (to - from + 1) as usize];
@@ -239,7 +247,7 @@ pub fn media(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Cow<'stati
         .status(status)
         .header(header::CONTENT_TYPE, "video/mp4")
         .header(header::ACCEPT_RANGES, "bytes")
-        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, APP_ORIGIN)
         .header(header::CONTENT_LENGTH, body.len());
     if status == StatusCode::PARTIAL_CONTENT {
         builder = builder.header(header::CONTENT_RANGE, format!("bytes {from}-{to}/{len}"));

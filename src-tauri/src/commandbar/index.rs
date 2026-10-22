@@ -164,8 +164,9 @@ pub fn run_script(path: &Path, args: &[String]) -> Result<String, String> {
 pub fn open_path(path: &Path) -> Result<(), String> {
     #[cfg(windows)]
     let mut cmd = {
-        let mut c = Command::new("cmd");
-        c.args(["/C", "start", ""]).arg(path);
+        // Not `cmd /C start`: cmd would read an `&` in a file name as a second command.
+        let mut c = Command::new("explorer");
+        c.arg(path);
         c
     };
     #[cfg(not(windows))]

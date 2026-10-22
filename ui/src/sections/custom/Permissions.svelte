@@ -1,9 +1,14 @@
 <script lang="ts">
   const items = [
-    { name: 'Input devices', why: 'Global keys and mouse remaps. On Linux Wayland this means joining the input group.', usedBy: 'Keyboard and mouse, Windows' },
+    { name: 'Input devices', why: 'Global keys and mouse remaps, and watching typed keys for text snippet triggers. On Linux Wayland this means joining the input group.', usedBy: 'Keyboard and mouse, Text snippets' },
     { name: 'Screen capture', why: 'Screenshots, recordings, app switcher previews and Watch.', usedBy: 'Utilities, Windows, Island' },
-    { name: 'Microphone and camera', why: 'Recording audio and showing a camera preview.', usedBy: 'Utilities, Sound' },
-    { name: 'Notifications', why: 'Alerts when something you watch changes.', usedBy: 'Monitor, Island' },
+    { name: 'Microphone and camera', why: 'Recording audio and showing a camera preview. Nothing is sent anywhere.', usedBy: 'Utilities, Sound' },
+    { name: 'Notifications', why: 'Reads Windows notifications for dynamic cards on the Island, and shows alerts.', usedBy: 'Monitor, Island' },
+    { name: 'Clipboard', why: 'Saves what you copy as unencrypted text and files on this PC.', usedBy: 'Clipboard history' },
+    { name: 'App menus', why: 'Reads the menus of the app in front through Windows UI Automation.', usedBy: 'Command bar' },
+    { name: 'AI tool files', why: 'Reads the session logs your coding agents write. Claude plan limits also read the login Claude Code saved and send it to Anthropic, only if you turn that on.', usedBy: 'Island' },
+    { name: 'Deleting files', why: 'Removes files you choose, to the Recycle Bin where Windows allows. Always asks first.', usedBy: 'Apps, Disk space' },
+    { name: 'Internet', why: 'Updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo), speed tests (LibreSpeed), Claude plan limits (Anthropic) and share links (your server).', usedBy: 'Updates, Island, Monitor, Utilities' },
     { name: 'Helper service', why: 'Admin rights for fans, sensors and monitor brightness.', usedBy: 'Monitor, Energy and display' },
     { name: 'Desktop extension', why: 'Window control on GNOME and KDE Wayland.', usedBy: 'Windows, Island' },
   ];
@@ -13,22 +18,12 @@
   {#each items as item}
     <div class="row">
       <span class="name">{item.name}<small>{item.why} Used by {item.usedBy}.</small></span>
-      <span class="chip">Not needed yet</span>
     </div>
   {/each}
 </div>
-<p class="foot">Notifi asks for a permission only when you turn on a feature that needs it.</p>
+<p class="foot">Every feature is optional. One you turn off uses none of this.</p>
 
 <style>
-  .chip {
-    flex: none;
-    padding: 3px 10px;
-    border-radius: 99px;
-    background: var(--inset);
-    color: var(--mut);
-    font-size: 12px;
-    font-weight: 600;
-  }
   .foot {
     margin: 12px 4px 0;
     color: var(--mut);

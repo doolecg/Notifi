@@ -309,7 +309,7 @@ fn from_saved(saved: Value) -> Settings {
 
 fn is_local(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
-    key.contains("folder") || key.contains("path")
+    key.contains("folder") || key.contains("path") || key.contains("token")
 }
 
 /// The catalog's check, plus shortcuts must be ones the OS can register.

@@ -37,6 +37,15 @@
   let open = $state<string | null>(null);
   let scanning = $state(false);
   let cleaning = $state(false);
+  /** Cleaning asks twice: the first click shows what will happen, the second does it. */
+  let confirming = $state(false);
+  let confirmingSystem = $state(false);
+  // Ticking something else starts the question again.
+  $effect(() => {
+    void on;
+    void items;
+    confirming = false;
+  });
   let scanned = $state(false);
   let error = $state('');
   let report = $state<Report | null>(null);
@@ -74,6 +83,11 @@
   }
 
   async function clean() {
+    if (!confirming) {
+      confirming = true;
+      return;
+    }
+    confirming = false;
     cleaning = true;
     error = '';
     try {
@@ -103,6 +117,11 @@
 
   async function cleanSystem() {
     if (!report) return;
+    if (!confirmingSystem) {
+      confirmingSystem = true;
+      return;
+    }
+    confirmingSystem = false;
     try {
       await invoke('cleaner_clean_system', { roots: report.elevatedRoots });
       report = { ...report, elevatedRoots: [] };
@@ -167,8 +186,8 @@
   </div>
 
   <div class="ac-bar" style="margin-top:12px">
-    <span class="ac-note grow" style="margin:0">{on.size} ticked, about {bytes(total)}. Screenshots, installers and leftovers go to the bin.</span>
-    <button class="primary" onclick={clean} disabled={scanning || cleaning || !on.size}>{cleaning ? 'Cleaning' : 'Clean'}</button>
+    <span class="ac-note grow" style="margin:0">{#if confirming}Click again to clean {on.size} ticked, about {bytes(total)}. Items go to the Recycle Bin where Windows allows.{:else}{on.size} ticked, about {bytes(total)}. Screenshots, installers and leftovers go to the bin.{/if}</span>
+    <button class="primary" class:danger={confirming} onclick={clean} disabled={scanning || cleaning || !on.size}>{cleaning ? 'Cleaning' : confirming ? 'Yes, clean' : 'Clean'}</button>
   </div>
 
   {#if report}
@@ -181,7 +200,8 @@
       {/each}
       {#if report.failed.length > 8}<p class="ac-note">and {report.failed.length - 8} more.</p>{/if}
       {#if report.elevatedRoots.length}
-        <button class="ghost" onclick={cleanSystem}>Clean system folders (administrator)</button>
+        <button class="ghost" class:danger={confirmingSystem} onclick={cleanSystem}>{confirmingSystem ? 'Yes, clean system folders' : 'Clean system folders (administrator)'}</button>
+        {#if confirmingSystem}<p class="ac-note warn">These are system folders and need administrator rights. Click again to remove what was found in them; it cannot be undone.</p>{/if}
       {/if}
     </div>
   {/if}

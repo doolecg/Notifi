@@ -20,7 +20,7 @@ pub const PAGES: &[Page] = &[
                 sw("searchFiles", "Files", "", true),
                 sw("searchClipboard", "Clipboard history", "", true),
                 sw("searchSnippets", "Snippets", "", true),
-                sw("searchMenus", "App menu commands", "", true),
+                sw("searchMenus", "App menu commands", "Reads the menus of the app in front through Windows UI Automation. Nothing is stored or sent.", true),
                 sw("searchSystem", "System actions and features", "", true),
                 sw("searchEmoji", "Emoji", "", true),
                 sw("calculator", "Calculator and unit conversion", "", true),
@@ -368,7 +368,7 @@ pub const PAGES: &[Page] = &[
         id: "aiAgents",
         label: "AI agents",
         icon: "bot",
-        blurb: "See what your coding agents are doing, their usage and plan limits. It reads local logs only and sends nothing anywhere.",
+        blurb: "See what your coding agents are doing, their usage and plan limits. It reads their local logs and sends nothing, unless you turn on Claude plan limits in the Island settings, which sends the login Claude Code saved to Anthropic.",
         tool: true,
         cards: &[
             card("Agents", &[

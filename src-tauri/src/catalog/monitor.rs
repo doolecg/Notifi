@@ -67,7 +67,7 @@ pub const MONITOR: Page = Page {
             text("interface", "Interface", "Empty adds up every active one.", "Ethernet", ""),
             sw("perApp", "Traffic per app", "", false),
             text("speedTestServer", "Speed test server", "Empty picks one automatically.", "https://", ""),
-            sw("askBeforeTest", "Ask before running a speed test", "", false),
+            sw("askBeforeTest", "Ask before running a speed test", "A test downloads and uploads test data with open LibreSpeed servers, or the server above, only when you start it.", false),
         ] },
         tab_card("Disks", "Disks and devices", &[
             sw("showDisks", "Show disks", "", true),

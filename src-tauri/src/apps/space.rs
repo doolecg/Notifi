@@ -601,6 +601,10 @@ pub fn space_tag(state: State<AppsState>, path: String, color: Option<String>) -
 /// Whether a path is somewhere Notifi will not delete from: the Windows folder and what is inside it, and the
 /// system folders at the top of a drive. Those go through the uninstaller or Windows itself.
 fn protected(path: &Path) -> bool {
+    // Elsewhere the root and every folder directly under it (/usr, /home, /etc) are kept.
+    if cfg!(not(windows)) {
+        return path.parent().is_none_or(|p| p.parent().is_none());
+    }
     let key = tag_key(path);
     let key = key.trim_end_matches('\\');
     let windows = std::env::var("SystemRoot").map(|r| tag_key(Path::new(&r)).trim_end_matches('\\').to_string()).ok();
@@ -638,7 +642,13 @@ pub fn space_delete(state: State<AppsState>, path: String, permanent: bool) -> R
 }
 
 #[tauri::command]
-pub fn space_open(path: String) -> Result<(), String> {
+pub fn space_open(state: State<AppsState>, path: String) -> Result<(), String> {
+    // Only something inside the scanned folder, whatever `..` the address holds.
+    let root = state.space.tree()?.lock().unwrap().root.clone();
+    let target = fs::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !target.starts_with(fs::canonicalize(&root).map_err(|e| e.to_string())?) {
+        return Err("That is outside the scanned folder.".into());
+    }
     let program = if cfg!(windows) { "explorer" } else { "xdg-open" };
     super::exec::command(program).arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string())
 }

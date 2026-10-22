@@ -7,7 +7,7 @@ pub const PAGES: &[Page] = &[
         id: "textSnippets",
         label: "Text snippets",
         icon: "notes",
-        blurb: "Type a short trigger and get the whole phrase, or pick a snippet from a searchable menu.",
+        blurb: "Type a short trigger and get the whole phrase, or pick a snippet from a searchable menu. To spot triggers Notifi watches the keys you type: only the last 64 characters are held in memory, password fields are skipped, and nothing is saved or sent.",
         tool: true,
         cards: &[
             card("Snippets", &[

@@ -77,6 +77,10 @@ pub fn apps_job_run(app: AppHandle, action: Action, targets: Vec<Target>) -> Res
     let state = app.state::<AppsState>();
     let mut ids = Vec::new();
     for target in targets {
+        // An id or origin that starts with `-` would be read as an option, and a path or address would make scoop or flatpak install from there.
+        if [&target.id, &target.origin].iter().any(|s| s.starts_with('-')) || target.id.contains([':', '\\']) {
+            return Err(format!("{} is not a package name", target.id));
+        }
         let Some((program, args)) = packages::command_for(&target.manager, action, &target.id, &target.origin) else {
             return Err(format!("{} is not available on this system", target.manager));
         };

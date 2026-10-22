@@ -51,6 +51,8 @@ pub struct AppsCleanState {
     system: Mutex<HashMap<String, Vec<CleanItem>>>,
     offers: Mutex<Vec<Offer>>,
     seen: Mutex<installer::Seen>,
+    /// Programs an install just reported, the only ones "Open it" may start.
+    launchable: Mutex<Vec<String>>,
 }
 
 fn data_dir(app: &AppHandle) -> PathBuf {
@@ -276,7 +278,7 @@ pub async fn installer_inspect(app: AppHandle, path: String) -> Result<Inspect, 
 #[tauri::command]
 pub async fn installer_install(app: AppHandle, path: String) -> Result<Installed, String> {
     let file = offered(&app, &path)?;
-    blocking(&app, move |app| {
+    let done = blocking(&app, move |app| {
         let silent = flag(&app, "installerHelper", "silentInstall", true);
         let folder = getter(&app, "installerHelper")("portableFolder").and_then(|v| v.as_str().map(|s| s.trim().to_string())).unwrap_or_default();
         if file.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
@@ -286,11 +288,16 @@ pub async fn installer_install(app: AppHandle, path: String) -> Result<Installed
             installer::install_windows(&file, silent)
         }
     })
-    .await
+    .await?;
+    *app.state::<AppsCleanState>().launchable.lock().unwrap() = done.program.iter().chain(done.choices.iter()).cloned().collect();
+    Ok(done)
 }
 
 #[tauri::command]
 pub async fn installer_shortcut(app: AppHandle, program: String, desktop: bool) -> Result<(), String> {
+    if !app.state::<AppsCleanState>().launchable.lock().unwrap().contains(&program) {
+        return Err("Only a program that was just installed can get a shortcut.".into());
+    }
     blocking(&app, move |_| installer::make_shortcuts(Path::new(&program), desktop)).await?
 }
 
@@ -302,7 +309,10 @@ pub fn installer_trash_download(app: AppHandle, path: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn installer_launch(program: String) -> Result<(), String> {
+pub fn installer_launch(app: AppHandle, program: String) -> Result<(), String> {
+    if !app.state::<AppsCleanState>().launchable.lock().unwrap().contains(&program) {
+        return Err("Only a program that was just installed can be opened from here.".into());
+    }
     let path = Path::new(&program);
     if !path.exists() {
         return Err("The program is no longer there.".into());

@@ -2,8 +2,6 @@
 //! connection open until the Island answers, skips, or the wait runs out.
 
 use std::{
-    collections::hash_map::RandomState,
-    hash::{BuildHasher, Hasher},
     io::{ErrorKind, Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver, RecvTimeoutError},
@@ -147,17 +145,10 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
 // ---- Token and port ----
 
 fn random_token() -> String {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-    (0u8..2)
-        .map(|i| {
-            // RandomState is seeded by the OS per process, so each hasher starts from a different key.
-            let mut h = RandomState::new().build_hasher();
-            h.write_u128(nanos);
-            h.write_u32(std::process::id());
-            h.write_u8(i);
-            format!("{:016x}", h.finish())
-        })
-        .collect()
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 16];
+    ring::rand::SystemRandom::new().fill(&mut bytes).expect("the system's random source");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn valid_token(t: &str) -> bool {

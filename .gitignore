@@ -7,3 +7,8 @@ target-install/
 .env
 
 .playwright-mcp/
+
+.env.*
+*.pem
+*.log
+brag-output*/

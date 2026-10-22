@@ -105,14 +105,15 @@ fn trash_impl(path: &Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
     use windows::{
         core::PCWSTR,
-        Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW},
+        Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FOF_WANTNUKEWARNING, FO_DELETE, SHFILEOPSTRUCTW},
     };
     let mut from: Vec<u16> = path.as_os_str().encode_wide().collect();
     from.extend([0, 0]);
     let mut op = SHFILEOPSTRUCTW {
         wFunc: FO_DELETE,
         pFrom: PCWSTR(from.as_ptr()),
-        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        // WANTNUKEWARNING makes Windows ask when a file is too big for the bin and would be deleted for good.
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT | FOF_WANTNUKEWARNING).0 as u16,
         ..Default::default()
     };
     let code = unsafe { SHFileOperationW(&mut op) };

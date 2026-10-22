@@ -116,7 +116,8 @@ fn t3_home() -> Option<PathBuf> {
 
 /// Only an address on this computer is ever loaded.
 fn local(origin: &str) -> bool {
-    ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"].iter().any(|p| origin.starts_with(p))
+    // Host and port only: `http://127.0.0.1:80@elsewhere` is a different host.
+    ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"].iter().any(|p| origin.strip_prefix(p).is_some_and(|port| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit())))
 }
 
 fn origin_from_runtime(json: &str) -> Option<String> {
@@ -387,6 +388,7 @@ mod tests {
         assert_eq!(origin_from_runtime(&runtime("http://localhost:8080")), Some("http://localhost:8080".into()));
         assert_eq!(origin_from_runtime(&runtime("https://evil.example")), None);
         assert_eq!(origin_from_runtime(&runtime("http://127.0.0.1.evil.example:80")), None);
+        assert_eq!(origin_from_runtime(&runtime("http://127.0.0.1:80@elsewhere.example")), None);
         assert_eq!(origin_from_runtime("not json"), None);
     }
 

@@ -145,7 +145,7 @@ pub fn capture_recent_list(app: AppHandle) -> Vec<Item> {
     list(&app)
 }
 
-fn listed(app: &AppHandle, path: &str) -> Result<Entry, String> {
+pub(super) fn listed(app: &AppHandle, path: &str) -> Result<Entry, String> {
     let _guard = FILE_LOCK.lock().unwrap();
     load(app).into_iter().find(|e| e.path == path).ok_or_else(|| "That capture is not in the list.".to_string())
 }

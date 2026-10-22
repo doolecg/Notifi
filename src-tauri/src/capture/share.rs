@@ -118,8 +118,9 @@ fn absolute(base: &str, link: &str) -> Result<String, String> {
 
 pub fn parse_reply(body: &[u8], base: &str) -> Result<Link, String> {
     let reply: Reply = serde_json::from_slice(body).map_err(|_| "The server's reply was not what Notifi expects (JSON with a url).".to_string())?;
+    // The delete link carries the user's token, so it must stay on the server the file went to.
     let delete = match reply.delete.as_deref() {
-        Some(d) if !d.is_empty() => absolute(base, d).ok(),
+        Some(d) if !d.is_empty() => absolute(base, d).ok().filter(|d| origin(d) == origin(base)),
         _ => None,
     };
     Ok(Link { url: absolute(base, &reply.url)?, expires: reply.expires, delete })
@@ -264,6 +265,11 @@ pub fn capture_share_file(app: AppHandle, path: String) {
         notice(&app, "Turn on temporary links and set a server in the Sharing tab first.");
         return;
     };
+    // Only a capture or recording Notifi made and lists, never any file the page names.
+    if super::recent::listed(&app, &path).is_err() {
+        notice(&app, "That file is not one of your recent captures, so it was not uploaded.");
+        return;
+    }
     let path = std::path::PathBuf::from(path);
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     if size > cfg.limit {
@@ -330,6 +336,12 @@ mod tests {
         assert_eq!(l, Link { url: "https://x.io/f/1".into(), expires: Some(3600), delete: Some("https://x.io/d/1".into()) });
         let p = parse_reply(br#"{"url":"/f/2"}"#, "https://x.io/s").unwrap();
         assert_eq!(p, Link { url: "https://x.io/f/2".into(), expires: None, delete: None });
+    }
+
+    #[test]
+    fn a_delete_link_on_another_server_is_dropped() {
+        let l = parse_reply(br#"{"url":"https://x.io/f/1","delete":"https://evil.example/d/1"}"#, "https://x.io/s").unwrap();
+        assert_eq!(l.delete, None);
     }
 
     #[test]

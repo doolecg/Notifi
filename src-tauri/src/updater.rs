@@ -287,10 +287,30 @@ async fn fetch_signature(client: &reqwest::Client, sig: &Asset) -> Result<String
 fn check_signature(path: PathBuf, signature: &str) -> Result<PathBuf, String> {
     let data = fs::read(&path).map_err(|e| e.to_string())?;
     if signed(&data, signature) {
+        // Kept beside the installer so it can be checked again just before it runs.
+        fs::write(signature_file(&path), signature).map_err(|e| e.to_string())?;
         Ok(path)
     } else {
         let _ = fs::remove_file(&path);
         Err("The update's signature did not check out, so it was discarded".into())
+    }
+}
+
+fn signature_file(installer: &Path) -> PathBuf {
+    let mut name = installer.file_name().unwrap_or_default().to_os_string();
+    name.push(".sig");
+    installer.with_file_name(name)
+}
+
+/// The installer sits in a folder anything running as the user can write to, hours after it was checked, so it is checked again before it runs.
+fn verify_again(path: &Path) -> Result<(), String> {
+    let data = fs::read(path).map_err(|e| e.to_string())?;
+    let signature = fs::read_to_string(signature_file(path)).map_err(|e| e.to_string())?;
+    if signed(&data, signature.trim()) {
+        Ok(())
+    } else {
+        let _ = fs::remove_file(path);
+        Err("The update's signature no longer checked out, so it was discarded".into())
     }
 }
 
@@ -416,7 +436,7 @@ fn install(app: &AppHandle, restart: bool) -> Result<(), String> {
     if updater.installing.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
-    launch_installer(&path, restart).inspect_err(|_| updater.installing.store(false, Ordering::SeqCst))
+    verify_again(&path).and_then(|()| launch_installer(&path, restart)).inspect_err(|_| updater.installing.store(false, Ordering::SeqCst))
 }
 
 /// Runs on app exit: installs a ready update when the user chose install-on-quit (Notifi stays closed after).

@@ -5,7 +5,7 @@ pub const PAGES: &[Page] = &[
         id: "clipboardHistory",
         label: "Clipboard history",
         icon: "clipboard",
-        blurb: "Keep a private, searchable history of what you copy, pin favourites and paste any entry again.",
+        blurb: "Keep a searchable history of what you copy, pin favourites and paste any entry again. It is saved as plain text in Notifi's data folder on this computer and never sent anywhere.",
         tool: true,
         tabs: &["History", "Layout", "Privacy"],
         cards: &[
@@ -23,7 +23,7 @@ pub const PAGES: &[Page] = &[
                 sw("showTrayLatest", "Show latest copy in the tray", "Only where the tray can show text.", false),
             ], ..CARD },
             Card { title: "Privacy", tab: "Privacy", options: &[
-                sw("sensitiveFilter", "Skip sensitive text", "Leaves out copies that look like passwords or keys.", false),
+                sw("sensitiveFilter", "Skip sensitive text", "Leaves out copies that look like passwords or keys. History is not encrypted, so keep this on.", true),
                 list("ignoredApps", "Ignored apps", "Copies from these apps are never saved.", "App name"),
             ], ..CARD },
         ],
