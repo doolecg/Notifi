@@ -65,6 +65,19 @@
     for (const c of n.name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return n.other ? KIND.other : SOFT[h % SOFT.length];
   };
+  /** Small items are a pale sage, the heavy ones deepen to green, and the heaviest turn orange (1 MB to 4 GB, on a log scale). */
+  const HEAT = [[0.0, [143, 170, 152]], [0.5, [31, 157, 85]], [1.0, [232, 113, 10]]] as const;
+  const MB = 1024 ** 2;
+  const heat = (bytes: number) => {
+    const t = Math.min(1, Math.max(0, Math.log(Math.max(bytes, MB) / MB) / Math.log((4 * 1024 ** 3) / MB)));
+    const i = t <= HEAT[1][0] ? 0 : 1;
+    const [t0, c0] = HEAT[i];
+    const [t1, c1] = HEAT[i + 1];
+    const f = (t - t0) / (t1 - t0);
+    return `rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * f)).join(',')})`;
+  };
+  let by = $state<'size' | 'type'>(localStorage.getItem('spaceMap.colour') === 'type' ? 'type' : 'size');
+  const colour = (n: SpaceNode) => (by === 'size' && !n.other ? heat(n.size) : tint(n));
   const TAG_COLOR: Record<string, string> = { red: '#e5484d', yellow: '#f2c230', green: '#3fb36b', blue: '#3b8eea' };
 
   function size(b: number): string {
@@ -294,6 +307,10 @@
     {:else}
       <button class="ghost primary" onclick={start} disabled={!root.trim()}>{status ? 'Rescan' : 'Scan'}</button>
     {/if}
+    <select aria-label="Colour by" value={by} onchange={(e) => { by = e.currentTarget.value === 'type' ? 'type' : 'size'; localStorage.setItem('spaceMap.colour', by); }}>
+      <option value="size">By size</option>
+      <option value="type">By type</option>
+    </select>
     <input type="text" class="filter" placeholder="Filter, e.g. *.zip;>500mb;>1y;:yellow" aria-label="Filter" bind:value={filter} oninput={onFilter} />
     <button class="ghost" onclick={exportReport} disabled={!status}>Export report</button>
   </div>
@@ -337,7 +354,7 @@
                 class:sel={selected?.path === n.path && !n.other}
                 role="button"
                 tabindex="-1"
-                style="left:{b.x}px;top:{b.y}px;width:{b.w}px;height:{b.h}px;--r:{radius(b.w, b.h)}px;--k:{tint(n)}"
+                style="left:{b.x}px;top:{b.y}px;width:{b.w}px;height:{b.h}px;--r:{radius(b.w, b.h)}px;--k:{colour(n)}"
                 onclick={(e) => { e.stopPropagation(); pick(n); }}
                 ondblclick={(e) => { e.stopPropagation(); if (!n.dir) open(n); }}
                 onmouseenter={() => (hovered = n)}
