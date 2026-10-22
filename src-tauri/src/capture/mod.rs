@@ -9,7 +9,7 @@ pub mod share;
 mod stitch;
 #[cfg_attr(windows, path = "win.rs")]
 #[cfg_attr(not(windows), path = "other.rs")]
-mod sys;
+pub(crate) mod sys;
 
 use std::{
     fs,

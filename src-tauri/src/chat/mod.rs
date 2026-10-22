@@ -196,14 +196,23 @@ pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64, morph: Option
     let url = first.parse::<tauri::Url>().map_err(|e| e.to_string())?;
     // Escape in the page asks for CLOSE_URL (T3 marks every Escape as handled, so the page checks for its popups instead).
     let closer = app.clone();
+    // Links to other sites open in the browser, not inside the chat.
+    let origin = host.origin.clone();
     let builder = WebviewBuilder::new(WEBVIEW, WebviewUrl::External(url))
         .initialization_script(PAGE_JS.replace("__CLOSE_URL__", CLOSE_URL))
+        .on_new_window(|u, _| {
+            open_outside(&u);
+            tauri::webview::NewWindowResponse::Deny
+        })
         .on_navigation(move |u| {
-            if u.as_str() != CLOSE_URL {
-                return true;
+            if u.as_str() == CLOSE_URL {
+                let _ = closer.emit_to(island::ISLAND, "island://command", "close");
+                return false;
             }
-            let _ = closer.emit_to(island::ISLAND, "island://command", "close");
-            false
+            if u.origin().ascii_serialization() != origin && open_outside(u) {
+                return false;
+            }
+            true
         });
     let view = window.add_child(builder.transparent(true), pos, size).map_err(|e| e.to_string())?;
     VISIBLE.store(true, Ordering::SeqCst);
@@ -222,6 +231,15 @@ pub async fn show(app: &AppHandle, x: f64, y: f64, w: f64, h: f64, morph: Option
         });
     }
     Ok(())
+}
+
+/// Opens a web link in the default browser; false when it is not an http(s) link.
+fn open_outside(u: &tauri::Url) -> bool {
+    let web = matches!(u.scheme(), "http" | "https");
+    if web {
+        crate::capture::sys::open_url(u.as_str());
+    }
+    web
 }
 
 /// The shortcuts T3 Code uses (its keybindings.json), so Notifi can let go of the same keys while the chat is in front.
