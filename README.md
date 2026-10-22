@@ -176,7 +176,7 @@ Notifi has no account and no server of its own. It is built so that nothing outs
 - **Local only where it listens.** The optional hook server for Claude Code answers on `127.0.0.1` only, behind a random token from the operating system's random source.
 - **The AI chat page can't reach Notifi.** It is a separate web page (T3 Code) in its own web view. It is limited to your own computer's address and has no access to Notifi's commands.
 - **Signed updates.** Updates come only from this repository's GitHub releases, and an installer is kept only if its SHA-256 digest and its Ed25519 signature check out. The signature is checked again just before the installer runs.
-- **Locked-down pages.** Notifi's own windows only run their own code and only talk to the app, not the open internet.
+- **Locked-down pages.** Notifi's own windows only run their own code and only talk to the app, not the open internet. The commands that delete files, run installers or replace settings can be called only from the Settings and Apps windows; a test fails if a new command is added without a permission.
 - **Deleting asks first.** The uninstaller, the cleaner and Disk space show what they will remove and need a second click. Disk space can only delete what it scanned, refuses system folders, and sends to the Recycle Bin unless you choose to delete for good.
 - **Settings backups leave out the secrets.** Exported settings drop folder paths and your share-server token.
 - **Clipboard history is not encrypted.** It is plain text on your PC, and "Skip sensitive text" is on by default to leave out copies that look like passwords or keys. Password managers that mark their copies are always skipped.

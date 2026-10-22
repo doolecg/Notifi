@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "destructive-commands",
+  "description": "Commands that delete files, run or install programs, or replace settings: only these two windows may call them",
+  "windows": ["settings", "apps"],
+  "permissions": ["destructive"]
+}
