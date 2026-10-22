@@ -927,6 +927,15 @@ pub async fn snippet_insert(app: AppHandle, id: String, zones: HashMap<String, i
     paste_temporarily(&app, &Payload::text(text))
 }
 
+/// Types into the window that has focus (`\n` is Enter); the Island's AI buttons use it.
+pub(crate) fn type_into_focused(text: &str) {
+    sys::type_text(text);
+}
+
+pub(crate) fn escape_focused() {
+    sys::press_escape();
+}
+
 #[tauri::command]
 pub fn snippets_hide(app: AppHandle) {
     hide_popup(&app, SNIPPETS_WINDOW, true);

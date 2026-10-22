@@ -515,6 +515,7 @@ const VK_LWIN: u16 = 0x5B;
 const VK_RWIN: u16 = 0x5C;
 const VK_RETURN: u16 = 0x0D;
 const VK_BACK: u16 = 0x08;
+const VK_ESCAPE: u16 = 0x1B;
 const VK_V: u16 = 0x56;
 
 fn key(vk: u16, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
@@ -555,6 +556,10 @@ pub fn send_paste() {
         key(VK_V, 0, KEYEVENTF_KEYUP),
         key(VK_CONTROL, 0, KEYEVENTF_KEYUP),
     ]);
+}
+
+pub fn press_escape() {
+    send(&[key(VK_ESCAPE, 0, KEYBD_EVENT_FLAGS(0)), key(VK_ESCAPE, 0, KEYEVENTF_KEYUP)]);
 }
 
 /// Presses Backspace `count` times.

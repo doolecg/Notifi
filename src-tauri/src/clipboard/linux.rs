@@ -290,6 +290,16 @@ pub fn erase(count: usize) {
     }
 }
 
+pub fn press_escape() {
+    if wayland() && has("wtype") {
+        let _ = run("wtype", &["-k", "Escape"], None);
+    } else if has("ydotool") {
+        let _ = run("ydotool", &["key", "1:1", "1:0"], None);
+    } else {
+        let _ = run("xdotool", &["key", "--clearmodifiers", "Escape"], None);
+    }
+}
+
 pub fn type_text(text: &str) {
     if wayland() && has("wtype") {
         let _ = run("wtype", &["--", text], None);

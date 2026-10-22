@@ -4,6 +4,7 @@
   import { fade } from 'svelte/transition';
   import { applyCssVars, duration, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
+  import AiButtons from './AiButtons.svelte';
   import Glyph from './Glyph.svelte';
   import Logo, { LOGOS } from './Logo.svelte';
   import { fit } from './fit';
@@ -85,6 +86,9 @@
 
   const workingCount = $derived((snap?.agents ?? []).filter((a) => a.working).length);
   const selLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
+  /** An AI app in front: on the taskbar the pill becomes that app's buttons beside the agent's limits. */
+  const aiOn = $derived(!!snap?.aiApp && !open && !!(layout?.dock || layout?.rise));
+  const agentLive = $derived(live.find((l) => l.id === 'agents'));
 
   /** One thing on the resting pill. `w` is its rough width, for sizing the pill. */
   type IdleItem = {
@@ -261,6 +265,7 @@
   };
   const liveW = $derived.by(() => {
     if (selLive?.id === 'agents') return Math.min(AGENTS_MAX, Math.max(AGENTS_W, agentsNeed + 12));
+    if (aiOn) return Math.min(AGENTS_MAX, Math.max(LIVE.w, agentsNeed + 12));
     if (selLive?.id === 'music' && snap?.media) {
       const text = (snap.media.title || '').length + (snap.media.artist || '').length;
       return Math.round(Math.min(480, Math.max(LIVE.w, 190 + text * 7.2)));
@@ -271,6 +276,7 @@
     island.asks.length && !open ? { w: Math.max(ACTIVITY.w + 80, idleW), h: pillBar }
     : island.activity ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
     : watchChosen ? { w: Math.max(ACTIVITY.w, idleW), h: pillBar }
+    : aiOn ? { w: liveW, h: pillBar }
     : infoChosen ? { w: idleW, h: pillBar }
     : showLive ? { w: Math.max(liveW, idleW), h: pillBar }
     : thin ? THIN
@@ -588,7 +594,8 @@
   /** Tokens the shown agent has used today, asked for every so often while the agents pill is up. */
   let dayTokens = $state<number | null>(null);
   $effect(() => {
-    const kind = selLive?.id === 'agents' ? ({ claude: 0, codex: 1, opencode: 2 } as Record<string, number>)[selLive.icon] : undefined;
+    const shown = selLive?.id === 'agents' ? selLive : aiOn ? agentLive : undefined;
+    const kind = shown ? ({ claude: 0, codex: 1, opencode: 2 } as Record<string, number>)[shown.icon] : undefined;
     if (kind === undefined) {
       dayTokens = null;
       return;
@@ -768,6 +775,17 @@
         <div class="ends activity live-in" out:fade={swapOut()}>
           <Glyph name="search" size={16} />
           <span class="atext" title={snap.watch.paused || snap.watch.text}>{snap.watch.paused ? `Watching paused: ${snap.watch.paused}` : snap.watch.text || 'Watching…'}</span>
+        </div>
+      {:else if aiOn}
+        <div class="ends live-in" out:fade={swapOut()} use:fit={needs}>
+          <AiButtons />
+          {#if agentLive}
+            <span class="limits">
+              {@render limit('5h', agentLive.sessionPct, '5 hour limit used')}
+              {@render limit('7d', agentLive.weekPct, 'Weekly limit used')}
+              {#if dayTokens !== null}<span class="tok" title="Tokens used today"><small>today</small>{compact(dayTokens)}</span>{/if}
+            </span>
+          {/if}
         </div>
       {:else if showLive && selLive && !infoChosen}
         {#key selLive.id}

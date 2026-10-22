@@ -4,6 +4,7 @@
   import { onMount, untrack } from 'svelte';
   import { applyCssVars, fadeSlide, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
+  import AiButtons from '../island/AiButtons.svelte';
   import { fit } from '../island/fit';
   import Glyph from '../island/Glyph.svelte';
   import Logo from '../island/Logo.svelte';
@@ -172,7 +173,7 @@
         </button>
       {/each}
     </div>
-    <button class="pill" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:width={`${width}px`} style:--fc={pixelColor} onclick={click} use:fit={needs}>
+    <div class="pill" role="button" tabindex="0" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:width={`${width}px`} style:--fc={pixelColor} onclick={click} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && click()} use:fit={needs}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
         <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
@@ -181,6 +182,7 @@
           {#if live.value}<small class="time" title="Running for">{live.value}</small>{/if}
           {#if live.todos}<small class="todo">Todo {live.todos[0]}/{live.todos[1]}</small>{/if}
         </span></span>
+        {#if snap.aiApp}<AiButtons />{/if}
         <span class="limits">
           {@render limit('5h', live.sessionPct, '5 hour limit used')}
           {@render limit('7d', live.weekPct, 'Weekly limit used')}
@@ -195,9 +197,10 @@
         </span>
       {:else}
         <span class="mid"><span class="nat">AI Agents</span></span>
+        {#if snap.aiApp}<AiButtons />{/if}
         <span class="count">No sessions</span>
       {/if}
-    </button>
+    </div>
     {#if cfg.chatEnabled}
       <button class="chat" style:bottom={`${(barH - 26) / 2}px`} style:left={`${width - 36}px`} title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
     {/if}

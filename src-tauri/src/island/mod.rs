@@ -325,6 +325,20 @@ pub struct Snapshot {
     weather: Option<weather::Weather>,
     /// Why there is no weather (an unknown city, no network).
     weather_error: Option<String>,
+    /// An AI app (T3 Code, a chat app, a terminal showing an agent) is in front, so the taskbar shows its buttons.
+    ai_app: bool,
+}
+
+/// A window that takes typed prompts: an AI chat app, or a terminal whose title names an agent.
+/// Editors and browsers don't count: typing a command there would land in a file or a page.
+fn ai_window(app_id: Option<&str>, title: &str) -> bool {
+    const APPS: &[&str] = &["t3 code", "t3code", "claude", "chatgpt", "codex"];
+    const TERMINALS: &[&str] = &["windowsterminal", "wt", "powershell", "pwsh", "cmd", "conhost", "alacritty", "wezterm", "mintty", "kitty", "gnome-terminal", "konsole"];
+    let app = app_id.unwrap_or("").to_ascii_lowercase();
+    let app = app.trim_end_matches(".exe");
+    let title = title.to_ascii_lowercase();
+    APPS.iter().any(|a| app.starts_with(a))
+        || (TERMINALS.contains(&app) && (title.contains('\u{2733}') || ["claude", "codex", "opencode", "copilot"].iter().any(|k| title.contains(k))))
 }
 
 #[derive(Serialize, Clone)]
@@ -1234,6 +1248,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             watch: watch::reading(),
             weather: wx.now,
             weather_error: wx.error,
+            ai_app: platform.windows().foreground().ok().flatten().is_some_and(|w| ai_window(w.app_id.as_deref(), &w.title)),
         };
         if let Ok(value) = serde_json::to_value(&snap) {
             let mut i = state.inner.lock().unwrap();
@@ -1264,6 +1279,23 @@ pub fn on_settings_changed(app: &AppHandle) {
 #[tauri::command]
 pub fn island_open_agents(app: AppHandle) {
     run_action(&app, "islandModuleAgents");
+}
+
+/// A taskbar AI button: types its prompt into the window in front (the bar never takes focus), or presses Escape.
+/// Does nothing unless an AI window is in front, so a stale button can't type into another app.
+#[tauri::command]
+pub fn island_ai_send(app: AppHandle, action: String) {
+    let p = app.state::<Platform>().inner().clone();
+    if !p.windows().foreground().ok().flatten().is_some_and(|w| ai_window(w.app_id.as_deref(), &w.title)) {
+        return;
+    }
+    match action.as_str() {
+        "stop" => crate::clipboard::escape_focused(),
+        "compact" => crate::clipboard::type_into_focused("/compact\n"),
+        "clear" => crate::clipboard::type_into_focused("/clear\n"),
+        "continue" => crate::clipboard::type_into_focused("Continue\n"),
+        _ => {}
+    }
 }
 
 /// How wide the taskbar bar is drawn now, so only that much of its window takes the pointer.
@@ -1619,6 +1651,18 @@ pub fn island_agent_stats(app: AppHandle, state: State<IslandState>, days: u32, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ai_windows() {
+        assert!(ai_window(Some("T3 Code (Nightly).exe"), "T3 Code (Nightly)"));
+        assert!(ai_window(Some("claude.exe"), "Claude"));
+        assert!(ai_window(Some("WindowsTerminal.exe"), "\u{2733} Fix the build"));
+        assert!(ai_window(Some("pwsh.exe"), "codex"));
+        assert!(!ai_window(Some("WindowsTerminal.exe"), "PowerShell"));
+        assert!(!ai_window(Some("firefox.exe"), "Claude \u{2014} Mozilla Firefox"));
+        assert!(!ai_window(Some("Code.exe"), "claude.md - Notifi"));
+        assert!(!ai_window(None, "claude"));
+    }
 
     #[test]
     fn clocks() {

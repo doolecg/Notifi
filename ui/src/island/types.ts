@@ -333,6 +333,8 @@ export interface Snapshot {
   weather: { city: string; temp: number; icon: string; label: string } | null;
   /** Why there is no weather (an unknown city, no network). */
   weatherError: string | null;
+  /** An AI app is in front, so the taskbar shows its buttons. */
+  aiApp: boolean;
 }
 
 /** `paused` says why nothing is being read (the window moved, text recognition failed); empty while reading. */
