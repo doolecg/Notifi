@@ -361,7 +361,8 @@
     hoverOff = setTimeout(() => (hovering = false), 200);
     clearTimeout(hoverTimer);
     // The chat is its own page over the menu, so the pointer is always "off" the menu while using it.
-    if (open && !layout?.dock && module !== 'chat') collapseTimer = setTimeout(collapse, cfg?.collapseDelayMs ?? 600);
+    // On the taskbar (docked, or rising from it) the pill lifts out from under the pointer, so leaving never closes it.
+    if (open && !layout?.dock && !layout?.rise && module !== 'chat') collapseTimer = setTimeout(collapse, cfg?.collapseDelayMs ?? 600);
   }
 
   let lastWheel = 0;
