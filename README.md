@@ -20,7 +20,7 @@ That's it. Notifi keeps itself up to date from GitHub releases, and the tray ico
 
 | Capability | What you get |
 | --- | --- |
-| The Island | A pill (at the top of the screen, or on the taskbar) that opens into tabs: Nook, Now Playing, Timer, Volume, AI Agents and a module grid. When idle it shows the time, the weather, a notification count, quick AI prompt buttons and CPU, memory and AI meters. |
+| The Island | A pill (at the top of the screen, or on the taskbar) that opens into tabs: Nook, Now Playing, Timer, Volume, AI Agents and a module grid. When idle it shows the weather, a notification count, quick AI prompt buttons and CPU, memory and AI meters. |
 | AI agents | Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI sessions, with session time and plan use. |
 | AI chat | T3 Code's own chat inside the Island, opened on the chat you used last, with Escape to close and Windows voice typing. |
 | Media | Now playing with controls, time-synced lyrics, volume and brightness sliders, and an app volume mixer. |

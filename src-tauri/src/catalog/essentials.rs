@@ -127,8 +127,6 @@ pub const PAGES: &[Page] = &[
             ]),
             tab_card("Content", "Resting pill", &[
                 sw("idleThinBar", "Thin bar when idle", "Shrinks to a thin bar and grows back when you point at it.", true),
-                sw("idleClock", "Clock", "", true),
-                sw("idleDate", "Date", "", true),
                 sw("idleAiUsage", "AI usage", "Share of the Claude 5-hour session used.", true),
                 sw("idleCpuRam", "CPU and memory", "", true),
                 sw("idleBattery", "Battery", "Shows CPU instead on computers without a battery.", true),

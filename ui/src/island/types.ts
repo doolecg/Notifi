@@ -31,8 +31,6 @@ export interface IslandConfig {
   agentsShowModels: boolean;
   agentsShowProjects: boolean;
   agentsShowActivity: boolean;
-  idleClock: boolean;
-  idleDate: boolean;
   idleBattery: boolean;
   idleCpuRam: boolean;
   idleAiUsage: boolean;
@@ -87,8 +85,6 @@ export const DEFAULT_CONFIG: IslandConfig = {
   agentsShowModels: true,
   agentsShowProjects: true,
   agentsShowActivity: true,
-  idleClock: true,
-  idleDate: true,
   idleBattery: true,
   idleCpuRam: true,
   idleAiUsage: true,

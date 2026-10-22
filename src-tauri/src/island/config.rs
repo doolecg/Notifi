@@ -67,8 +67,6 @@ pub struct IslandConfig {
     /// AI Agents spending period: "today", "7d" or "30d".
     pub agents_period: String,
     /// What the resting pill shows on its ends when nothing live is showing.
-    pub idle_clock: bool,
-    pub idle_date: bool,
     pub idle_battery: bool,
     pub idle_cpu_ram: bool,
     pub idle_ai_usage: bool,
@@ -148,8 +146,6 @@ impl Default for IslandConfig {
             agent_finish_minutes: 2,
             claude_plan_limit_usd: 0.0,
             agents_period: "7d".into(),
-            idle_clock: true,
-            idle_date: true,
             idle_battery: true,
             idle_cpu_ram: true,
             idle_ai_usage: true,
@@ -432,9 +428,9 @@ mod tests {
     #[test]
     fn idle_pill_fields() {
         let d = IslandConfig::default();
-        assert!(d.idle_clock && d.idle_date && d.idle_battery && d.idle_cpu_ram && d.idle_ai_usage && d.idle_thin_bar);
-        let c = IslandConfig::from_settings(&json!({ "island": { "idleClock": false, "idleCpuRam": "no", "idleThinBar": false } }));
-        assert!(!c.idle_clock);
+        assert!(d.idle_battery && d.idle_cpu_ram && d.idle_ai_usage && d.idle_thin_bar);
+        let c = IslandConfig::from_settings(&json!({ "island": { "idleBattery": false, "idleCpuRam": "no", "idleThinBar": false } }));
+        assert!(!c.idle_battery);
         assert!(c.idle_cpu_ram);
         assert!(!c.idle_thin_bar);
     }

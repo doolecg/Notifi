@@ -89,15 +89,10 @@
   const selLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
 
   /** One thing on the resting pill: the time, the weather, the notification count, a quick AI button or a system meter. `w` is its rough width. */
-  type IdleItem = { key: string; kind: 'time' | 'weather' | 'bell' | 'prompt' | 'stat'; text: string; label?: string; icon?: string; tip?: string; pct?: number; index?: number; w: number };
-  const minute = $derived(Math.floor(island.now / 60_000));
+  type IdleItem = { key: string; kind: 'weather' | 'bell' | 'prompt' | 'stat'; text: string; label?: string; icon?: string; tip?: string; pct?: number; index?: number; w: number };
   const idleItems = $derived.by(() => {
     if (!cfg) return [];
     const out: IdleItem[] = [];
-    const d = new Date(minute * 60_000);
-    const time = cfg.idleClock ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const date = cfg.idleDate ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-    if (time || date) out.push({ key: 'time', kind: 'time', text: time, label: date, w: time.length * 7.6 + (date ? date.length * 6 + 8 : 0) });
     const wx = snap?.weather;
     if (wx) out.push({ key: 'wx', kind: 'weather', icon: wx.icon, text: `${wx.temp}°`, tip: `${wx.city}: ${wx.label}`, w: 22 + String(wx.temp).length * 8 });
     else if (cfg.weatherCity && snap?.weatherError) out.push({ key: 'wx', kind: 'weather', icon: 'cloud', text: '--', tip: snap.weatherError, w: 40 });
@@ -714,9 +709,7 @@
       {:else if !thin && idleShown}
         <div class="ends idle live-in" out:fade={swapOut()}>
           {#each idleItems as it (it.key)}
-            {#if it.kind === 'time'}
-              <span class="iclock">{#if it.text}<b>{it.text}</b>{/if}{#if it.label}<small>{it.label}</small>{/if}</span>
-            {:else if it.kind === 'weather'}
+            {#if it.kind === 'weather'}
               <span class="iwx" title={it.tip}><Glyph name={it.icon ?? 'cloud'} size={15} />{it.text}</span>
             {:else if it.kind === 'bell'}
               <span class="ibell" title={it.tip}><Glyph name="bell" size={14} />{it.text}</span>
@@ -1348,15 +1341,6 @@
     color: var(--i-mut);
     font-size: 10.5px;
     font-weight: 600;
-  }
-  .iclock {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 7px;
-  }
-  .iclock b {
-    font-size: 13px;
-    font-weight: 650;
   }
   .iwx,
   .ibell,
