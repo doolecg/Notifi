@@ -97,7 +97,6 @@ pub fn start(app: &AppHandle, dir: &Path) -> tauri::Result<()> {
         fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     };
     app.manage(ShelfState { path, items: Mutex::new(items), view: Mutex::new(View { mode: Mode::Hidden, gesture: false }) });
-    create_window(app)?;
     sync(app, &s);
     Ok(())
 }
@@ -113,7 +112,11 @@ pub fn on_settings_changed(app: &AppHandle, old: &Settings, new: &Settings) {
     }
 }
 
-fn create_window(app: &AppHandle) -> tauri::Result<()> {
+/// Builds the shelf window unless it already exists.
+pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("shelf.html".into()))
         .title("Notifi Shelf")
         .inner_size(260.0, 400.0)

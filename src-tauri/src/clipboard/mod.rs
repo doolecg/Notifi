@@ -239,7 +239,6 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         zones: Mutex::new(HashMap::new()),
     });
     prune(app);
-    create_windows(app)?;
     typing::sync(app, &settings(app));
 
     let (tx, rx) = mpsc::channel();
@@ -468,8 +467,20 @@ fn base64(bytes: &[u8]) -> String {
 
 // ---- Popups ----
 
-fn create_windows(app: &AppHandle) -> tauri::Result<()> {
-    for (label, url, size) in [(HISTORY_WINDOW, "clipboard.html", (760.0, 500.0)), (SNIPPETS_WINDOW, "snippets.html", (520.0, 460.0))] {
+pub fn build_history_window(app: &AppHandle) -> tauri::Result<()> {
+    create_window(app, HISTORY_WINDOW, "clipboard.html", (760.0, 500.0))
+}
+
+pub fn build_snippets_window(app: &AppHandle) -> tauri::Result<()> {
+    create_window(app, SNIPPETS_WINDOW, "snippets.html", (520.0, 460.0))
+}
+
+/// Builds one popup window unless it already exists.
+fn create_window(app: &AppHandle, label: &'static str, url: &str, size: (f64, f64)) -> tauri::Result<()> {
+    if app.get_webview_window(label).is_some() {
+        return Ok(());
+    }
+    {
         let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title("Notifi")
             .inner_size(size.0, size.1)

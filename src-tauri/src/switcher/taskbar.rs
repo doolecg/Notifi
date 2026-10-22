@@ -63,6 +63,16 @@ pub struct TaskbarState {
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TaskbarState::default());
+    #[cfg(windows)]
+    win::start(app);
+    Ok(())
+}
+
+/// Builds the taskbar preview window unless it already exists.
+pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("taskbar.html".into()))
         .title("Notifi taskbar preview")
         .inner_size(480.0, 220.0)
@@ -77,10 +87,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .focused(false)
         .build()?;
     #[cfg(windows)]
-    {
-        super::prepare_window(&window);
-        win::start(app);
-    }
+    super::prepare_window(&window);
     #[cfg(not(windows))]
     let _ = window;
     Ok(())

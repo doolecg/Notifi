@@ -32,6 +32,9 @@ struct Frame {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(LABEL).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("snap.html".into()))
         .title("Notifi snap areas")
         .inner_size(400.0, 300.0)

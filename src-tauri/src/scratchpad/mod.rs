@@ -123,6 +123,9 @@ pub fn scratchpad_hide(app: AppHandle) {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("scratchpad.html".into()))
         .title("Notifi Scratchpad")
         .inner_size(440.0, 380.0)

@@ -599,7 +599,6 @@ fn refresh_mic(app: &AppHandle, p: &Platform) {
 // ---- Device events ----
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    osd::create(app)?;
     blocker::start(app);
     let platform = app.state::<Platform>().inner().clone();
     let events = platform.audio().events();

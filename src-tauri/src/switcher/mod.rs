@@ -147,8 +147,11 @@ fn bindings(s: &Settings) -> Bindings {
     Bindings { switcher, same_app: keys::parse(&opt_str(s, NS, "sameAppKey", "Alt+`")) }
 }
 
-pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    app.manage(SwitcherState::default());
+/// Builds the switcher window unless it already exists.
+pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("switcher.html".into()))
         .title("Notifi switcher")
         .inner_size(640.0, 260.0)
@@ -170,7 +173,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             let _ = handle.emit_to(WINDOW, UPDATE_EVENT, ());
         }
     });
+    Ok(())
+}
 
+pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    app.manage(SwitcherState::default());
     let (tx, rx) = channel::<Msg>();
     *app.state::<SwitcherState>().tx.lock().unwrap() = Some(tx);
     let handle = app.clone();

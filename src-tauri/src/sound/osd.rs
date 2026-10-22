@@ -38,8 +38,15 @@ pub fn text(icon: &str, label: String) -> Notice {
     Notice { kind: "text", icon: icon.into(), label, level: 0.0, muted: false }
 }
 
+/// The two overlay windows: the volume and message popup, and the muted-microphone dot.
+pub const LABELS: &[&str] = &[OSD, MIC];
+
+/// Builds whichever of the overlay windows are missing.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     for (label, url, size) in [(OSD, "osd.html", (260.0, 64.0)), (MIC, "osd.html#mic", (44.0, 44.0))] {
+        if app.get_webview_window(label).is_some() {
+            continue;
+        }
         let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title("Notifi overlay")
             .inner_size(size.0, size.1)

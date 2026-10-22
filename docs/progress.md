@@ -214,3 +214,9 @@ Open question for you (answer before building):
 - First run: opening settings on the first launch shows "Choose what to install" with Just the basics, Recommended (Island, Clipboard history, Screenshot, Volume mixer, Command Bar, Scratchpad, Window layout) and Everything, then tick or untick anything; Skip installs nothing. People who already had features on are marked as set up and never see it. Reset everything brings it back.
 - Resetting a page's options no longer turns the feature off.
 - Checked: 574 Rust tests (setup flag, migration, reset keeps installed, catalog); every new page screenshotted in the running app with your real settings (16 installed of 54); breadcrumbs; the chooser's presets and Skip (your 15 features and the Island stayed on). Not checked: installing and uninstalling a feature end to end (that is Phase 2's job, since it decides what actually starts), the grid and list views at other window sizes.
+
+## Install features, phase 2: windows only for installed features
+- New `src-tauri/src/lifecycle.rs` lists every feature window. At startup and after every settings change it builds the windows of installed features and closes the windows of uninstalled ones, so an uninstalled feature costs no web view.
+- With your 15 features and the Island installed the app now opens 14 web views instead of 21 (19 WebView2 processes and about 1.28 GB instead of 26 and 1.76 GB).
+- Checked in the running release build: installing and uninstalling Command Bar, Scratchpad, Quick panel and Radial menu created and removed their windows; 576 Rust tests pass. Not checked: using each feature right after installing it (shortcuts, opening the window), Text snippets, Taskbar preview, a clean install.
+- Not done: background threads and hooks of uninstalled features (radial mouse hook, switcher and taskbar threads, Island pointer loop) still run until restart.

@@ -150,46 +150,51 @@ fn opts(app: &AppHandle) -> Opts {
 
 // ---- Windows ----
 
+/// Builds the recording bar and the area picker, whichever are missing.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let bar = WebviewWindowBuilder::new(app, BAR, WebviewUrl::App("recording.html".into()))
-        .title("Notifi Recording")
-        .inner_size(BAR_SIZE.0, BAR_SIZE.1)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .resizable(false)
-        .focusable(false)
-        .visible(false)
-        .focused(false)
-        .build()?;
-    #[cfg(windows)]
-    {
-        use windows::Win32::{
-            Foundation::HWND,
-            UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE},
-        };
-        // The bar must not appear in the video it controls.
-        if let Ok(h) = bar.hwnd() {
-            unsafe {
-                let _ = SetWindowDisplayAffinity(HWND(h.0 as _), WDA_EXCLUDEFROMCAPTURE);
+    if app.get_webview_window(BAR).is_none() {
+        let bar = WebviewWindowBuilder::new(app, BAR, WebviewUrl::App("recording.html".into()))
+            .title("Notifi Recording")
+            .inner_size(BAR_SIZE.0, BAR_SIZE.1)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .resizable(false)
+            .focusable(false)
+            .visible(false)
+            .focused(false)
+            .build()?;
+        #[cfg(windows)]
+        {
+            use windows::Win32::{
+                Foundation::HWND,
+                UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE},
+            };
+            // The bar must not appear in the video it controls.
+            if let Ok(h) = bar.hwnd() {
+                unsafe {
+                    let _ = SetWindowDisplayAffinity(HWND(h.0 as _), WDA_EXCLUDEFROMCAPTURE);
+                }
             }
         }
+        #[cfg(not(windows))]
+        let _ = bar;
     }
-    #[cfg(not(windows))]
-    let _ = bar;
-    WebviewWindowBuilder::new(app, PICK, WebviewUrl::App("recording.html".into()))
-        .title("Notifi Recording Area")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .resizable(false)
-        .visible(false)
-        .focused(false)
-        .build()?;
+    if app.get_webview_window(PICK).is_none() {
+        WebviewWindowBuilder::new(app, PICK, WebviewUrl::App("recording.html".into()))
+            .title("Notifi Recording Area")
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .resizable(false)
+            .visible(false)
+            .focused(false)
+            .build()?;
+    }
     Ok(())
 }
 

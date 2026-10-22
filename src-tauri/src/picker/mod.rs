@@ -206,6 +206,9 @@ fn copy(app: &AppHandle, o: &Opts, rgb: [u8; 3]) {
 // ---- Window ----
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("picker.html".into()))
         .title("Notifi Colour Picker")
         .inner_size(MAGNIFIER.0, MAGNIFIER.1)

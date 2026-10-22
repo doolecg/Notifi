@@ -610,8 +610,12 @@ fn set_bar_visible(app: &AppHandle, on: bool) {
     }
 }
 
-pub fn create(app: &AppHandle) -> tauri::Result<()> {
+/// Builds the Island and agents bar windows that don't exist yet.
+pub fn build_windows(app: &AppHandle) -> tauri::Result<()> {
     for (label, url, title, size) in [(ISLAND, "island.html", "Notifi Island", (220.0, 42.0)), (BAR, "agentsbar.html", "Notifi AI Agents", (BAR_W, 32.0))] {
+        if app.get_window(label).is_some() {
+            continue;
+        }
         WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title(title)
             .inner_size(size.0, size.1)
@@ -627,6 +631,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             .visible(false)
             .build()?;
     }
+    Ok(())
+}
+
+pub fn create(app: &AppHandle) -> tauri::Result<()> {
     crate::monitor::notify::init(app);
     start(app);
     Ok(())

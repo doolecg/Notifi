@@ -376,30 +376,34 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     if !sys::available() {
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("capture.html#select".into()))
-        .title("Notifi Capture")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .resizable(false)
-        .visible(false)
-        .focused(false)
-        .build()?;
-    WebviewWindowBuilder::new(app, PREVIEW, WebviewUrl::App("capture.html#preview".into()))
-        .title("Notifi Capture Preview")
-        .inner_size(340.0, 252.0)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .resizable(false)
-        .focusable(false)
-        .visible(false)
-        .focused(false)
-        .build()?;
+    if app.get_webview_window(OVERLAY).is_none() {
+        WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("capture.html#select".into()))
+            .title("Notifi Capture")
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .resizable(false)
+            .visible(false)
+            .focused(false)
+            .build()?;
+    }
+    if app.get_webview_window(PREVIEW).is_none() {
+        WebviewWindowBuilder::new(app, PREVIEW, WebviewUrl::App("capture.html#preview".into()))
+            .title("Notifi Capture Preview")
+            .inner_size(340.0, 252.0)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .resizable(false)
+            .focusable(false)
+            .visible(false)
+            .focused(false)
+            .build()?;
+    }
     let hideable = hwnd_of(app, OVERLAY).is_some_and(|h| sys::set_excluded(h, true));
     app.state::<CaptureState>().hideable.store(hideable, Ordering::SeqCst);
     if let Some(h) = hwnd_of(app, PREVIEW) {

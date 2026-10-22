@@ -14,6 +14,7 @@ mod island;
 mod input;
 mod keepawake;
 mod keybinds;
+mod lifecycle;
 mod monitor;
 mod media_tools;
 mod panel;
@@ -82,7 +83,6 @@ fn main() {
             panel::create(app.handle())?;
             island::create(app.handle())?;
             commandbar::create(app.handle())?;
-            commandbar::open_from_args(app.handle());
             sound::create(app.handle())?;
             quick::create(app.handle())?;
             scratchpad::create(app.handle())?;
@@ -97,6 +97,8 @@ fn main() {
             switcher::create(app.handle())?;
             radial::create(app.handle())?;
             stats::start(app.handle());
+            lifecycle::sync(app.handle());
+            commandbar::open_from_args(app.handle());
             if let Some(tab) = panel_arg(&std::env::args().collect::<Vec<_>>()) {
                 panel::show_by_tray(app.handle(), tab);
             }
@@ -389,6 +391,7 @@ pub fn on_settings_changed(app: &tauri::AppHandle, old: &settings::Settings, new
     switcher::on_settings_changed(app);
     input::on_settings_changed(app);
     radial::on_settings_changed(app);
+    lifecycle::sync_later(app);
 }
 
 /// `--panel` opens the tray panel; `--panel=<tab>` opens it on that tab.

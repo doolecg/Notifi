@@ -139,7 +139,11 @@ fn views(ring: &[Slice], count: usize) -> Vec<SliceView> {
 
 // ---- Setup ----
 
-pub fn create(app: &AppHandle) -> tauri::Result<()> {
+/// Builds the radial menu window unless it already exists.
+pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("radial.html".into()))
         .title("Notifi radial menu")
         .inner_size(WINDOW_SIZE, WINDOW_SIZE)
@@ -156,7 +160,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let _ = window.set_ignore_cursor_events(true);
     #[cfg(windows)]
     crate::switcher::prepare_window(&window);
+    Ok(())
+}
 
+pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let state = app.state::<RadialState>();
     let path = app.path().app_config_dir()?.join(FILE);
     *state.wheel.lock().unwrap() = load(&path);

@@ -130,7 +130,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         *state.path.lock().unwrap() = Some(path);
     }
     app.manage(state);
+    Ok(())
+}
 
+/// Builds the command bar window unless it already exists.
+pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("commandbar.html".into()))
         .title("Notifi Command Bar")
         .inner_size(WIDTH, START_HEIGHT)
@@ -149,6 +156,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             hide(&handle, false);
         }
     });
+    // The list of apps to search is read once the feature is installed, not for everyone at launch.
     refresh_apps(app);
     Ok(())
 }

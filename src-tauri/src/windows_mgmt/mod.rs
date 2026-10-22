@@ -85,7 +85,6 @@ pub fn app() -> Option<AppHandle> {
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let _ = APP.set(app.clone());
     let _ = PLATFORM.set(app.state::<Platform>().inner().clone());
-    overlay::create(app)?;
     reload(app);
     Ok(())
 }

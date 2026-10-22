@@ -181,6 +181,9 @@ pub fn run_action(app: &AppHandle, action: &str) {
 // ---- The panel window ----
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window(WINDOW).is_some() {
+        return Ok(());
+    }
     let window = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("quick.html".into()))
         .title("Notifi Quick panel")
         .inner_size(360.0, 320.0)
