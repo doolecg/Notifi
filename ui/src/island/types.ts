@@ -124,6 +124,10 @@ export const MODULE_LABELS: Record<string, string> = {
 export interface Layout {
   /** Docked bottom-left: orbit points are from the island's left edge and top. */
   dock: boolean;
+  /** The top Island upside down: at the bottom centre, growing up (the taskbar's Start button is at its left). */
+  rise: boolean;
+  /** The widest the bar on the taskbar may be, so it stops short of the Start button; null when unknown. */
+  barMax: number | null;
   window: [number, number];
   /** The size in use now: `base`, `tall` or `chat`. */
   open: [number, number];

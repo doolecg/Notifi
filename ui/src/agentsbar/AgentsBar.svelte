@@ -46,7 +46,9 @@
   const barH = $derived(Math.max(16, winH - ROOM));
   const showChips = $derived(hover && chips.length > 0);
   /** While the buttons show, the bar and their row share one width. */
-  const width = $derived(showChips ? Math.min(BAR_MAX, Math.max(barNeed, chipsRow)) : barNeed);
+  /** Never past the taskbar's Start button. */
+  const cap = $derived(Math.min(BAR_MAX, snap?.layout.barMax ?? BAR_MAX));
+  const width = $derived(Math.min(cap, showChips ? Math.max(barNeed, chipsRow) : barNeed));
   $effect(() => {
     if (!chipsEl) return;
     const el = chipsEl;

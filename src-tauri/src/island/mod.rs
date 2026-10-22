@@ -125,6 +125,8 @@ struct Inner {
     geo: Geo,
     /// The window's last physical rect, so it is only moved when that changes.
     placed: Option<(i32, i32, u32, u32)>,
+    /// The Windows Start button's left edge, logical px from the Island's screen's left; read every few seconds.
+    start_x: Option<f64>,
 }
 
 impl Default for IslandState {
@@ -338,13 +340,30 @@ pub fn bottom_left(mon: (i32, i32, u32, u32), bottom: i32, scale: f64, w: f64, h
     (x.round() as i32, y.round() as i32, pw.max(1.0) as u32, ph.max(1.0) as u32)
 }
 
-/// The Island's size and where it sits, kept inside the screen it is on.
-fn layout_for(c: &IslandConfig, tall: bool, chat: bool, screen: (f64, f64)) -> Layout {
-    if c.dock == "bottomLeft" {
+/// Space kept between the bar on the taskbar and the Start button.
+const START_GAP: f64 = 12.0;
+
+/// Top-left and size (physical px) for a box `w` x `h` logical px centred on a monitor, its bottom edge at `bottom`.
+pub fn bottom_centre(mon: (i32, i32, u32, u32), bottom: i32, scale: f64, w: f64, h: f64) -> (i32, i32, u32, u32) {
+    let (x, _, pw, ph) = top_centre(mon, scale, w, h);
+    (x, bottom - ph as i32, pw, ph)
+}
+
+/// The Island's size and where it sits, kept inside the screen it is on. `start` is the Start button's
+/// left edge (logical px from the screen's left), when known.
+fn layout_for(c: &IslandConfig, tall: bool, chat: bool, screen: (f64, f64), start: Option<f64>) -> Layout {
+    // With Start at the taskbar's far left there is no room for the bar beside it, so the docked Island
+    // becomes the top Island turned upside down, at the bottom centre.
+    let start_left = start.is_some_and(|x| x < screen.0 * 0.25);
+    let docked = c.dock == "bottomLeft";
+    let mut l = if docked && !start_left {
         layout::layout_dock(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
     } else {
         layout::layout(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
-    }
+    };
+    l.rise = docked && start_left;
+    l.bar_max = start.filter(|_| !start_left).map(|x| (x - START_GAP).max(240.0));
+    l
 }
 
 /// Logical size of the screen the Island is on; a common size when it cannot be read.
@@ -460,6 +479,8 @@ fn frame(l: &Layout, bar: f64) -> (f64, f64) {
 #[derive(Clone, Copy, Default)]
 struct Geo {
     dock: bool,
+    /// At the bottom centre, growing up (the top Island upside down).
+    rise: bool,
     frame: (f64, f64),
     /// Taskbar height (logical px) when docked.
     bar: f64,
@@ -486,30 +507,38 @@ fn hit_rect(g: &Geo, open: bool, tall: bool, chat: bool, rest: (f64, f64)) -> (f
         return (0.0, top.max(0.0), (menu.0 + layout::EDGE + s).max(pill.2), fh - top.max(0.0));
     }
     let (w, h) = if open { menu } else { rest };
-    ((fw - w) / 2.0 - s, 0.0, w + 2.0 * s, h + s)
+    let y = if g.rise { fh - h - s } else { 0.0 };
+    ((fw - w) / 2.0 - s, y, w + 2.0 * s, h + s)
 }
 
 fn place(app: &AppHandle) {
     let Some(win) = app.get_window(ISLAND) else { return };
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
-    let l = layout_for(&c, false, false, screen_of(Some(&mon)));
+    let state = app.state::<IslandState>();
+    let start = state.inner.lock().unwrap().start_x;
+    let l = layout_for(&c, false, false, screen_of(Some(&mon)), start);
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
     let bar = if l.dock { f64::from(bottom - top) / scale } else { 0.0 };
     let (w, h) = frame(&l, bar);
-    let rect = if l.dock { bottom_left(mon_rect(&mon), bottom, scale, w, h) } else { top_centre(mon_rect(&mon), scale, w, h) };
-    let state = app.state::<IslandState>();
+    let rect = if l.dock {
+        bottom_left(mon_rect(&mon), bottom, scale, w, h)
+    } else if l.rise {
+        bottom_centre(mon_rect(&mon), bottom, scale, w, h)
+    } else {
+        top_centre(mon_rect(&mon), scale, w, h)
+    };
     let moved = {
         let mut i = state.inner.lock().unwrap();
-        i.geo = Geo { dock: l.dock, frame: (w, h), bar, base: l.base, tall: l.tall, chat: l.chat };
+        i.geo = Geo { dock: l.dock, rise: l.rise, frame: (w, h), bar, base: l.base, tall: l.tall, chat: l.chat };
         std::mem::replace(&mut i.placed, Some(rect)) != Some(rect)
     };
     if moved {
         set_island_rect(app, &win, rect.0, rect.1, rect.2, rect.3);
     }
     #[cfg(windows)]
-    if l.dock {
+    if l.dock || l.rise {
         raise(&win);
     }
 }
@@ -729,6 +758,7 @@ fn start_raise(app: &AppHandle) {
     std::thread::Builder::new()
         .name("notifi-island-raise".into())
         .spawn(move || {
+          let mut tick = 0u32;
           loop {
             std::thread::sleep(Duration::from_millis(250));
             let state = app.state::<IslandState>();
@@ -736,6 +766,17 @@ fn start_raise(app: &AppHandle) {
                 let i = state.inner.lock().unwrap();
                 (i.visible, i.bar_visible)
             };
+            // Where the Start button is (it moves as apps open and close, and with the taskbar's alignment), every 2 s.
+            tick += 1;
+            if tick % 8 == 1 && (visible || bar) {
+                let c = config(&app);
+                let start = monitor(&app, &c).zip(notifi_platform::win_taskbar::start_button()).map(|(m, r)| (f64::from(r.x - m.position().x) / m.scale_factor()).round());
+                let changed = std::mem::replace(&mut state.inner.lock().unwrap().start_x, start) != start;
+                if changed {
+                    place(&app);
+                    state.wake();
+                }
+            }
             if visible && config(&app).dock == "bottomLeft" {
                 if let Some(win) = app.get_window(ISLAND) {
                     raise(&win);
@@ -1047,7 +1088,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
         let playing = media.as_ref().is_some_and(|m| m.playing);
         let snap = Snapshot {
             enabled: true,
-            layout: layout_for(&c, tall, chat, screen),
+            layout: layout_for(&c, tall, chat, screen, state.inner.lock().unwrap().start_x),
             modules: MODULES.iter().map(|&(id, label, ready)| ModuleInfo { id, label, ready }).collect(),
             players: if media_supported { platform.media().sessions().unwrap_or_default() } else { Vec::new() },
             live: {
@@ -1458,13 +1499,33 @@ mod tests {
 
     #[test]
     fn only_the_shape_takes_the_pointer() {
-        let g = Geo { dock: false, frame: (1768.0, 1122.0), bar: 0.0, base: (1700.0, 270.0), tall: (1700.0, 640.0), chat: (1340.0, 1100.0) };
+        let g = Geo { dock: false, rise: false, frame: (1768.0, 1122.0), bar: 0.0, base: (1700.0, 270.0), tall: (1700.0, 640.0), chat: (1340.0, 1100.0) };
         let s = HIT_SLACK;
         assert_eq!(hit_rect(&g, false, false, false, (200.0, 32.0)), (784.0 - s, 0.0, 200.0 + 2.0 * s, 32.0 + s));
         assert_eq!(hit_rect(&g, true, false, true, (200.0, 32.0)), (214.0 - s, 0.0, 1340.0 + 2.0 * s, 1100.0 + s));
+        // Upside down, the same shape sits on the bottom edge.
+        let up = Geo { rise: true, ..g };
+        assert_eq!(hit_rect(&up, false, false, false, (200.0, 32.0)), (784.0 - s, 1122.0 - 32.0 - s, 200.0 + 2.0 * s, 32.0 + s));
         let d = Geo { dock: true, bar: 48.0, ..g };
         let (x, y, w, h) = hit_rect(&d, false, false, false, (300.0, 48.0));
         assert_eq!((x, y + h, w), (0.0, 1122.0, 300.0 + s));
+    }
+
+    #[test]
+    fn start_button_sets_where_the_docked_island_goes() {
+        let mut c = IslandConfig::default();
+        c.dock = "bottomLeft".into();
+        let screen = (2560.0, 1440.0);
+        let centred = layout_for(&c, false, false, screen, Some(1040.0));
+        assert!(centred.dock && !centred.rise);
+        assert_eq!(centred.bar_max, Some(1040.0 - START_GAP));
+        let left = layout_for(&c, false, false, screen, Some(0.0));
+        assert!(!left.dock && left.rise && left.bar_max.is_none());
+        let unknown = layout_for(&c, false, false, screen, None);
+        assert!(unknown.dock && !unknown.rise && unknown.bar_max.is_none());
+        c.dock = "top".into();
+        assert!(!layout_for(&c, false, false, screen, Some(0.0)).rise);
+        assert_eq!(bottom_centre((0, 0, 2560, 1440), 1440, 1.0, 200.0, 100.0), (1180, 1340, 200, 100));
     }
 
     #[test]

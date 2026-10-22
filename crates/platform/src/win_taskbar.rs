@@ -18,7 +18,7 @@ use windows::Win32::System::Variant::{VARIANT, VT_I4};
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationElement, TreeScope_Children, TreeScope_Descendants,
-    UIA_ButtonControlTypeId, UIA_ClassNamePropertyId, UIA_ControlTypePropertyId,
+    UIA_AutomationIdPropertyId, UIA_ButtonControlTypeId, UIA_ClassNamePropertyId, UIA_ControlTypePropertyId,
 };
 use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_GETSTATE, ABM_SETSTATE, ABS_AUTOHIDE, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -219,6 +219,18 @@ pub fn buttons() -> Result<Vec<TaskbarButton>> {
     Ok(out)
 }
 
+/// The Start button's rectangle on the main taskbar. Takes a few milliseconds; cache the result.
+pub fn start_button() -> Option<Rect> {
+    let uia = automation().ok()?;
+    unsafe {
+        let h = FindWindowW(windows::core::w!("Shell_TrayWnd"), None).ok()?;
+        let root = uia.ElementFromHandle(h).ok()?;
+        let is_start = uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, &VARIANT::from("StartButton")).ok()?;
+        let r = rect(root.FindFirst(TreeScope_Descendants, &is_start).ok()?.CurrentBoundingRectangle().ok()?);
+        (r.width > 0).then_some(r)
+    }
+}
+
 /// The button under the point, from a cached [`buttons`] list.
 pub fn hit<'a>(buttons: &'a [TaskbarButton], x: i32, y: i32) -> Option<&'a TaskbarButton> {
     buttons.iter().find(|b| b.contains(x, y))
@@ -309,6 +321,13 @@ mod tests {
         let list = vec![b("A", ""), TaskbarButton { rect: Rect { x: 50, y: 1000, width: 40, height: 40 }, ..b("B", "") }];
         assert_eq!(hit(&list, 60, 1010).map(|b| b.name.as_str()), Some("B"));
         assert!(hit(&list, 95, 1010).is_none());
+    }
+
+    #[test]
+    #[ignore = "reads the live taskbar"]
+    fn finds_live_start_button() {
+        println!("{:?}", start_button());
+        assert!(start_button().is_some());
     }
 
     #[test]

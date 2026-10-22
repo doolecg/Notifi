@@ -6,8 +6,8 @@
   import { duration, motion, reducedMotion } from '../../lib/motion';
 
   type Box = { left: number; top: number; width: number; height: number };
-  /** The open and resting sizes of the pill hanging from the top centre; null when docked. */
-  type Pill = { openW: number; openH: number; restW: number; restH: number } | null;
+  /** The open and resting sizes of the pill at the top centre (or bottom centre with `rise`); null when docked. */
+  type Pill = { openW: number; openH: number; restW: number; restH: number; rise: boolean } | null;
   let { closing, pill, onAsk }: { closing: boolean; pill: Pill; onAsk: () => void } = $props();
 
   let slot = $state<HTMLDivElement>();
@@ -23,10 +23,11 @@
 
   const key = (r: Box) => [r.left, r.top, r.width, r.height].map(Math.round).join();
 
-  /** The chat moving with the pill: scaled about the pill's top centre to the pill's size (w, h), on the pill's own spring. */
+  /** The chat moving with the pill: scaled about the pill's fixed edge (top, or bottom when it grows up) to the pill's size (w, h), on the pill's own spring. */
   function morph(r: Box, w: number, h: number, name: 'pillDrop' | 'pillRise') {
     if (!pill || reducedMotion()) return null;
-    return { ox: innerWidth / 2 - r.left, oy: -r.top, sx: w / pill.openW, sy: h / pill.openH, ms: duration(name), ease: motion[name].ease };
+    const oy = pill.rise ? innerHeight - r.top : -r.top;
+    return { ox: innerWidth / 2 - r.left, oy, sx: w / pill.openW, sy: h / pill.openH, ms: duration(name), ease: motion[name].ease };
   }
 
   $effect(() => {
@@ -67,7 +68,9 @@
       // on-screen box is unscaled first (a later resize would make the chat page lay itself out again).
       if (innerWidth >= pill.openW) {
         const k = content.offsetWidth / box.width;
-        const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left) * k, top: content.offsetTop + (r.top - box.top) * k, width: slot.offsetWidth, height: slot.offsetHeight };
+        // The settled pill's top, plus the content's place in it (the strip above it), plus the area's place in the content.
+        const pillTop = pill.rise ? innerHeight - pill.openH : 0;
+        const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left) * k, top: pillTop + pill.openH - content.offsetHeight + (r.top - box.top) * k, width: slot.offsetWidth, height: slot.offsetHeight };
         last = seen = key(end);
         place(end, morph(end, now.width, now.height, 'pillDrop'));
       }

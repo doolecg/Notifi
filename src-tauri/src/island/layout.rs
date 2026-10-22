@@ -79,6 +79,10 @@ pub fn max_bottom(w: f64) -> usize {
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
     pub dock: bool,
+    /// The top Island turned upside down: at the bottom centre, growing up (the taskbar's Start button is at its left).
+    pub rise: bool,
+    /// The widest the bar on the taskbar may be, so it stops short of the Start button; none when unknown.
+    pub bar_max: Option<f64>,
     pub window: (f64, f64),
     /// The size in use now: `base`, `tall` or `chat`.
     pub open: (f64, f64),
@@ -110,10 +114,10 @@ fn build(dock: bool, base: (f64, f64), tall: bool, chat: bool, screen: (f64, f64
     let stretched = fit((base.0, TALL_H.max(base.1)), screen);
     let chat_size = fit(CHAT, screen);
     let open = if chat { chat_size } else if tall { stretched } else { base };
-    // Only as big as the menu: anything wider is invisible but still takes clicks meant for the desktop.
-    // Switching sizes keeps the old size for a moment instead (see `hold` in island/mod.rs).
     Layout {
         dock,
+        rise: false,
+        bar_max: None,
         window: if dock { dock_window_size(open) } else { window_size(open) },
         open,
         base,

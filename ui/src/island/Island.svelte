@@ -197,7 +197,7 @@
   const box = $derived(
     thin
       ? THIN_HIT
-      : { w: rest.w, h: rest.h },
+      : { w: barCap(rest.w), h: rest.h },
   );
 
   /** What the window was last told, so a shrinking pill can keep its room until it has finished shrinking. */
@@ -427,6 +427,12 @@
 
   /** Docked, the bar stays in the taskbar and the open menu is a separate flyout above it. */
   const dock = $derived(!!layout?.dock);
+  /** At the bottom centre, growing up: the top Island upside down. */
+  const rise = $derived(!!layout?.rise);
+  /** Docked, the bar keeps clear of the Start button. */
+  function barCap(w: number) {
+    return dock && layout?.barMax ? Math.min(w, layout.barMax) : w;
+  }
   /** The buttons are a tab strip along the top of the open menu: modules as tabs, the rest as icons at the right. */
   const strip = $derived.by(() => {
     const ids = [...new Set(['nook', ...(cfg?.chatEnabled ? ['chat'] : []), ...(cfg?.orbitLeft ?? []), ...(cfg?.orbitRight ?? []), ...(cfg?.orbitBottom ?? [])])];
@@ -446,8 +452,8 @@
   /** The menu's height: stretched, or as opened. */
   const flyH = $derived(chatMode ? (layout?.chat[1] ?? baseH) : tall ? (layout?.tall[1] ?? baseH) : baseH);
   const grown = $derived(expanded && !dock);
-  // Docked, the bar in the taskbar widens to the menu above it, so the two read as one block.
-  const pillW = $derived(expanded && layout ? openW : rest.w);
+  // Docked, the bar in the taskbar widens to the menu above it, so the two read as one block, but never past the Start button.
+  const pillW = $derived(barCap(expanded && layout ? openW : rest.w));
   const pillH = $derived(grown && layout ? flyH : rest.h);
   const radius = $derived(grown && layout ? layout.radius : rest.h / 2);
   /** What the pill is telling you, so a change in it can flash the edge. */
@@ -541,7 +547,7 @@
   {:else if module === 'agents'}
     <Agents />
   {:else if module === 'chat'}
-    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h }} onAsk={() => setModule('ask')} />
+    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h, rise }} onAsk={() => setModule('ask')} />
   {:else if module === 'ask'}
     <Ask onDone={collapse} onChat={cfg?.chatEnabled ? () => setModule('chat') : undefined} />
   {:else if module === 'mixer'}
@@ -598,7 +604,7 @@
 
 {#if snap?.enabled && cfg && layout}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="root" class:translucent={cfg.translucent} class:dock={layout.dock} onpointerenter={() => (near = true)} onpointerleave={() => (near = false)}>
+  <div class="root" class:translucent={cfg.translucent} class:dock={layout.dock} class:rise={layout.rise} onpointerenter={() => (near = true)} onpointerleave={() => (near = false)}>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
       class="pill"
@@ -610,15 +616,16 @@
       style:width={`${pillW}px`}
       style:height={`${pillH}px`}
       style:bottom={layout.dock ? `${DOCK_GAP}px` : undefined}
-      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : `0 0 ${radius}px ${radius}px`}
+      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? `${radius}px ${radius}px 0 0` : `0 0 ${radius}px ${radius}px`}
       onpointerenter={enter}
       onpointerleave={leave}
       onclick={clickPill}
       onwheel={wheel}
     >
       {#if open && !dock}
-        <div class="tabs" class:shown={expanded}>{@render tabstrip()}</div>
-        <div class="content" class:shown={expanded} style:top={`${STRIP}px`} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
+        <!-- Growing up, the menu is pinned to the bottom edge so its edge uncovers it, as the top Island's does from the top. -->
+        <div class="tabs" class:shown={expanded} style:top={rise ? 'auto' : undefined} style:bottom={rise ? `${flyH - STRIP}px` : undefined} style:height={rise ? `${STRIP}px` : undefined}>{@render tabstrip()}</div>
+        <div class="content" class:shown={expanded} style:top={rise ? 'auto' : `${STRIP}px`} style:bottom={rise ? '0px' : undefined} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
       {:else if island.asks.length}
@@ -802,11 +809,14 @@
       bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
       border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
-  .dock .pill.expanded {
-    transition:
-      width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
+  /* The top Island upside down: rests on the bottom edge and grows up. */
+  .rise .pill {
+    top: auto;
+    bottom: 0;
+    box-shadow:
+      0 -6px 18px rgb(0 0 0 / 0.35),
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.16);
   }
   /* The menu grows up out of the bar on the same spring the top Island drops on, already at the bar's width. */
   .fly {
