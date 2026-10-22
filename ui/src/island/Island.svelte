@@ -163,8 +163,8 @@
       awake = true;
     } else wake();
   });
-  /** The thin bar belongs to the top dock; on the taskbar the pill stays visible. */
-  const thinOn = $derived(!!cfg?.idleThinBar && !layout?.dock);
+  /** The thin bar belongs to the top dock; on the taskbar (docked or rising from the bottom) the pill stays visible. */
+  const thinOn = $derived(!!cfg?.idleThinBar && !layout?.dock && !layout?.rise);
   const showLive = $derived(!!live.length && (awake || !thinOn));
   const thin = $derived(thinOn && !island.activity && !showLive && !near && !open);
   /** Height of a normal window title bar, so the pill never hangs below it. */
@@ -616,7 +616,7 @@
       style:width={`${pillW}px`}
       style:height={`${pillH}px`}
       style:bottom={layout.dock ? `${DOCK_GAP}px` : undefined}
-      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? `${radius}px ${radius}px 0 0` : `0 0 ${radius}px ${radius}px`}
+      style:border-radius={layout.dock ? `${radius}px` : rise ? (grown ? `${radius}px ${radius}px 0 0` : `${radius}px`) : `0 0 ${radius}px ${radius}px`}
       onpointerenter={enter}
       onpointerleave={leave}
       onclick={clickPill}

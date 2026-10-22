@@ -10,11 +10,12 @@ pub const TOP_PAD: f64 = 8.0;
 /// Room around everything for shadows.
 pub const EDGE: f64 = 10.0;
 pub const OPEN_RADIUS: f64 = 24.0;
-/// Docked bottom-left: the bar fills the taskbar, so no gap under it or from the screen's left edge.
+/// Docked bottom-left: the bar fills the taskbar's height, so no gap under it.
 pub const DOCK_GAP: f64 = 0.0;
 /// Docked and open: space between the taskbar and the island, like the Start menu.
 pub const FLY_GAP: f64 = 12.0;
-pub const DOCK_LEFT: f64 = 0.0;
+/// Docked, the rounded bar sits this far in from the screen's left edge.
+pub const DOCK_LEFT: f64 = 8.0;
 
 pub const MIN_W: f64 = 380.0;
 pub const MAX_W: f64 = 2400.0;

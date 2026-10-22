@@ -362,7 +362,7 @@ fn layout_for(c: &IslandConfig, tall: bool, chat: bool, screen: (f64, f64), star
         layout::layout(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
     };
     l.rise = docked && start_left;
-    l.bar_max = start.filter(|_| !start_left).map(|x| (x - START_GAP).max(240.0));
+    l.bar_max = start.filter(|_| !start_left).map(|x| (x - START_GAP - layout::DOCK_LEFT).max(240.0));
     l
 }
 
@@ -1518,7 +1518,7 @@ mod tests {
         let screen = (2560.0, 1440.0);
         let centred = layout_for(&c, false, false, screen, Some(1040.0));
         assert!(centred.dock && !centred.rise);
-        assert_eq!(centred.bar_max, Some(1040.0 - START_GAP));
+        assert_eq!(centred.bar_max, Some(1040.0 - START_GAP - layout::DOCK_LEFT));
         let left = layout_for(&c, false, false, screen, Some(0.0));
         assert!(!left.dock && left.rise && left.bar_max.is_none());
         let unknown = layout_for(&c, false, false, screen, None);
@@ -1536,8 +1536,8 @@ mod tests {
 
     #[test]
     fn docked_box_sits_on_the_given_bottom_edge() {
-        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.0, 200.0, 32.0), (0, 1408, 200, 32));
-        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.5, 200.0, 32.0), (0, 1392, 300, 48));
+        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.0, 200.0, 32.0), (8, 1408, 200, 32));
+        assert_eq!(bottom_left((0, 0, 2560, 1440), 1440, 1.5, 200.0, 32.0), (12, 1392, 300, 48));
     }
 
 
