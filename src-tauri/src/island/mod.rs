@@ -539,11 +539,17 @@ fn hit_rect(g: &Geo, open: bool, tall: bool, chat: bool, rest: (f64, f64)) -> (f
         let top = fh - (menu.1 + layout::EDGE + g.bar + layout::FLY_GAP) - s;
         return (0.0, top.max(0.0), (menu.0 + layout::EDGE + s).max(pill.2), fh - top.max(0.0));
     }
+    if g.rise {
+        let pill = ((fw - rest.0) / 2.0 - s, fh - rest.1 - s, rest.0 + 2.0 * s, rest.1 + s);
+        if !open {
+            return pill;
+        }
+        // The flyout centred above the taskbar down to the pill in it.
+        let top = (fh - (menu.1 + g.bar + layout::FLY_GAP) - s).max(0.0);
+        return ((fw - menu.0) / 2.0 - s, top, menu.0 + 2.0 * s, fh - top);
+    }
     let (w, h) = if open { menu } else { rest };
-    // Resting it sits in the taskbar; open it floats above the taskbar.
-    let lift = if g.rise && open { g.bar + layout::FLY_GAP } else { 0.0 };
-    let y = if g.rise { fh - h - s - lift } else { 0.0 };
-    ((fw - w) / 2.0 - s, y, w + 2.0 * s, h + s)
+    ((fw - w) / 2.0 - s, 0.0, w + 2.0 * s, h + s)
 }
 
 fn place(app: &AppHandle) {
@@ -1681,8 +1687,9 @@ mod tests {
         // Upside down, the same shape sits on the bottom edge.
         let up = Geo { rise: true, bar: 40.0, ..g };
         assert_eq!(hit_rect(&up, false, false, false, (200.0, 32.0)), (784.0 - s, 1122.0 - 32.0 - s, 200.0 + 2.0 * s, 32.0 + s));
-        // Open, it floats above the taskbar and its gap.
-        assert_eq!(hit_rect(&up, true, false, true, (200.0, 32.0)).1, 1122.0 - 1100.0 - s - (40.0 + layout::FLY_GAP));
+        // Open, the flyout floats above the taskbar and its gap, down to the bar in it.
+        let (_, y, _, h) = hit_rect(&up, true, false, false, (200.0, 32.0));
+        assert_eq!((y, y + h), (1122.0 - 270.0 - s - (40.0 + layout::FLY_GAP), 1122.0));
         let d = Geo { dock: true, bar: 48.0, ..g };
         let (x, y, w, h) = hit_rect(&d, false, false, false, (300.0, 48.0));
         assert_eq!((x, y + h, w), (0.0, 1122.0, 300.0 + s));

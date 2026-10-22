@@ -525,10 +525,8 @@
 
   /** Docked, the bar stays in the taskbar and the open menu is a separate flyout above it. */
   const dock = $derived(!!layout?.dock);
-  /** At the bottom centre, growing up: the top Island upside down. */
+  /** At the bottom centre (Start at the left): like the dock, the bar stays in the taskbar and the open menu is a flyout above it. */
   const rise = $derived(!!layout?.rise);
-  /** Rising, the open menu floats above the taskbar; resting, the pill sits in it. */
-  const lift = $derived(rise && expanded ? bar + FLY_GAP : 0);
   /** Docked, the bar keeps clear of the Start button. */
   function barCap(w: number) {
     return dock && layout?.barMax ? Math.min(w, layout.barMax) : w;
@@ -551,9 +549,9 @@
   const STRIP = 46;
   /** The menu's height: stretched, or as opened. */
   const flyH = $derived(chatMode ? (layout?.chat[1] ?? baseH) : tall ? (layout?.tall[1] ?? baseH) : baseH);
-  const grown = $derived(expanded && !dock);
+  const grown = $derived(expanded && !dock && !rise);
   // Docked, the bar in the taskbar widens to the menu above it, so the two read as one block, but never past the Start button.
-  const pillW = $derived(barCap(expanded && layout ? openW : rest.w));
+  const pillW = $derived(barCap(expanded && layout && !rise ? openW : rest.w));
   const pillH = $derived(grown && layout ? flyH : rest.h);
   const radius = $derived(grown && layout ? layout.radius : rest.h / 2);
   /** What the pill is telling you, so a change in it can flash the edge. */
@@ -648,7 +646,7 @@
   {:else if module === 'agents'}
     <Agents />
   {:else if module === 'chat'}
-    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h, rise, lift: rise ? bar + FLY_GAP : 0 }} onAsk={() => setModule('ask')} />
+    <Chat closing={collapsing} pill={dock || rise ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h }} onAsk={() => setModule('ask')} />
   {:else if module === 'ask'}
     <Ask onDone={collapse} onChat={cfg?.chatEnabled ? () => setModule('chat') : undefined} />
   {:else if module === 'mixer'}
@@ -746,17 +744,16 @@
       style:--fc={pixelColor}
       style:width={`${pillW}px`}
       style:height={`${pillH}px`}
-      style:bottom={layout.dock ? `${DOCK_GAP}px` : rise ? `${lift}px` : undefined}
-      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? (grown ? `${radius}px ${radius}px 0 0` : `${radius}px`) : `0 0 ${radius}px ${radius}px`}
+      style:bottom={layout.dock ? `${DOCK_GAP}px` : rise ? "0px" : undefined}
+      style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? `${radius}px` : `0 0 ${radius}px ${radius}px`}
       onpointerenter={enter}
       onpointerleave={leave}
       onclick={clickPill}
       onwheel={wheel}
     >
-      {#if open && !dock}
-        <!-- Growing up, the menu is pinned to the bottom edge so its edge uncovers it, as the top Island's does from the top. -->
-        <div class="tabs" class:shown={expanded} style:top={rise ? 'auto' : undefined} style:bottom={rise ? `${flyH - STRIP}px` : undefined} style:height={rise ? `${STRIP}px` : undefined}>{@render tabstrip()}</div>
-        <div class="content" class:shown={expanded} style:top={rise ? 'auto' : `${STRIP}px`} style:bottom={rise ? '0px' : undefined} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
+      {#if open && !dock && !rise}
+        <div class="tabs" class:shown={expanded}>{@render tabstrip()}</div>
+        <div class="content" class:shown={expanded} style:top={`${STRIP}px`} style:width={`${openW}px`} style:height={`${flyH - STRIP}px`}>
           {@render body()}
         </div>
       {:else if island.asks.length}
@@ -872,7 +869,7 @@
       </div>
     {/if}
 
-    {#if open && dock}
+    {#if open && (dock || rise)}
       <div
         class="fly"
         class:shown={expanded}
@@ -968,19 +965,10 @@
       bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
       border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
-  .rise .pill.expanded {
-    transition:
-      width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      bottom var(--m-pillDrop-dur) var(--m-pillDrop-ease),
-      border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
-  }
-  .rise .pill.collapsing {
-    transition:
-      width var(--m-pillRise-dur) var(--m-pillRise-ease),
-      height var(--m-pillRise-dur) var(--m-pillRise-ease),
-      bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
-      border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
+  /* Rising, the menu flyout is centred over the bar. */
+  .rise .fly {
+    left: 50%;
+    transform: translateX(-50%);
   }
   /* The menu grows up out of the bar on the same spring the top Island drops on, already at the bar's width. */
   .fly {
