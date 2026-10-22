@@ -1,10 +1,11 @@
 name: Release
+# Releases are made on the maintainer's PC: the installer must be signed with the update key (scripts/sign-update.mjs),
+# which is not stored on GitHub, and a release without its .sig cannot be installed by the in-app updater.
+# This workflow only builds the packages for a manual run, as a check; it does not publish a tag.
 on:
-  push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
     strategy:
@@ -42,22 +43,3 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
-  publish:
-    needs: build
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Release notes
-        run: |
-          awk '/^# /{if(seen)exit; seen=1} /^---[[:space:]]*$/{if(seen)exit} seen' RELEASE_NOTES.md > release-body.md
-          test -s release-body.md
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" --title "Notifi $GITHUB_REF_NAME" --notes-file release-body.md
-          gh release upload "$GITHUB_REF_NAME" dist/*
