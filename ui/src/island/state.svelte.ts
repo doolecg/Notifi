@@ -49,7 +49,8 @@ class IslandLive {
 
   #showActivity(a: Activity) {
     this.activity = a;
-    this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now() }, ...this.history].slice(0, 100);
+    // A new song isn't news to keep.
+    if (a.icon !== 'music') this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now() }, ...this.history].slice(0, 100);
     if (a.quiet) return;
     clearTimeout(this.#activityTimer);
     this.#activityTimer = setTimeout(() => (this.activity = null), a.ms);

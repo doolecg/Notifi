@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { fadeSlide } from '../../lib/motion';
+  import Glyph from '../Glyph.svelte';
 
   interface Note {
     id: number;
@@ -19,13 +20,15 @@
   let warning = $state('');
   let busy = false;
 
-  const recent = $derived(
+  const notes = $derived(
     (saved?.notes ?? [])
       .filter((n) => n.text.trim())
       .slice()
-      .reverse()
-      .slice(0, 6),
+      .reverse(),
   );
+  let editing = $state<number | null>(null);
+  let undo = $state<{ note: Note; at: number } | null>(null);
+  let undoTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function load() {
     try {
@@ -37,31 +40,87 @@
     }
   }
 
-  async function add() {
-    const text = draft.trim();
-    if (!text || busy) return;
+  /** Reads the file fresh, lets `change` build the new state from it, and saves that. */
+  async function commit(change: (s: Saved) => Saved) {
+    if (busy) return false;
     busy = true;
     try {
       await load();
-      if (!saved) return;
-      const used = new Set(saved.notes.map((n) => n.title));
-      let n = 1;
-      while (used.has(String(n))) n++;
-      const id = saved.next ?? Math.max(0, ...saved.notes.map((x) => x.id)) + 1;
-      const value: Saved = {
-        notes: [...saved.notes, { id, title: String(n), text }],
-        active: saved.active,
-        next: id + 1,
-      };
+      if (!saved) return false;
+      const value = change(saved);
       await invoke('scratchpad_save', { value });
       saved = value;
-      draft = '';
       warning = '';
+      return true;
     } catch (err) {
       warning = `Could not save: ${String(err)}`;
+      return false;
     } finally {
       busy = false;
     }
+  }
+
+  async function add() {
+    const text = draft.trim();
+    if (!text) return;
+    const id = editing;
+    const ok = await commit((s) => {
+      if (id !== null && s.notes.some((n) => n.id === id)) {
+        return { ...s, notes: s.notes.map((n) => (n.id === id ? { ...n, text } : n)) };
+      }
+      const used = new Set(s.notes.map((n) => n.title));
+      let n = 1;
+      while (used.has(String(n))) n++;
+      const next = s.next ?? Math.max(0, ...s.notes.map((x) => x.id)) + 1;
+      return { notes: [...s.notes, { id: next, title: String(n), text }], active: s.active, next: next + 1 };
+    });
+    if (ok) cancel();
+  }
+
+  function edit(n: Note) {
+    editing = n.id;
+    draft = n.text;
+  }
+
+  function cancel() {
+    editing = null;
+    draft = '';
+  }
+
+  async function remove(id: number) {
+    let gone: { note: Note; at: number } | null = null;
+    const ok = await commit((s) => {
+      const i = s.notes.findIndex((n) => n.id === id);
+      if (i < 0) return s;
+      gone = { note: s.notes[i], at: i };
+      let list = s.notes.filter((n) => n.id !== id);
+      let next = s.next;
+      if (!list.length) {
+        list = [{ id: next, title: '1', text: '' }];
+        next += 1;
+      }
+      const active = list.some((n) => n.id === s.active) ? s.active : list[Math.min(i, list.length - 1)].id;
+      return { notes: list, active, next };
+    });
+    if (!ok || !gone) return;
+    if (editing === id) cancel();
+    undo = gone;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => (undo = null), 6000);
+  }
+
+  async function restore() {
+    const back = undo;
+    if (!back) return;
+    undo = null;
+    clearTimeout(undoTimer);
+    await commit((s) => {
+      if (s.notes.some((n) => n.id === back.note.id)) return s;
+      // The placeholder an emptied pad was given makes way for the note.
+      const list = s.notes.length === 1 && !s.notes[0].text.trim() ? [] : s.notes.slice();
+      list.splice(Math.min(back.at, list.length), 0, back.note);
+      return { ...s, notes: list, active: list.some((n) => n.id === s.active) ? s.active : back.note.id };
+    });
   }
 
   function key(e: KeyboardEvent) {
@@ -77,21 +136,31 @@
 <div class="sp">
   <header>
     <h2>Scratchpad</h2>
-    <button class="add" disabled={!draft.trim()} onclick={add}>Add note</button>
+    <span class="acts">
+      {#if editing !== null}<button class="ghost" onclick={cancel}>Cancel</button>{/if}
+      <button class="add" disabled={!draft.trim()} onclick={add}>{editing !== null ? 'Save' : 'Add note'}</button>
+    </span>
   </header>
 
-  <textarea placeholder="Quick note (Ctrl+Enter to add)" aria-label="Quick note" bind:value={draft} onkeydown={key}></textarea>
+  <textarea placeholder={editing !== null ? 'Edit note (Ctrl+Enter to save)' : 'Quick note (Ctrl+Enter to add)'} aria-label="Quick note" bind:value={draft} onkeydown={key}></textarea>
 
   {#if warning}<p class="warn">{warning}</p>{/if}
 
-  {#if recent.length}
+  {#if notes.length}
     <ul>
-      {#each recent as n (n.id)}
-        <li in:fadeSlide={{ token: 'tabSwitch', y: 6 }} title={n.text}>{n.text.trim().split('\n')[0]}</li>
+      {#each notes as n (n.id)}
+        <li class:on={editing === n.id} in:fadeSlide={{ token: 'tabSwitch', y: 6 }}>
+          <button class="row" title={n.text} onclick={() => edit(n)}>{n.text.trim().split('\n')[0]}</button>
+          <button class="del" aria-label="Delete note" title="Delete" onclick={() => remove(n.id)}><Glyph name="close" size={13} /></button>
+        </li>
       {/each}
     </ul>
   {:else if !warning}
     <p class="empty">No notes yet</p>
+  {/if}
+
+  {#if undo}
+    <div class="undo" in:fadeSlide={{ token: 'tabSwitch', y: 6 }}>Note deleted <button onclick={restore}>Undo</button></div>
   {/if}
 </div>
 
@@ -151,15 +220,82 @@
     scrollbar-width: none;
   }
   li {
-    padding: 4px 8px;
-    overflow: hidden;
+    display: flex;
+    align-items: center;
     border-radius: 6px;
     font-size: 12.5px;
-    white-space: nowrap;
-    text-overflow: ellipsis;
   }
-  li:hover {
+  li:hover,
+  li.on {
     background: var(--i-hover);
+  }
+  .row {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .del {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--i-mut);
+    opacity: 0;
+    cursor: pointer;
+  }
+  li:hover .del,
+  .del:focus-visible {
+    opacity: 1;
+  }
+  .del:hover {
+    color: #ff6b5e;
+  }
+  .acts {
+    display: flex;
+    gap: 6px;
+  }
+  .ghost {
+    padding: 3px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--i-raised);
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .undo {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: var(--i-raised);
+    color: var(--i-mut);
+    font-size: 12px;
+  }
+  .undo button {
+    border: 0;
+    background: none;
+    color: var(--i-acc);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
   }
   .empty,
   .warn {
