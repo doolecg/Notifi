@@ -350,6 +350,8 @@ struct Activity {
     ms: u32,
     /// Held back by Do Not Disturb: kept in the list of past notifications, not shown.
     quiet: bool,
+    /// Where clicking it in the list of past notifications goes: `module:<id>` or `apps:<view>`.
+    target: Option<&'static str>,
 }
 
 /// Top-left and size (physical px) for a box `w` x `h` logical px at the top centre of a monitor.
@@ -717,6 +719,10 @@ fn system_dnd() -> bool {
 /// Every notification Notifi shows on the pill goes through here: a deep click, and nothing on screen
 /// when quiet. Do Not Disturb still sends it to the Nook's list of past notifications; Privacy mode drops it.
 fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'static str, text: String) {
+    activity_to(app, c, icon, color, text, None);
+}
+
+fn activity_to(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'static str, text: String, target: Option<&'static str>) {
     if c.privacy_mode {
         return;
     }
@@ -724,7 +730,7 @@ fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'stat
     if c.activity_sound && !held {
         click::notify();
     }
-    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms, quiet: held });
+    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms, quiet: held, target });
 }
 
 /// An alert from another feature. Shown on the Island while it is on screen, so no Windows toast is
@@ -742,7 +748,7 @@ pub fn deliver(app: &AppHandle, title: &str, body: &str, sound: bool) -> bool {
     if sound && !held {
         click::notify();
     }
-    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms, quiet: held });
+    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms, quiet: held, target: None });
     true
 }
 
@@ -761,9 +767,14 @@ pub fn pill_bottom(app: &AppHandle) -> Option<f64> {
 
 /// A short notice on the pill from another feature; nothing shows while the Island is off.
 pub fn notice(app: &AppHandle, text: String) {
+    notice_to(app, text, None);
+}
+
+/// A notice that belongs to a feature: clicking it in the list of past notifications opens `target` (`module:<id>` or `apps:<view>`).
+pub fn notice_to(app: &AppHandle, text: String, target: Option<&'static str>) {
     let c = config(app);
     if c.enabled {
-        activity(app, &c, "bell", AGENT_COLOR, text);
+        activity_to(app, &c, "bell", AGENT_COLOR, text, target);
     }
 }
 
@@ -1117,7 +1128,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
 
         let timer_done = state.inner.lock().unwrap().timer.tick(now);
         if timer_done && c.activity_timer {
-            activity(&app, &c, "timer", TIMER_COLOR, "Timer done".into());
+            activity_to(&app, &c, "timer", TIMER_COLOR, "Timer done".into(), Some("module:timer"));
         }
 
         if media_supported {
@@ -1137,7 +1148,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             let _ = app.emit_to(ISLAND, COVER_EVENT, url);
             if let Some(n) = np.as_ref().filter(|n| !first_track && c.activity_track && !n.title.is_empty()) {
                 let text = if n.artist.is_empty() { n.title.clone() } else { format!("{} \u{2013} {}", n.title, n.artist) };
-                activity(&app, &c, "music", MUSIC_COLOR, text);
+                activity_to(&app, &c, "music", MUSIC_COLOR, text, Some("module:nowPlaying"));
             }
             first_track = false;
         }
@@ -1148,7 +1159,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
                 if c.activity_agent {
                     for f in finished.into_iter().filter(|f| config::follows(&c.agents_follow, f.kind)) {
                         let what = f.project.unwrap_or_else(|| f.kind.name().to_string());
-                        activity(&app, &c, "agents", AGENT_COLOR, format!("Done \u{b7} {what} \u{b7} {}", clock(f.elapsed_ms)));
+                        activity_to(&app, &c, "agents", AGENT_COLOR, format!("Done \u{b7} {what} \u{b7} {}", clock(f.elapsed_ms)), Some("module:agents"));
                     }
                 }
                 next_agents = Instant::now() + if tracker.busy(now) { AGENTS_BUSY } else { AGENTS_IDLE };
@@ -1184,7 +1195,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
                     match limit.filter(|l| l.used_percent >= f64::from(c.limit_warning)) {
                         Some(l) => {
                             if warned.insert(key) && c.activity_agent {
-                                activity(&app, &c, "agents", AGENT_COLOR, format!("{} {label} limit at {}%", a.name, l.used_percent.round()));
+                                activity_to(&app, &c, "agents", AGENT_COLOR, format!("{} {label} limit at {}%", a.name, l.used_percent.round()), Some("module:agents"));
                             }
                         }
                         None => {
@@ -1207,7 +1218,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
                         budget.1 = level;
                         if c.activity_agent {
                             let text = if level >= 2 { format!("Daily budget used up (${spent:.2})") } else { format!("Daily budget nearly used (${spent:.2})") };
-                            activity(&app, &c, "agents", AGENT_COLOR, text);
+                            activity_to(&app, &c, "agents", AGENT_COLOR, text, Some("module:agents"));
                         }
                     }
                 }

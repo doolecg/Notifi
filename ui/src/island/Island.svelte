@@ -490,6 +490,15 @@
     openIsland();
   }
 
+  /** A notification that belongs to a feature: its module opens in the Island, its app opens outside it. */
+  function go(target: string) {
+    if (target.startsWith('module:')) openIsland(target.slice(7));
+    else if (target.startsWith('apps:')) {
+      invoke('apps_open', { view: target.slice(5) }).catch(() => {});
+      collapse();
+    }
+  }
+
   function command(cmd: string) {
     if (cmd === 'toggle') {
       if (open && !collapsing) collapse();
@@ -632,7 +641,7 @@
     <div class="nook" onwheel={nookWheel}>
       <section class="wide"><NowPlaying onSetDefault={setDefault} /></section>
       <section><Calendar /></section>
-      <section><Notifications /></section>
+      <section><Notifications onGo={go} /></section>
       <section><Scratchpad /></section>
     </div>
   {:else if module === 'nowPlaying'}
@@ -670,7 +679,7 @@
   {:else if module === 'camera'}
     <Camera />
   {:else if module === 'notifications'}
-    <Notifications />
+    <Notifications onGo={go} />
   {:else}
     <div class="later">
       <Glyph name={MODULE_ICONS[module] ?? 'utilities'} size={30} />

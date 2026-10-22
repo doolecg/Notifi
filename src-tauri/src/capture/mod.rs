@@ -652,7 +652,7 @@ fn deliver(app: &AppHandle, o: &Opts, img: RgbaImage, scale: f64) {
     } else if o.preview_secs != 0 {
         show_preview(app, o, &last);
     } else if copied {
-        notice(app, "Screenshot copied");
+        crate::island::notice_to(app, "Screenshot copied".into(), Some("module:captures"));
     }
 }
 

@@ -3,6 +3,8 @@
   import Glyph from '../Glyph.svelte';
   import { island } from '../state.svelte';
 
+  let { onGo }: { onGo: (target: string) => void } = $props();
+
   const ago = (ms: number) => {
     const s = Math.max(0, Math.round((island.now - ms) / 1000));
     if (s < 60) return 'just now';
@@ -10,6 +12,12 @@
     return `${Math.floor(s / 3600)} hr ago`;
   };
 </script>
+
+{#snippet row(n: (typeof island.history)[number])}
+  <span class="ic" style:color={n.color}><Glyph name={n.icon} size={15} /></span>
+  <span class="tx">{n.text}</span>
+  <span class="when">{ago(n.at)}</span>
+{/snippet}
 
 <div class="nt">
   <header>
@@ -21,11 +29,11 @@
   {:else}
     <div class="list">
       {#each island.history as n (n.id)}
-        <div class="item" in:fadeSlide={{ token: 'tabSwitch' }}>
-          <span class="ic" style:color={n.color}><Glyph name={n.icon} size={15} /></span>
-          <span class="tx">{n.text}</span>
-          <span class="when">{ago(n.at)}</span>
-        </div>
+        {#if n.target}
+          <button class="item go" title="Open" onclick={() => onGo(n.target!)} in:fadeSlide={{ token: 'tabSwitch' }}>{@render row(n)}</button>
+        {:else}
+          <div class="item" in:fadeSlide={{ token: 'tabSwitch' }}>{@render row(n)}</div>
+        {/if}
       {/each}
     </div>
   {/if}
@@ -85,6 +93,17 @@
     border-radius: 10px;
     background: color-mix(in srgb, var(--i-fg), transparent 94%);
     font-size: 13px;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    border: 0;
+  }
+  .item.go {
+    cursor: pointer;
+    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .item.go:hover {
+    background: color-mix(in srgb, var(--i-fg), transparent 88%);
   }
   .ic {
     display: grid;

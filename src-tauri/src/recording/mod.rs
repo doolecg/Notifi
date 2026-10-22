@@ -391,7 +391,7 @@ fn finish(app: &AppHandle, outcome: Outcome) {
         Outcome::Saved(path) => {
             emit(app, "saved", 0, 0, Some(&path), "");
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            crate::island::notice(app, format!("Recording saved \u{b7} {name}"));
+            crate::island::notice_to(app, format!("Recording saved \u{b7} {name}"), Some("module:captures"));
         }
         Outcome::Cancelled => hide(app, BAR),
         Outcome::Failed(msg) => {

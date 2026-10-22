@@ -11,7 +11,7 @@ class IslandLive {
   now = $state(Date.now());
   activity = $state<Activity | null>(null);
   /** Island events since the app started, newest first, for the Notifications module. */
-  history = $state<{ id: number; icon: string; color: string; text: string; at: number }[]>([]);
+  history = $state<{ id: number; icon: string; color: string; text: string; at: number; target: string | null }[]>([]);
   #historyId = 0;
   /** Questions and permission requests from AI agents waiting for an answer. */
   asks = $state<Ask[]>([]);
@@ -50,7 +50,7 @@ class IslandLive {
   #showActivity(a: Activity) {
     this.activity = a;
     // A new song isn't news to keep.
-    if (a.icon !== 'music') this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now() }, ...this.history].slice(0, 100);
+    if (a.icon !== 'music') this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now(), target: a.target ?? null }, ...this.history].slice(0, 100);
     if (a.quiet) return;
     clearTimeout(this.#activityTimer);
     this.#activityTimer = setTimeout(() => (this.activity = null), a.ms);

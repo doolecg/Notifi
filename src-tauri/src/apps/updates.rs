@@ -170,7 +170,7 @@ pub fn start(app: &AppHandle) {
                 let fresh = new_count(&seen, &now);
                 if fresh > 0 && super::flag(&app, "appUpdates", "alertOnFound", true) {
                     let text = if fresh == 1 { "1 app update found".to_string() } else { format!("{fresh} app updates found") };
-                    crate::island::notice(&app, text);
+                    crate::island::notice_to(&app, text, Some("apps:updates"));
                 }
                 seen = now;
                 last = Some(SystemTime::now());
