@@ -6,7 +6,7 @@
     { name: 'Notifications', why: 'Reads Windows notifications for dynamic cards on the Island, and shows alerts.', usedBy: 'Monitor, Island' },
     { name: 'Clipboard', why: 'Saves what you copy as unencrypted text and files on this PC.', usedBy: 'Clipboard history' },
     { name: 'App menus', why: 'Reads the menus of the app in front through Windows UI Automation.', usedBy: 'Command bar' },
-    { name: 'AI tool files', why: 'Reads the session logs your coding agents write, and the plan name from Claude Code's login file. Nothing from them is sent anywhere.', usedBy: 'Island' },
+    { name: 'AI tool files', why: 'Reads the session logs your coding agents write, and the plan name from the login file Claude Code keeps. Nothing from them is sent anywhere.', usedBy: 'Island' },
     { name: 'Deleting files', why: 'Removes files you choose, to the Recycle Bin where Windows allows. Always asks first.', usedBy: 'Apps, Disk space' },
     { name: 'Internet', why: 'Updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo), speed tests (LibreSpeed) and share links (your server).', usedBy: 'Updates, Island, Monitor, Utilities' },
     { name: 'Helper service', why: 'Admin rights for fans, sensors and monitor brightness.', usedBy: 'Monitor, Energy and display' },
