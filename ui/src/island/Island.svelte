@@ -426,6 +426,8 @@
   const dock = $derived(!!layout?.dock);
   /** At the bottom centre, growing up: the top Island upside down. */
   const rise = $derived(!!layout?.rise);
+  /** Rising, the open menu floats above the taskbar; resting, the pill sits in it. */
+  const lift = $derived(rise && expanded ? bar + FLY_GAP : 0);
   /** Docked, the bar keeps clear of the Start button. */
   function barCap(w: number) {
     return dock && layout?.barMax ? Math.min(w, layout.barMax) : w;
@@ -544,7 +546,7 @@
   {:else if module === 'agents'}
     <Agents />
   {:else if module === 'chat'}
-    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h, rise }} onAsk={() => setModule('ask')} />
+    <Chat closing={collapsing} pill={dock ? null : { openW, openH: flyH, restW: rest.w, restH: rest.h, rise, lift: rise ? bar + FLY_GAP : 0 }} onAsk={() => setModule('ask')} />
   {:else if module === 'ask'}
     <Ask onDone={collapse} onChat={cfg?.chatEnabled ? () => setModule('chat') : undefined} />
   {:else if module === 'mixer'}
@@ -612,7 +614,7 @@
       style:--fc={pixelColor}
       style:width={`${pillW}px`}
       style:height={`${pillH}px`}
-      style:bottom={layout.dock ? `${DOCK_GAP}px` : undefined}
+      style:bottom={layout.dock ? `${DOCK_GAP}px` : rise ? `${lift}px` : undefined}
       style:border-radius={layout.dock ? `0 ${radius}px ${radius}px 0` : rise ? (grown ? `${radius}px ${radius}px 0 0` : `${radius}px`) : `0 0 ${radius}px ${radius}px`}
       onpointerenter={enter}
       onpointerleave={leave}
@@ -811,11 +813,29 @@
   /* The top Island upside down: rests on the bottom edge and grows up. */
   .rise .pill {
     top: auto;
-    bottom: 0;
     box-shadow:
       0 -6px 18px rgb(0 0 0 / 0.35),
       inset 0 0 0 1px rgb(255 255 255 / 0.06),
       inset 0 1px 0 rgb(255 255 255 / 0.16);
+    transition:
+      width var(--m-pillRise-dur) var(--m-pillRise-ease),
+      height var(--m-pillRise-dur) var(--m-pillRise-ease),
+      bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
+      border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
+  }
+  .rise .pill.expanded {
+    transition:
+      width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
+      height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
+      bottom var(--m-pillDrop-dur) var(--m-pillDrop-ease),
+      border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
+  }
+  .rise .pill.collapsing {
+    transition:
+      width var(--m-pillRise-dur) var(--m-pillRise-ease),
+      height var(--m-pillRise-dur) var(--m-pillRise-ease),
+      bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
+      border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
   /* The menu grows up out of the bar on the same spring the top Island drops on, already at the bar's width. */
   .fly {

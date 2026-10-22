@@ -7,7 +7,7 @@
 
   type Box = { left: number; top: number; width: number; height: number };
   /** The open and resting sizes of the pill at the top centre (or bottom centre with `rise`); null when docked. */
-  type Pill = { openW: number; openH: number; restW: number; restH: number; rise: boolean } | null;
+  type Pill = { openW: number; openH: number; restW: number; restH: number; rise: boolean; lift: number } | null;
   let { closing, pill, onAsk }: { closing: boolean; pill: Pill; onAsk: () => void } = $props();
 
   let slot = $state<HTMLDivElement>();
@@ -26,7 +26,8 @@
   /** The chat moving with the pill: scaled about the pill's fixed edge (top, or bottom when it grows up) to the pill's size (w, h), on the pill's own spring. */
   function morph(r: Box, w: number, h: number, name: 'pillDrop' | 'pillRise') {
     if (!pill || reducedMotion()) return null;
-    const oy = pill.rise ? innerHeight - r.top : -r.top;
+    // The open pill's bottom edge, which floats above the taskbar when rising.
+    const oy = pill.rise ? innerHeight - pill.lift - r.top : -r.top;
     return { ox: innerWidth / 2 - r.left, oy, sx: w / pill.openW, sy: h / pill.openH, ms: duration(name), ease: motion[name].ease };
   }
 
@@ -69,7 +70,7 @@
       if (innerWidth >= pill.openW) {
         const k = content.offsetWidth / box.width;
         // The settled pill's top, plus the content's place in it (the strip above it), plus the area's place in the content.
-        const pillTop = pill.rise ? innerHeight - pill.openH : 0;
+        const pillTop = pill.rise ? innerHeight - pill.lift - pill.openH : 0;
         const end = { left: innerWidth / 2 - pill.openW / 2 + (r.left - box.left) * k, top: pillTop + pill.openH - content.offsetHeight + (r.top - box.top) * k, width: slot.offsetWidth, height: slot.offsetHeight };
         last = seen = key(end);
         place(end, morph(end, now.width, now.height, 'pillDrop'));

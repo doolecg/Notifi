@@ -484,7 +484,8 @@ fn frame(l: &Layout, bar: f64) -> (f64, f64) {
     let most = (l.base.0.max(l.tall.0).max(l.chat.0), l.base.1.max(l.tall.1).max(l.chat.1));
     let (w, h) = if l.dock { layout::dock_window_size(most) } else { layout::window_size(most) };
     // Docked, the menu opens above the taskbar and the pill sits in it.
-    let h = if l.dock { h - layout::DOCK_GAP + bar + layout::FLY_GAP } else { h };
+    // Rising from the bottom centre, it opens above the taskbar the same way.
+    let h = if l.dock { h - layout::DOCK_GAP + bar + layout::FLY_GAP } else if l.rise { h + bar + layout::FLY_GAP } else { h };
     ((w * 1.04).round(), h + 12.0)
 }
 
@@ -520,7 +521,9 @@ fn hit_rect(g: &Geo, open: bool, tall: bool, chat: bool, rest: (f64, f64)) -> (f
         return (0.0, top.max(0.0), (menu.0 + layout::EDGE + s).max(pill.2), fh - top.max(0.0));
     }
     let (w, h) = if open { menu } else { rest };
-    let y = if g.rise { fh - h - s } else { 0.0 };
+    // Resting it sits in the taskbar; open it floats above the taskbar.
+    let lift = if g.rise && open { g.bar + layout::FLY_GAP } else { 0.0 };
+    let y = if g.rise { fh - h - s - lift } else { 0.0 };
     ((fw - w) / 2.0 - s, y, w + 2.0 * s, h + s)
 }
 
@@ -533,7 +536,7 @@ fn place(app: &AppHandle) {
     let l = layout_for(&c, false, false, screen_of(Some(&mon)), start);
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
-    let bar = if l.dock { f64::from(bottom - top) / scale } else { 0.0 };
+    let bar = if l.dock || l.rise { f64::from(bottom - top) / scale } else { 0.0 };
     let (w, h) = frame(&l, bar);
     let rect = if l.dock {
         bottom_left(mon_rect(&mon), bottom, scale, w, h)
@@ -1601,8 +1604,10 @@ mod tests {
         assert_eq!(hit_rect(&g, false, false, false, (200.0, 32.0)), (784.0 - s, 0.0, 200.0 + 2.0 * s, 32.0 + s));
         assert_eq!(hit_rect(&g, true, false, true, (200.0, 32.0)), (214.0 - s, 0.0, 1340.0 + 2.0 * s, 1100.0 + s));
         // Upside down, the same shape sits on the bottom edge.
-        let up = Geo { rise: true, ..g };
+        let up = Geo { rise: true, bar: 40.0, ..g };
         assert_eq!(hit_rect(&up, false, false, false, (200.0, 32.0)), (784.0 - s, 1122.0 - 32.0 - s, 200.0 + 2.0 * s, 32.0 + s));
+        // Open, it floats above the taskbar and its gap.
+        assert_eq!(hit_rect(&up, true, false, true, (200.0, 32.0)).1, 1122.0 - 1100.0 - s - (40.0 + layout::FLY_GAP));
         let d = Geo { dock: true, bar: 48.0, ..g };
         let (x, y, w, h) = hit_rect(&d, false, false, false, (300.0, 48.0));
         assert_eq!((x, y + h, w), (0.0, 1122.0, 300.0 + s));
