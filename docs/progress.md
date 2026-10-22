@@ -178,3 +178,11 @@ Last saved: 2026-10-20 (after wave 4 and the UI test pass).
 - Settings > General shows the newest release notes as Markdown (escaped, http(s) links only).
 - About has the no-warranty and not-affiliated notices; README rewritten in the Graphify layout with Privacy, Credits and the Disclaimer.
 - Checked: 565 Rust tests (signature test vector, a round trip with the real key, URL pinning), the Markdown test, svelte-check; in the running build the startup check reported up to date against 0.2.0 and the notes rendered. Not checked: a real signed update end to end, which needs the next release published.
+
+## Next: AI Agents bar restyle (not started)
+Asked for: the bottom AI Agents bar in the same colours as the top Island, smooth animations, and maybe "the width of the actual bar the same width as the AI agents".
+Plan:
+- Colours from the Island instead of the taskbar tint: black #000 face, raised #1b1e1f, text #f2f4f3, muted #9aa1a3, teal #2cc9b2, amber #f0a24a, and the Island's thin white edge highlight. Session buttons tinted from black.
+- No more window resizes (same fix as the Island): one fixed bar window (widest bar plus room for the session buttons), clicks let through outside the bar and, while shown, the buttons. Bar width and the buttons rising animate in CSS on the Island's springs, buttons staggered.
+Open question for you (answer before building):
+- "Same width as the AI agents" means which? (a) when hovered, the bar and the row of session buttons above it line up at one width (recommended); (b) the bar keeps one fixed width, the same as the AI Agents panel in the top Island; (c) the animated dot bar only spans the status text, not the whole bar.
