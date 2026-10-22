@@ -1000,6 +1000,18 @@ fn pointer_in(app: &AppHandle, win: &tauri::Window, (rx, ry, rw, rh): (f64, f64,
     Some(x >= rx && y >= ry && x < rx + rw && y < ry + rh)
 }
 
+/// Whether a mouse button is down. Clicks outside Notifi's windows go to other apps, so this is how an outside click is seen; only on Windows.
+#[cfg(windows)]
+fn mouse_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON].iter().any(|k| unsafe { GetAsyncKeyState(i32::from(k.0)) } as u16 & 0x8000 != 0)
+}
+
+#[cfg(not(windows))]
+fn mouse_down() -> bool {
+    false
+}
+
 /// The Island and the bar keep one window size each, so they let clicks through unless the pointer is over
 /// what they show. Checked about 60 times a second; the pointer moving off a shape is still seen by the page first (HIT_SLACK).
 fn start_hit(app: &AppHandle) {
@@ -1009,8 +1021,13 @@ fn start_hit(app: &AppHandle) {
         .spawn(move || {
             let mut taking: [Option<bool>; 2] = [None, None];
             let mut bar_away = 0u32;
+            let mut was_down = false;
             loop {
                 std::thread::sleep(Duration::from_millis(16));
+                let down = mouse_down();
+                let pressed = down && !was_down;
+                was_down = down;
+                let mut over_any = false;
                 let state = app.state::<IslandState>();
                 let (visible, open, tall, chat, rest, geo, bar_visible, bar) = {
                     let i = state.inner.lock().unwrap();
@@ -1021,7 +1038,11 @@ fn start_hit(app: &AppHandle) {
                         taking[n] = None;
                         continue;
                     };
-                    let Some(over) = pointer_in(&app, &win, rect) else { continue };
+                    let Some(over) = pointer_in(&app, &win, rect) else {
+                        over_any = true;
+                        continue;
+                    };
+                    over_any |= over;
                     if taking[n] != Some(over) && win.set_ignore_cursor_events(!over).is_ok() {
                         taking[n] = Some(over);
                     }
@@ -1032,6 +1053,10 @@ fn start_hit(app: &AppHandle) {
                             let _ = app.emit_to(BAR, "agentsbar://leave", ());
                         }
                     }
+                }
+                // A click anywhere else while the menu is open puts it away.
+                if pressed && open && visible && !over_any {
+                    let _ = app.emit_to(ISLAND, COMMAND_EVENT, "close");
                 }
             }
         })
