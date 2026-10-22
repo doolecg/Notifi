@@ -85,13 +85,24 @@ pub const PAGES: &[Page] = &[
         ..PAGE
     },
     Page {
-        id: "features",
-        label: "Features",
-        icon: "utilities",
-        blurb: "Turn on only what you use. Features that are off don't run and use nothing.",
+        id: "installed",
+        label: "Installed",
+        icon: "check",
+        blurb: "What you have installed, as a list or a grid. Open one to change its settings.",
         feature: false,
         custom: true,
-        cards: &[card("Features", &[custom("grid", "Every feature", "A switch for each one.")])],
+        cards: &[card("Installed", &[custom("list", "Installed features", "Open one for its settings, or uninstall it.")])],
+        specs: &["app/features-hub.md"],
+        ..PAGE
+    },
+    Page {
+        id: "features",
+        label: "Install features",
+        icon: "arrowDown",
+        blurb: "Install only what you use. Features you have not installed do not run and use nothing.",
+        feature: false,
+        custom: true,
+        cards: &[card("Features", &[custom("grid", "Every feature", "Install or open each one.")])],
         specs: &["app/features-hub.md"],
         ..PAGE
     },

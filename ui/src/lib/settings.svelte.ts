@@ -17,6 +17,8 @@ export interface General {
   whatsNew: boolean;
   showTour: boolean;
   haptics: boolean;
+  /** The first-run chooser has been answered or skipped. */
+  setupDone: boolean;
 }
 
 export interface Panel {
@@ -106,6 +108,8 @@ export interface PanelTab {
 
 export interface Catalog {
   groups: Group[];
+  /** Features the first-run chooser ticks for "Recommended". */
+  recommended: string[];
   actions: { id: string; label: string; defaultAccel: string }[];
   reserved: { accel: string; label: string }[];
   panelTabs: PanelTab[];
@@ -177,6 +181,36 @@ class SettingsStore {
 
   page(id: string) {
     return this.pages().find((p) => p.id === id);
+  }
+
+  /** Feature pages by group, on this platform; the things that can be installed. */
+  featureGroups(): Group[] {
+    return (this.catalog?.groups ?? [])
+      .map((g) => ({ ...g, pages: g.pages.filter((p) => p.feature && onPlatform(p)) }))
+      .filter((g) => g.pages.length);
+  }
+
+  /** Pages that are always there: General, Tray and panel, Shortcuts and the like. */
+  corePages(): Page[] {
+    return this.pages().filter((p) => !p.feature && !['installed', 'features'].includes(p.id));
+  }
+
+  /** A feature is installed when it is on; installing and uninstalling keep its options. */
+  installed(id: string) {
+    return this.featureOn(id);
+  }
+
+  install(id: string) {
+    return this.setOption(id, 'enabled', true);
+  }
+
+  uninstall(id: string) {
+    return this.setOption(id, 'enabled', false);
+  }
+
+  /** The first-run chooser's answer: installs these features and never asks again. */
+  async finishSetup(install: string[]) {
+    this.settings = await invoke<Settings>('finish_setup', { install });
   }
 
   pauseShortcuts(paused: boolean) {

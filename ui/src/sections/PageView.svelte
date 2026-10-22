@@ -26,7 +26,7 @@
   const resettable = $derived(namespaces.filter((ns) => ['general', 'panel', 'island'].includes(ns) || ns in (store.settings?.features ?? {})));
   /** These pages are the tool itself, so there is no separate window to open. */
   const NO_OPEN = new Set(['uninstaller', 'cleaner', 'displays']);
-  const openable = $derived(page.tool && !NO_OPEN.has(page.id));
+  const openable = $derived(page.tool && !NO_OPEN.has(page.id) && pageOn);
 
   $effect(() => {
     void page.id;
@@ -72,9 +72,17 @@
     <p>{page.blurb}</p>
   </div>
   {#if page.feature}
-    <Switch checked={pageOn} label="{page.label} on or off" onchange={(on) => store.setOption(page.id, 'enabled', on)} />
+    {#if pageOn}
+      <button class="ghost" onclick={() => store.uninstall(page.id)}>Uninstall</button>
+    {:else}
+      <button class="install" onclick={() => store.install(page.id)}>Install</button>
+    {/if}
   {/if}
 </header>
+
+{#if page.feature && !pageOn}
+  <p class="notice">Not installed, so it is not running. Install it to use it. The options below are saved and stay if you uninstall it later.</p>
+{/if}
 
 {#if page.tabs.length}
   <div class="tabbar">
@@ -255,5 +263,28 @@
   }
   .reset:hover {
     color: var(--fg);
+  }
+  .install {
+    flex: none;
+    padding: 6px 16px;
+    border: 1px solid var(--acc);
+    border-radius: 8px;
+    background: var(--acc);
+    color: var(--acc-fg);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .install:hover {
+    filter: brightness(1.08);
+  }
+  .notice {
+    margin: 0 0 12px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: var(--acc-soft);
+    color: var(--fg);
+    font-size: 13px;
   }
 </style>

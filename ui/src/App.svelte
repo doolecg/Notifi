@@ -4,7 +4,9 @@
   import { applyCssVars, fadeSlide, setReducedMotion } from './lib/motion';
   import { store } from './lib/settings.svelte';
   import Icon from './panel/Icon.svelte';
+  import Breadcrumb from './sections/Breadcrumb.svelte';
   import PageView from './sections/PageView.svelte';
+  import Setup from './sections/Setup.svelte';
   import Sidebar from './sections/Sidebar.svelte';
 
   const LAST_KEY = 'notifi.settings.lastPage';
@@ -18,6 +20,14 @@
 
   const current = $derived(history[index] ?? 'general');
   const page = $derived(store.page(current) ?? store.page('general'));
+  /** Settings > Installed > Island for a feature you have, Settings > Install features > Island for one you don't. */
+  const crumbs = $derived.by(() => {
+    if (!page) return [];
+    const trail: { label: string; id?: string }[] = [{ label: 'Settings', id: 'general' }];
+    if (page.feature) trail.push(store.installed(page.id) ? { label: 'Installed', id: 'installed' } : { label: 'Install features', id: 'features' });
+    trail.push({ label: page.label });
+    return trail;
+  });
 
   $effect(() => {
     const theme = store.settings?.general.theme;
@@ -107,7 +117,7 @@
       <button class="nav" aria-label="Forward" title="Forward (Alt+Right)" disabled={index >= history.length - 1} onclick={() => step(1)}>
         <Icon name="chevron" size={16} />
       </button>
-      <span class="title">{page?.label ?? ''}</span>
+      <Breadcrumb {crumbs} {goto} />
     </div>
     <div class="scroll">
       {#if store.settings && store.catalog && page}
@@ -121,6 +131,10 @@
       {/if}
     </div>
   </main>
+
+  {#if store.settings && store.catalog && !store.settings.general.setupDone}
+    <Setup onDone={() => goto('installed')} />
+  {/if}
 
   {#if toast}
     <div class="toast" role="status" in:fadeSlide={{ token: 'toastIn', y: 12 }} out:fadeSlide={{ token: 'toastOut', y: 12 }}>{toast}</div>
@@ -170,11 +184,6 @@
   .flip {
     display: inline-flex;
     transform: scaleX(-1);
-  }
-  .title {
-    margin-left: 8px;
-    font-size: 13.5px;
-    font-weight: 600;
   }
   .scroll {
     flex: 1;

@@ -104,6 +104,10 @@ fn main() {
             tools::start(app.handle());
             ask::start(app.handle());
             updater::start(app.handle());
+            // The first launch opens settings on the chooser for which features to install.
+            if !current.general.setup_done {
+                window::open_settings(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -158,6 +162,7 @@ fn main() {
             settings::get_catalog,
             settings::set_section,
             settings::reset_section,
+            settings::finish_setup,
             settings::export_settings,
             settings::import_settings,
             keybinds::shortcut_status,

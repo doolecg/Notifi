@@ -9,7 +9,7 @@ One page per feature, found through a grouped sidebar with search, and back/forw
   - The selected row is filled with the accent colour, and the selection slides with `selectionMove`.
   - A feature that's switched off shows its row dimmed but still clickable.
 - **Content area** (right):
-  - A top bar with back and forward buttons and the current page title.
+  - A top bar with back and forward buttons and breadcrumbs for the current page (Settings > Installed > Island); each part is a link.
   - Below it, the page.
 - **Window frame:** native on Windows and Linux, so no fake Mac traffic lights. The minimum size is about 900 × 640.
 
@@ -17,7 +17,8 @@ One page per feature, found through a grouped sidebar with search, and back/forw
 - **Essentials:**
   - General: startup, theme, reduced motion, language, updates, reset everything.
   - Tray & panel: tray icon, which panel tabs show, tab order, left-click action.
-  - Features: an overview grid of every feature with a switch on each ("turn on only what you use"). Clicking a card opens its page.
+  - Installed: the features you have installed, as a list or a grid. Clicking one opens its page; each can be uninstalled.
+  - Install features: every feature, with search, a filter by kind, a list or grid view and an Install button on each ("install only what you use"). A feature that is not installed does not run, and is not in the sidebar.
   - Island.
   - Monitor: system monitor, tray readouts, alerts.
   - Shortcuts: every shortcut in one list, rebindable, with clashes shown.

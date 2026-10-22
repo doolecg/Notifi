@@ -1,0 +1,73 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Install features, a lighter Notifi: plan</title>
+<style>
+  body { max-width: 760px; margin: 0 auto; padding: 24px; font: 14px/1.55 "Segoe UI", system-ui, sans-serif; color: #e8eaea; background: #131516; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 28px 0 8px; }
+  p, li { color: #b4babc; margin: 0 0 6px; }
+  ol, ul { padding-left: 20px; }
+  .box { padding: 12px 16px; border-radius: 10px; background: #1b1e1f; }
+  li.done { color: #2cc9b2; }
+  li.done::marker { content: "\2713  "; }
+  li.todo::marker { content: "\25CB  "; }
+  b { color: #f2f4f3; }
+</style>
+</head>
+<body>
+<h1>Install features, a lighter Notifi</h1>
+
+<h2>Read this first</h2>
+<div class="box">
+<ol>
+  <li>A feature is either <b>installed</b> or not. Installed means it is on and has its settings page. One state, no separate switch.</li>
+  <li>Uninstalling keeps your choices for it, so installing it again puts them back.</li>
+  <li>Today Notifi opens about 21 web views at launch (about 1.7 GB in total) whether or not the features behind them are on. Phase 2 stops that.</li>
+  <li>Phase 1 is the new settings and the install flow. Phase 2 is the lightness. Both ship in this branch, one after the other.</li>
+</ol>
+</div>
+
+<h2>1. What changes in settings</h2>
+<ul>
+  <li><b>Sidebar:</b> Installed and Install features at the top, then the core pages (General, Tray and panel, Shortcuts, Permissions, About), then only the features you have installed, grouped by kind.</li>
+  <li><b>Install features page:</b> every feature, with search, a category filter, list or grid view, and an Install button on each.</li>
+  <li><b>Installed page:</b> the features you have, in list or grid view. Click one to open its settings; Uninstall sits on each.</li>
+  <li><b>Breadcrumbs</b> replace the page title: Installed &gt; Island, Install features &gt; Radial menu, Settings &gt; General. Each part is a link.</li>
+  <li><b>Feature page header:</b> the on/off switch becomes Install or Uninstall.</li>
+</ul>
+
+<h2>2. First run</h2>
+<ul>
+  <li>The first launch opens a chooser: Just the basics, Recommended, or Everything, then tick or untick anything. Install selected, or Skip.</li>
+  <li>People who already have features on are treated as set up, so they never see it.</li>
+</ul>
+
+<h2>3. Checklist</h2>
+<h3 style="font-size:13px;margin:10px 0 6px;color:#f2f4f3">Phase 1: settings and install flow</h3>
+<ul>
+  <li class="done">Rust: setup flag, recommended features, existing-user migration, tests</li>
+  <li class="done">Breadcrumb bar</li>
+  <li class="done">Installed page with list and grid view</li>
+  <li class="done">Install features page with search and categories</li>
+  <li class="done">Install and Uninstall on feature pages, search shows uninstalled features</li>
+  <li class="done">Sidebar shows core pages and installed features only</li>
+  <li class="done">First-run chooser</li>
+  <li class="todo">Check in the running app, commit</li>
+</ul>
+<h3 style="font-size:13px;margin:10px 0 6px;color:#f2f4f3">Phase 2: actually light</h3>
+<ul>
+  <li class="todo">Measure memory and web view count before</li>
+  <li class="todo">Build each feature's windows only when it is installed, and close them when it is removed</li>
+  <li class="todo">Measure after, with a clean install and with everything installed</li>
+</ul>
+
+<h2>4. Risks</h2>
+<ul>
+  <li>Some features share windows or a background thread; those need care so uninstalling one does not break another.</li>
+  <li>A feature's shortcut stops working when it is uninstalled. That is the point, but the shortcuts page should say why.</li>
+</ul>
+</body>
+</html>
+

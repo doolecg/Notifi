@@ -25,6 +25,17 @@
   const groups = $derived(
     (store.catalog?.groups ?? []).map((g) => ({ ...g, pages: g.pages.filter(onPlatform) })).filter((g) => g.pages.length),
   );
+  /** The group (and so the colour) each page belongs to. */
+  const groupOf = $derived(Object.fromEntries(groups.flatMap((g) => g.pages.map((p) => [p.id, g.id]))));
+  /** Installed and Install features sit above everything, then the core pages, then only what you have installed. */
+  const pinned = $derived(['installed', 'features'].map((id) => store.page(id)).filter((p): p is Page => !!p));
+  const installedCount = $derived(store.featureGroups().reduce((n, g) => n + g.pages.filter((p) => store.installed(p.id)).length, 0));
+  const sections = $derived([
+    { id: 'core', label: 'Core', pages: store.corePages() },
+    ...store.featureGroups()
+      .map((g) => ({ ...g, pages: g.pages.filter((p) => store.installed(p.id)) }))
+      .filter((g) => g.pages.length),
+  ]);
 
   const matches = $derived.by((): Match[] => {
     const q = query.trim().toLowerCase();
@@ -106,7 +117,7 @@
           <PageIcon page={m.page} group={m.group} size={22} />
           <span class="text">
             <span>{m.page.label}</span>
-            {#if m.option}<small>{m.option.label}</small>{/if}
+            {#if m.option}<small>{m.option.label}</small>{:else if m.page.feature && !store.installed(m.page.id)}<small>Not installed</small>{/if}
           </span>
         </button>
       {:else}
@@ -119,21 +130,22 @@
         style:height="{indicator.current.h}px"
         style:opacity={indicator.current.show}
       ></span>
-      {#each groups as g (g.id)}
+      {#each pinned as page (page.id)}
+        <button class="item pinned" class:active={active === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
+          <PageIcon {page} group="essentials" size={22} />
+          <span class="text"><span>{page.label}</span></span>
+          {#if page.id === 'installed'}<span class="badge">{installedCount}</span>{/if}
+        </button>
+      {/each}
+      {#each sections as g (g.id)}
         <button class="group" aria-expanded={!collapsed[g.id]} onclick={() => toggle(g.id)}>
           <span class="chev" class:open={!collapsed[g.id]}><Icon name="chevron" size={11} /></span>
           {g.label}
         </button>
         {#if !collapsed[g.id]}
           {#each g.pages as page (page.id)}
-            <button
-              class="item"
-              class:active={active === page.id}
-              class:dim={page.feature && !store.featureOn(page.id)}
-              bind:this={rows[page.id]}
-              onclick={() => goto(page.id)}
-            >
-              <PageIcon {page} group={g.id} size={22} />
+            <button class="item" class:active={active === page.id} bind:this={rows[page.id]} onclick={() => goto(page.id)}>
+              <PageIcon {page} group={groupOf[page.id] ?? g.id} size={22} />
               <span class="text"><span>{page.label}</span></span>
             </button>
           {/each}
@@ -239,12 +251,21 @@
     color: var(--acc-fg);
     font-weight: 600;
   }
-  .item.dim:not(.active) .text {
-    opacity: 0.55;
+  .item.pinned {
+    margin-bottom: 1px;
   }
-  .item.dim:not(.active) :global(.glyph) {
-    filter: grayscale(0.7);
-    opacity: 0.6;
+  .badge {
+    margin-left: auto;
+    padding: 0 7px;
+    border-radius: 99px;
+    background: var(--hover);
+    color: var(--mut);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .item.active .badge {
+    background: rgb(255 255 255 / 0.22);
+    color: var(--acc-fg);
   }
   .text {
     display: flex;

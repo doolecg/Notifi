@@ -179,6 +179,9 @@ pub const GROUPS: &[Group] = &[
 /// Sections stored as typed structs rather than in the `features` map.
 pub const TYPED: &[&str] = &["general", "panel", "island"];
 
+/// What the first-run chooser ticks for "Recommended": a handful of everyday features, not the whole list.
+pub const RECOMMENDED: &[&str] = &["island", "clipboardHistory", "screenshot", "volumeMixer", "commandBar", "scratchpad", "windowLayout"];
+
 pub fn pages() -> impl Iterator<Item = &'static Page> {
     GROUPS.iter().flat_map(|g| g.pages.iter())
 }
@@ -297,6 +300,13 @@ mod tests {
         for f in fields() {
             assert!(seen.insert((f.namespace, f.key)), "duplicate option {}.{}", f.namespace, f.key);
             assert!(!pages_seen.contains(f.namespace) || page(f.namespace).is_some());
+        }
+    }
+
+    #[test]
+    fn recommended_features_exist() {
+        for id in RECOMMENDED {
+            assert!(page(id).is_some_and(|p| p.feature), "{id} is not a feature page");
         }
     }
 

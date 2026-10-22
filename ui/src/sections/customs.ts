@@ -2,7 +2,7 @@ import type { Component } from 'svelte';
 import type { Card, Opt, Page, Values } from '../lib/settings.svelte';
 import About from './custom/About.svelte';
 import Backup from './custom/Backup.svelte';
-import FeaturesGrid from './custom/FeaturesGrid.svelte';
+import FeatureBrowser from './custom/FeatureBrowser.svelte';
 import PanelTabs from './custom/PanelTabs.svelte';
 import Permissions from './custom/Permissions.svelte';
 import ResetAll from './custom/ResetAll.svelte';
@@ -29,7 +29,8 @@ const BUILT_IN: Record<string, Component<any>> = {
   'general.importBackup': Backup,
   'general.resetAll': ResetAll,
   'panel.tabs': PanelTabs,
-  'features.grid': FeaturesGrid,
+  'features.grid': FeatureBrowser,
+  'installed.list': FeatureBrowser,
   'shortcuts.all': Shortcuts,
   'permissions.list': Permissions,
   'about.info': About,

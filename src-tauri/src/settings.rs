@@ -92,6 +92,8 @@ pub struct General {
     pub whats_new: bool,
     pub show_tour: bool,
     pub haptics: bool,
+    /// The first-run chooser (which features to install) has been answered or skipped.
+    pub setup_done: bool,
 }
 
 impl Default for General {
@@ -110,6 +112,7 @@ impl Default for General {
             whats_new: true,
             show_tour: true,
             haptics: false,
+            setup_done: false,
         }
     }
 }
@@ -149,6 +152,28 @@ impl Settings {
     /// The stored value of `namespace.key` in the features map.
     pub fn option(&self, namespace: &str, key: &str) -> Option<&Value> {
         self.features.get(namespace)?.get(key)
+    }
+
+    /// Whether anything is installed (a feature that is on, or the Island).
+    pub fn any_installed(&self) -> bool {
+        self.island.enabled || self.features.values().any(|m| m.get("enabled") == Some(&Value::Bool(true)))
+    }
+
+    /// Someone who already has features on from before the install chooser existed is set up.
+    fn mark_existing_setup(&mut self) {
+        if !self.general.setup_done && self.any_installed() {
+            self.general.setup_done = true;
+        }
+    }
+
+    /// Installs these features (only real, installable ones) and marks the first-run chooser as answered.
+    fn finish_setup(&mut self, install: &[String]) -> Result<(), String> {
+        for id in install {
+            let page = catalog::page(id).filter(|p| p.feature).ok_or_else(|| format!("`{id}` is not a feature"))?;
+            self.set_section(page.id, serde_json::json!({ "enabled": true }))?;
+        }
+        self.general.setup_done = true;
+        Ok(())
     }
 
     /// Fills in missing keys from the defaults, drops unknown ones and fixes values that don't fit.
@@ -226,12 +251,25 @@ impl Settings {
         let defaults = Self::default();
         match section {
             "all" => *self = defaults,
-            "general" => self.general = defaults.general,
+            // Resetting a page's options never uninstalls it, and never brings the first-run chooser back.
+            "general" => {
+                let done = self.general.setup_done;
+                self.general = defaults.general;
+                self.general.setup_done = done;
+            }
             "panel" => self.panel = defaults.panel,
-            "island" => self.island = defaults.island,
+            "island" => {
+                let installed = self.island.enabled;
+                self.island = defaults.island;
+                self.island.enabled = installed;
+            }
             "shortcuts" => self.shortcuts = defaults.shortcuts,
             ns if defaults.features.contains_key(ns) => {
+                let installed = self.features.get(ns).and_then(|m| m.get("enabled")).cloned();
                 self.features.insert(ns.to_string(), defaults.features[ns].clone());
+                if let (Some(v), Some(map)) = (installed, self.features.get_mut(ns)) {
+                    map.insert("enabled".into(), v);
+                }
             }
             _ => return Err(format!("unknown settings section `{section}`")),
         }
@@ -326,12 +364,13 @@ pub struct Store {
 
 impl Store {
     pub fn load(path: PathBuf) -> Self {
-        let settings = fs::read_to_string(&path)
+        let mut settings = fs::read_to_string(&path)
             .ok()
             .and_then(|text| serde_json::from_str::<Value>(&text).ok())
             .map(from_saved)
             .unwrap_or_default()
             .normalized();
+        settings.mark_existing_setup();
         Self { path, settings: Mutex::new(settings) }
     }
 
@@ -367,6 +406,8 @@ impl Store {
 #[serde(rename_all = "camelCase")]
 pub struct Catalog {
     groups: &'static [catalog::Group],
+    /// Features the first-run chooser ticks for "Recommended".
+    recommended: &'static [&'static str],
     actions: &'static [keybinds::Action],
     reserved: &'static [keybinds::Reserved],
     panel_tabs: &'static [PanelTab],
@@ -382,6 +423,7 @@ pub fn get_settings(store: State<Store>) -> Settings {
 pub fn get_catalog() -> Catalog {
     Catalog {
         groups: catalog::GROUPS,
+        recommended: catalog::RECOMMENDED,
         actions: keybinds::ACTIONS,
         reserved: keybinds::RESERVED,
         panel_tabs: PANEL_TABS,
@@ -392,6 +434,12 @@ pub fn get_catalog() -> Catalog {
 #[tauri::command]
 pub fn set_section(app: AppHandle, store: State<Store>, section: String, value: Value) -> Result<Settings, String> {
     store.update(&app, |s| s.set_section(&section, value))
+}
+
+/// The first-run chooser's answer: installs the ticked features and never asks again.
+#[tauri::command]
+pub fn finish_setup(app: AppHandle, store: State<Store>, install: Vec<String>) -> Result<Settings, String> {
+    store.update(&app, |s| s.finish_setup(&install))
 }
 
 #[tauri::command]
@@ -447,6 +495,45 @@ mod tests {
     }
 
     #[test]
+    fn setup_chooser_installs_what_was_ticked_once() {
+        let mut s = Settings::default();
+        assert!(!s.any_installed() && !s.general.setup_done);
+        s.finish_setup(&["island".into(), "clipboardHistory".into()]).unwrap();
+        assert!(s.general.setup_done && s.island.enabled && s.enabled("clipboardHistory") && !s.enabled("screenshot"));
+        // Only real features can be installed, and a bad id installs nothing.
+        let mut t = Settings::default();
+        assert!(t.finish_setup(&["general".into()]).is_err());
+        assert!(t.finish_setup(&["nope".into()]).is_err());
+        assert!(!t.general.setup_done);
+    }
+
+    #[test]
+    fn people_with_features_already_on_skip_the_chooser() {
+        let mut s = Settings::default();
+        s.mark_existing_setup();
+        assert!(!s.general.setup_done);
+        s.features.get_mut("monitor").unwrap().insert("enabled".into(), json!(true));
+        s.mark_existing_setup();
+        assert!(s.general.setup_done);
+        let mut only_island = Settings::default();
+        only_island.island.enabled = true;
+        only_island.mark_existing_setup();
+        assert!(only_island.general.setup_done);
+    }
+
+    #[test]
+    fn resetting_a_page_keeps_it_installed() {
+        let mut s = Settings::default();
+        s.finish_setup(&["island".into(), "screenshot".into()]).unwrap();
+        s.reset_section("screenshot").unwrap();
+        s.reset_section("island").unwrap();
+        s.reset_section("general").unwrap();
+        assert!(s.enabled("screenshot") && s.island.enabled && s.general.setup_done);
+        s.reset_section("all").unwrap();
+        assert!(!s.any_installed() && !s.general.setup_done);
+    }
+
+    #[test]
     fn panel_section_round_trips() {
         let mut s = Settings::default();
         s.set_section("panel", json!({ "lastTab": "system", "keepAwakeMinutes": 0 })).unwrap();
@@ -493,7 +580,10 @@ mod tests {
         s.set_section("appSwitcher", json!({ "appearDelay": 99999 })).unwrap();
         assert_eq!(s.option("appSwitcher", "appearDelay"), Some(&json!(1000)));
         s.reset_section("appSwitcher").unwrap();
-        assert!(!s.enabled("appSwitcher"));
+        // The options are back to their defaults but the feature stays installed.
+        assert!(s.enabled("appSwitcher"));
+        assert_ne!(s.option("appSwitcher", "layout"), Some(&json!("icons")));
+        assert_ne!(s.option("appSwitcher", "appearDelay"), Some(&json!(1000)));
     }
 
     #[test]
@@ -526,7 +616,8 @@ mod tests {
         assert_eq!(s.island.size, "compact");
         assert_eq!(s.island.hover_delay_ms, 1500);
         s.reset_section("island").unwrap();
-        assert_eq!(s.island, IslandConfig::default());
+        // Back to the defaults, still installed.
+        assert_eq!(s.island, IslandConfig { enabled: true, ..IslandConfig::default() });
         let legacy = from_saved(json!({ "features": { "everyday": { "topPill": true } } })).normalized();
         assert!(legacy.island.enabled);
     }
