@@ -315,11 +315,9 @@
     clearTimeout(collapseTimer);
   }
 
-  /** What the open Island shows first: the thing that is live, or the grid when nothing is going on. */
+  /** What the open Island shows first: a waiting question, otherwise the Nook. */
   function autoModule() {
-    if (island.asks.length) return 'ask';
-    const lead = live[0]?.id;
-    return lead === 'agents' ? 'agents' : lead === 'timer' ? 'timer' : lead === 'music' ? 'nowPlaying' : dock ? 'nook' : 'grid';
+    return island.asks.length ? 'ask' : 'nook';
   }
 
   async function openIsland(id?: string) {

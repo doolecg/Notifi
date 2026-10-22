@@ -674,6 +674,8 @@ fn set_visible(app: &AppHandle, on: bool) {
         let _ = win.show();
     } else {
         let _ = win.set_focusable(false);
+        // The page keeps its menu open while hidden, so it would come back open but cut to the pill and out of reach.
+        let _ = app.emit_to(ISLAND, COMMAND_EVENT, "close");
         let _ = win.hide();
     }
 }
