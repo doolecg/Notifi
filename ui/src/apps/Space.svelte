@@ -543,7 +543,8 @@
   .head small,
   .lbl small {
     margin-left: 4px;
-    color: var(--mut);
+    color: color-mix(in srgb, var(--fg) 92%, transparent);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
     font-weight: 400;
   }
   .lbl {
