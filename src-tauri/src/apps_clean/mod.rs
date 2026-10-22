@@ -184,14 +184,21 @@ pub async fn cleaner_scan(app: AppHandle) -> Result<Vec<CategoryResult>, String>
     .await
 }
 
+fn random_name() -> Result<String, String> {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 16];
+    ring::rand::SystemRandom::new().fill(&mut bytes).map_err(|_| "The system's random source is not available.".to_string())?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// The deeper scan: relaunches this program with administrator rights to size system folders.
 #[tauri::command]
 pub async fn cleaner_scan_elevated(app: AppHandle) -> Result<(), String> {
     blocking(&app, |app| {
         let dir = data_dir(&app);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let out = dir.join("system-scan.json");
-        let _ = std::fs::remove_file(&out);
+        // A name nobody can guess, and the helper only creates it new: while the administrator prompt is open, a link left at a fixed name could point its write somewhere else.
+        let out = dir.join(format!("system-scan-{}.json", random_name()?));
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         if cfg!(windows) {
             let q = |s: &str| s.replace('\'', "''");
@@ -200,8 +207,9 @@ pub async fn cleaner_scan_elevated(app: AppHandle) -> Result<(), String> {
         } else {
             fsx::output("pkexec", &[&exe.to_string_lossy(), ELEVATED_FLAG, &out.to_string_lossy()])?;
         }
-        let text = std::fs::read_to_string(&out).map_err(|_| "The deeper scan did not finish. It needs administrator approval.".to_string())?;
-        let map: HashMap<String, Vec<CleanItem>> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        let text = std::fs::read_to_string(&out).map_err(|_| "The deeper scan did not finish. It needs administrator approval.".to_string());
+        let _ = std::fs::remove_file(&out);
+        let map: HashMap<String, Vec<CleanItem>> = serde_json::from_str(&text?).map_err(|e| e.to_string())?;
         *app.state::<AppsCleanState>().system.lock().unwrap() = map;
         Ok(())
     })
@@ -489,7 +497,11 @@ pub fn elevated_main() -> bool {
     if let Some(out) = args.get(at + 1) {
         let map = cleaner::scan_system(&AtomicBool::new(false));
         if let Ok(text) = serde_json::to_string(&map) {
-            let _ = std::fs::write(out.trim_matches('"'), text);
+            use std::io::Write;
+            // Only a file that does not exist yet: never into something already placed there.
+            if let Ok(mut file) = std::fs::OpenOptions::new().write(true).create_new(true).open(out.trim_matches('"')) {
+                let _ = file.write_all(text.as_bytes());
+            }
         }
     }
     true

@@ -362,6 +362,11 @@ fn image_job(r: &Run, src: &Path) -> Result<Done, Failure> {
         .with_guessed_format()?
         .into_decoder()
         .map_err(|_| Failure::Error("This image type isn't supported.".into()))?;
+    // A small file can claim a huge picture; refuse it before anything that size is allocated.
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(30_000);
+    limits.max_image_height = Some(30_000);
+    decoder.set_limits(limits)?;
     let orientation = decoder.orientation()?;
     let mut img = DynamicImage::from_decoder(decoder)?;
     // Re-encoding drops the rotation tag, so turn the pixels unless the tag is being kept.
@@ -420,6 +425,8 @@ fn flatten(img: &DynamicImage) -> image::RgbImage {
 
 fn ffmpeg() -> Command {
     let mut cmd = Command::new("ffmpeg");
+    // A file that is really a playlist or a link must not make ffmpeg open the network.
+    cmd.args(["-protocol_whitelist", "file"]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

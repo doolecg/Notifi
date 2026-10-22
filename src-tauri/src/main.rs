@@ -73,6 +73,13 @@ fn main() {
         .manage(capture::CaptureState::default())
         .manage(media_tools::MediaState::default())
         .setup(|app| {
+            // Settings (with the share token), the hook token, clipboard history and the capture list are for this user only.
+            #[cfg(unix)]
+            for dir in [app.path().app_config_dir(), app.path().app_data_dir()].into_iter().flatten() {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+            }
             let path = app.path().app_config_dir()?.join("settings.json");
             let store = settings::Store::load(path);
             let current = store.get();
