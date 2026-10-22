@@ -13,6 +13,7 @@ pub mod idle;
 pub mod layout;
 pub mod lock;
 pub mod opencode;
+pub mod t3;
 pub mod lyrics;
 pub mod terminals;
 pub mod timer;
@@ -54,7 +55,7 @@ const COMMAND_EVENT: &str = "island://command";
 
 const TICK: Duration = Duration::from_millis(1000);
 const AGENTS_BUSY: Duration = Duration::from_secs(2);
-const AGENTS_IDLE: Duration = Duration::from_secs(15);
+const AGENTS_IDLE: Duration = Duration::from_secs(4);
 const BUDGET_EVERY: Duration = Duration::from_secs(30);
 
 /// Minutes the local clock is ahead of UTC.
@@ -322,14 +323,14 @@ pub struct Snapshot {
     weather: Option<weather::Weather>,
     /// Why there is no weather (an unknown city, no network).
     weather_error: Option<String>,
-    /// An AI app (T3 Code, a chat app, a terminal showing an agent) is in front, so the taskbar shows its buttons.
+    /// An AI app (a chat app, a terminal showing an agent) is in front, so the taskbar shows its buttons.
     ai_app: bool,
 }
 
 /// A window that takes typed prompts: an AI chat app, or a terminal whose title names an agent.
 /// Editors and browsers don't count: typing a command there would land in a file or a page.
 fn ai_window(app_id: Option<&str>, title: &str) -> bool {
-    const APPS: &[&str] = &["t3 code", "t3code", "claude", "chatgpt", "codex"];
+    const APPS: &[&str] = &["claude", "chatgpt", "codex"];
     const TERMINALS: &[&str] = &["windowsterminal", "wt", "powershell", "pwsh", "cmd", "conhost", "alacritty", "wezterm", "mintty", "kitty", "gnome-terminal", "konsole"];
     let app = app_id.unwrap_or("").to_ascii_lowercase();
     let app = app.trim_end_matches(".exe");
@@ -1069,6 +1070,9 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
     let mut terminal_counter = terminals::Counter::new();
     let mut agent_snaps: Vec<AgentSnap> = Vec::new();
     let mut chips: Vec<agents::SessionChip> = Vec::new();
+    // T3 Code's chats from its own database, and which of them were going at the last read.
+    let mut t3_chats: Vec<agents::SessionChip> = Vec::new();
+    let mut t3_going: std::collections::HashSet<String> = Default::default();
     let mut next_agents = Instant::now();
     let mut next_fullscreen = Instant::now();
     let mut track: Option<String> = None;
@@ -1134,27 +1138,32 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
 
         if let Some(home) = home.as_deref() {
             if Instant::now() >= next_agents {
-                let finished = tracker.poll(home, now, u64::from(c.agent_finish_minutes) * 60_000);
+                let notice_ms = u64::from(c.agent_finish_minutes) * 60_000;
+                let finished = tracker.poll(home, now, notice_ms);
+                // T3 Code reports its own chats, whatever agent they run; their logs are left out so nothing counts twice.
+                tracker.leave_out(home, |id| crate::chat::t3_chat_of(id).is_some());
+                t3_chats = t3::chats(now);
+                t3_chats.retain(|s| config::follows(&c.agents_follow, s.agent));
                 if c.activity_agent {
                     for f in finished.into_iter().filter(|f| config::follows(&c.agents_follow, f.kind)) {
                         let what = f.project.unwrap_or_else(|| f.kind.name().to_string());
                         activity_to(&app, &c, "agents", AGENT_COLOR, format!("Done \u{b7} {what} \u{b7} {}", clock(f.elapsed_ms)), Some("module:agents"));
                     }
+                    for chat in t3_chats.iter().filter(|s| s.status == "done" && t3_going.contains(&s.id) && s.elapsed_ms >= notice_ms) {
+                        let what = chat.project.clone().or_else(|| chat.title.clone()).unwrap_or_else(|| chat.agent.name().to_string());
+                        activity_to(&app, &c, "agents", AGENT_COLOR, format!("Done \u{b7} {what} \u{b7} {}", clock(chat.elapsed_ms)), Some("module:agents"));
+                    }
                 }
+                t3_going = t3_chats.iter().filter(|s| s.status != "done").map(|s| s.id.clone()).collect();
                 next_agents = Instant::now() + if tracker.busy(now) { AGENTS_BUSY } else { AGENTS_IDLE };
             }
             agent_snaps = tracker.snapshot(home, now);
             agent_snaps.retain(|a| config::follows(&c.agents_follow, a.id));
             chips = tracker.chips(home, now);
             chips.retain(|s| config::follows(&c.agents_follow, s.agent));
-            // A Claude session that T3 Code runs shows under its chat's title and opens that chat.
-            for chip in chips.iter_mut().filter(|s| s.agent == agents::Kind::Claude) {
-                let stem = std::path::Path::new(&chip.id).file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
-                if let Some(t3) = crate::chat::t3_chat_of(&stem) {
-                    chip.title = Some(t3.title);
-                    chip.thread = Some(t3.thread);
-                }
-            }
+            chips.extend(t3_chats.iter().cloned());
+            agents::sort_chips(&mut chips);
+            t3::apply(&mut agent_snaps, &t3_chats, now);
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
@@ -1396,6 +1405,14 @@ pub fn island_goto_agent(app: AppHandle, agent: String, project: Option<String>)
     p.windows().focus(id).is_ok()
 }
 
+/// Brings forward a window of the program whose name starts with `prefix` (T3 Code, a chat app). True when one was found.
+pub fn focus_program(app: &AppHandle, prefix: &str) -> bool {
+    let p = app.state::<Platform>().inner().clone();
+    let Ok(windows) = p.windows().list() else { return false };
+    let found = windows.iter().find(|w| w.app_id.as_deref().is_some_and(|a| a.to_ascii_lowercase().starts_with(prefix)));
+    found.is_some_and(|w| p.windows().focus(w.id).is_ok())
+}
+
 fn pick_agent_window(windows: &[notifi_platform::WindowInfo], agent: &str, project: Option<&str>) -> Option<notifi_platform::WindowId> {
     const HOSTS: &[&str] = &["windowsterminal", "wt", "powershell", "pwsh", "cmd", "conhost", "alacritty", "wezterm", "mintty", "code", "cursor", "idea64", "pycharm64", "webstorm64", "rider64", "gnome-terminal", "konsole", "kitty"];
     let agent = agent.to_ascii_lowercase();
@@ -1410,7 +1427,8 @@ fn pick_agent_window(windows: &[notifi_platform::WindowInfo], agent: &str, proje
         }
         let host = HOSTS.contains(&app);
         let by_project = project.as_deref().is_some_and(|p| title.contains(p));
-        let by_agent = title.contains(&agent) || (agent == "claude" && title.contains('\u{2733}'));
+        // A chat app (Claude, Codex) is a window of its own: its program name says which agent it is.
+        let by_agent = title.contains(&agent) || app.starts_with(&agent) || (agent == "claude" && title.contains('\u{2733}'));
         // Needs a real match; being a terminal alone is not enough.
         if !(by_project || by_agent) {
             continue;
@@ -1639,7 +1657,8 @@ mod tests {
 
     #[test]
     fn ai_windows() {
-        assert!(ai_window(Some("T3 Code (Nightly).exe"), "T3 Code (Nightly)"));
+        // T3 Code has its own composer, so it gets the normal agents bar.
+        assert!(!ai_window(Some("T3 Code (Nightly).exe"), "T3 Code (Nightly)"));
         assert!(ai_window(Some("claude.exe"), "Claude"));
         assert!(ai_window(Some("WindowsTerminal.exe"), "\u{2733} Fix the build"));
         assert!(ai_window(Some("pwsh.exe"), "codex"));

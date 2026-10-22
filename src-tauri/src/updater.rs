@@ -500,7 +500,7 @@ pub fn open_release_notes() -> Result<(), String> {
     open_url(&format!("https://github.com/{REPO}/releases/latest"))
 }
 
-fn open_url(url: &str) -> Result<(), String> {
+pub(crate) fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     let mut command = {
         let mut c = std::process::Command::new("cmd");

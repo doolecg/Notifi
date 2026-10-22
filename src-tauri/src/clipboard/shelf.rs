@@ -18,7 +18,7 @@ use std::{
 
 use notifi_platform::{MouseButton, Observed, Watch};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, DragDropEvent, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewEvent, WebviewUrl, WebviewWindowBuilder};
 
 use super::{base64, encode, ignored, opt_bool, opt_list, opt_str, settings, sys};
 use crate::settings::Settings;
@@ -126,14 +126,18 @@ pub fn build_window(app: &AppHandle) -> tauri::Result<()> {
         .skip_taskbar(true)
         .always_on_top(true)
         .resizable(false)
-        .visible(false)
+        .focusable(false)
         .focused(false)
+        // WebView2 only takes file drops on a window that was visible when it was made, so it starts off screen and is hidden at once.
+        .position(-20000.0, -20000.0)
+        .visible(true)
         .build()?;
+    let _ = window.hide();
     #[cfg(windows)]
     crate::switcher::prepare_window(&window);
     let handle = app.clone();
-    window.on_window_event(move |event| {
-        let WindowEvent::DragDrop(drop) = event else { return };
+    window.on_webview_event(move |event| {
+        let WebviewEvent::DragDrop(drop) = event else { return };
         match drop {
             DragDropEvent::Enter { .. } => {
                 let _ = handle.emit_to(WINDOW, HOVER_EVENT, true);

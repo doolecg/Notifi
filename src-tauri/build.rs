@@ -126,6 +126,7 @@ const COMMANDS: &[&str] = &[
     "chat_show",
     "chat_hide",
     "chat_open_thread",
+    "t3_open_thread",
     "chat_dictate",
     "island_media",
     "island_lyrics",

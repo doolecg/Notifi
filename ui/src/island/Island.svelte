@@ -470,7 +470,12 @@
   async function gotoSession() {
     const l = selLive;
     if (!l || l.id !== 'agents' || (l.status !== 'done' && l.status !== 'needs') || infoChosen) return false;
-    return invoke<boolean>('island_goto_agent', { agent: l.icon, project: l.project }).catch(() => false);
+    const chip = snap?.sessions.find((c) => c.status === l.status);
+    if (chip?.thread) {
+      invoke(cfg?.chatEnabled ? 'chat_open_thread' : 't3_open_thread', { thread: chip.thread }).catch(() => {});
+      return true;
+    }
+    return invoke<boolean>('island_goto_agent', { agent: chip?.agent ?? l.icon, project: chip?.project ?? l.project }).catch(() => false);
   }
 
   async function clickPill(e: MouseEvent) {

@@ -80,9 +80,9 @@
     leaveTimer = setTimeout(() => (hover = false), 250);
   }
   async function openChip(c: SessionChip) {
-    // A T3 Code chat opens in the Island's own chat.
-    if (c.thread && cfg?.chatEnabled) {
-      invoke('chat_open_thread', { thread: c.thread }).catch(() => {});
+    // A T3 Code chat opens in the Island's own chat when that is on, otherwise in T3 Code.
+    if (c.thread) {
+      invoke(cfg?.chatEnabled ? 'chat_open_thread' : 't3_open_thread', { thread: c.thread }).catch(() => {});
       return;
     }
     const found = await invoke<boolean>('island_goto_agent', { agent: c.agent, project: c.project }).catch(() => false);
@@ -130,13 +130,12 @@
     return () => clearInterval(id);
   });
 
-  /** Done or needs you: jump to that session's window; otherwise open the Island on its AI Agents module. */
-  async function click() {
-    const l = live;
-    if (l && (l.status === 'done' || l.status === 'needs')) {
-      if (await invoke<boolean>('island_goto_agent', { agent: l.icon, project: l.project }).catch(() => false)) return;
-    }
-    invoke('island_open_agents').catch(() => {});
+  /** Done or needs you: jump to that session (its T3 Code chat or its window); otherwise open the Island on its AI Agents module. */
+  function click() {
+    const status = live?.status;
+    const chip = status === 'done' || status === 'needs' ? chips.find((c) => c.status === status) : undefined;
+    if (chip) openChip(chip);
+    else invoke('island_open_agents').catch(() => {});
   }
 
   onMount(() => {

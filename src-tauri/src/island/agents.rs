@@ -3,7 +3,7 @@
 //! leaves this computer. Claude Code and Codex logs and OpenCode's database are read; Copilot is only detected.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -15,8 +15,9 @@ use serde_json::Value;
 
 use super::opencode;
 
-/// A turn stops counting after this long without a log line, unless a tool call is still out.
-pub const OFFLINE_MS: u64 = 20_000;
+/// A turn stops counting after this long without a log line, unless a tool call is still out. Claude
+/// writes a line only when a block is finished, so thinking before the first reply can stay quiet for a minute or two.
+pub const OFFLINE_MS: u64 = 120_000;
 /// Even a pending tool call stops counting after this.
 pub const TOOL_MAX_MS: u64 = 30 * 60_000;
 /// A pending tool call this quiet most likely waits on the user (a permission prompt).
@@ -26,7 +27,7 @@ pub const NEEDS_SLOW_MS: u64 = 120_000;
 /// How long a finished agent reads as done.
 pub const DONE_MS: u64 = 8_000;
 /// How long a finished session stays as a done chip on the taskbar bar.
-const CHIP_DONE_MS: u64 = 90_000;
+pub(crate) const CHIP_DONE_MS: u64 = 90_000;
 const TAIL_BYTES: u64 = 512 * 1024;
 /// Files untouched for longer than this are not followed.
 const FRESH_FOR: Duration = Duration::from_secs(24 * 3600);
@@ -104,6 +105,8 @@ pub enum Entry {
     Reply { model: Option<String>, usage: Usage, done: bool, tool: bool, todos: Option<(u32, u32)>, needs_after: Option<u64> },
     ToolResult,
     TurnEnd,
+    /// The agent is writing or thinking: the turn is still going, and nothing else changes.
+    Activity,
     /// Token use, with plan limits when the tool reported them.
     Usage { usage: Usage, session: Option<Limit>, week: Option<Limit> },
 }
@@ -159,6 +162,7 @@ impl Session {
                 self.turn_start = None;
                 self.tool_pending = false;
             }
+            Entry::Activity => {}
             Entry::Usage { usage, session, week } => {
                 self.add(usage);
                 self.session_limit = session.or(self.session_limit);
@@ -284,6 +288,15 @@ fn has_item(content: Option<&Value>, kind: &str) -> bool {
         .is_some_and(|items| items.iter().any(|i| i.get("type").and_then(Value::as_str) == Some(kind)))
 }
 
+/// Whether a user line's text (a plain string, or one of its text items) starts with `prefix`.
+fn starts_text(content: Option<&Value>, prefix: &str) -> bool {
+    match content {
+        Some(Value::String(s)) => s.starts_with(prefix),
+        Some(Value::Array(items)) => items.iter().filter_map(|i| i.get("text").and_then(Value::as_str)).any(|t| t.starts_with(prefix)),
+        _ => false,
+    }
+}
+
 /// One line of a Claude Code session log (`~/.claude/projects/<project>/<session>.jsonl`).
 pub fn parse_claude(line: &str) -> Option<(u64, Entry)> {
     let v: Value = serde_json::from_str(line).ok()?;
@@ -296,8 +309,17 @@ pub fn parse_claude(line: &str) -> Option<(u64, Entry)> {
             }
             let content = msg?.get("content");
             let project = project_of(v.get("cwd").and_then(Value::as_str));
+            // Escape ends the turn without a final reply; the output of a local command (/context, /clear) starts none.
+            if starts_text(content, "[Request interrupted by user") {
+                return Some((ts, Entry::TurnEnd));
+            }
+            if starts_text(content, "<local-command-") {
+                return None;
+            }
             Some((ts, if has_item(content, "tool_result") { Entry::ToolResult } else { Entry::Prompt { project } }))
         }
+        // Written when a turn's stop hooks have run, and after a local command: neither is a turn still going.
+        "system" if matches!(v.get("subtype").and_then(Value::as_str), Some("stop_hook_summary" | "local_command")) => Some((ts, Entry::TurnEnd)),
         "assistant" => {
             let msg = msg?;
             let usage = msg.get("usage").map_or_else(Usage::default, |u| Usage {
@@ -350,9 +372,17 @@ pub fn parse_codex(line: &str) -> Option<(u64, Entry)> {
             });
             Entry::Usage { usage, session, week }
         }
-        ("response_item", Some("function_call" | "custom_tool_call" | "local_shell_call")) => {
-            Entry::Reply { model: None, usage: Usage::default(), done: false, tool: true, todos: None, needs_after: None }
+        // Codex asks you before it runs a command or edits files: waiting on you from the moment it asks.
+        ("event_msg", Some("exec_approval_request" | "apply_patch_approval_request" | "request_user_input" | "elicitation_request")) => {
+            Entry::Reply { model: None, usage: Usage::default(), done: false, tool: true, todos: None, needs_after: Some(0) }
         }
+        // A tool call with no ask logged is most likely just running, so it waits as long as a shell command does.
+        ("response_item", Some("function_call" | "custom_tool_call" | "local_shell_call")) => {
+            Entry::Reply { model: None, usage: Usage::default(), done: false, tool: true, todos: None, needs_after: Some(NEEDS_SLOW_MS) }
+        }
+        // Its own writing and thinking show the turn is still going; the user's messages are logged the same way and are not.
+        ("event_msg", Some("agent_message" | "agent_reasoning")) | ("response_item", Some("reasoning")) => Entry::Activity,
+        ("response_item", Some("message")) if p.get("role").and_then(Value::as_str) == Some("assistant") => Entry::Activity,
         ("response_item", Some("function_call_output" | "custom_tool_call_output")) => Entry::ToolResult,
         _ => return None,
     };
@@ -444,6 +474,8 @@ pub struct Tracker {
     ended: HashMap<PathBuf, u64>,
     /// The same, kept for `CHIP_DONE_MS`, for the session chips.
     recent: HashMap<PathBuf, u64>,
+    /// Session ids that another source reports better (T3 Code's chats): left out of the chips, the summary and the finished notices.
+    skip: HashSet<String>,
     primed: bool,
 }
 
@@ -473,6 +505,26 @@ fn read_from(path: &Path, offset: u64) -> Option<Vec<u8>> {
 }
 
 impl Tracker {
+    /// Leaves out the sessions the caller says another source reports better, asked by session id.
+    pub fn leave_out(&mut self, home: &Path, mut is_other: impl FnMut(&str) -> bool) {
+        self.skip = self
+            .files
+            .keys()
+            .filter(|p| !is_sub(p))
+            .filter_map(|p| {
+                let stem = p.file_stem()?.to_str()?;
+                // A Codex log is named rollout-<date>-<session id>.
+                let id = if kind_of(home, p) == Kind::Codex { stem.get(stem.len().checked_sub(36)?..)? } else { stem };
+                is_other(id).then(|| stem.to_string())
+            })
+            .collect();
+    }
+
+    /// A session left out, or one of its subagents' logs.
+    fn skipped(&self, path: &Path) -> bool {
+        !self.skip.is_empty() && path.components().any(|c| c.as_os_str().to_str().is_some_and(|s| self.skip.contains(s.strip_suffix(".jsonl").unwrap_or(s))))
+    }
+
     /// Reads new log lines. Returns turns that finished since the last pass and ran at least `notice_ms`
     /// (nothing on the first pass, so a restart doesn't replay old notices).
     pub fn poll(&mut self, home: &Path, now: u64, notice_ms: u64) -> Vec<Finished> {
@@ -514,7 +566,7 @@ impl Tracker {
         let mut finished = Vec::new();
         let mut working = HashMap::new();
         for (path, f) in &self.files {
-            if is_sub(path) {
+            if is_sub(path) || self.skipped(path) {
                 continue;
             }
             if f.session.working(now) {
@@ -542,11 +594,10 @@ impl Tracker {
         let mut out: Vec<SessionChip> = self
             .files
             .iter()
-            .filter(|(p, _)| !is_sub(p))
+            .filter(|(p, _)| !is_sub(p) && !self.skipped(p))
             .filter_map(|(p, f)| {
                 let s = &f.session;
-                // T3 Code starts a helper session just to title each chat; it is not one to open.
-                if s.project.as_deref().is_some_and(|n| n.starts_with("t3code-claude-title")) {
+                if is_title_helper(s) {
                     return None;
                 }
                 let status = if s.working(now) {
@@ -559,13 +610,7 @@ impl Tracker {
                 Some(SessionChip { id: p.to_string_lossy().into_owned(), agent: kind_of(home, p), project: s.project.clone(), status, elapsed_ms: s.elapsed(now), last_ts: s.last_ts, title: None, thread: None })
             })
             .collect();
-        let rank = |s: &str| match s {
-            "needs" => 0,
-            "working" => 1,
-            _ => 2,
-        };
-        out.sort_by_key(|c| (rank(c.status), std::cmp::Reverse(c.last_ts)));
-        out.truncate(8);
+        sort_chips(&mut out);
         out
     }
 
@@ -579,7 +624,7 @@ impl Tracker {
             .iter()
             .filter(|k| k.root(home).exists())
             .map(|&kind| {
-                let of_kind = self.files.iter().filter(|(p, _)| kind_of(home, p) == kind);
+                let of_kind = self.files.iter().filter(|(p, f)| kind_of(home, p) == kind && !self.skipped(p) && !is_title_helper(&f.session));
                 let (subs, mains): (Vec<_>, Vec<_>) = of_kind.partition(|(p, _)| is_sub(p));
                 let sessions: Vec<&Session> = mains.iter().map(|(_, f)| &f.session).collect();
                 let subagents = subs.iter().filter(|(_, f)| f.session.working(now)).count() as u32;
@@ -616,6 +661,22 @@ impl Tracker {
             })
             .collect()
     }
+}
+
+/// T3 Code starts a helper session just to title each chat; it is not a session to count or open.
+fn is_title_helper(s: &Session) -> bool {
+    s.project.as_deref().is_some_and(|n| n.starts_with("t3code-claude-title"))
+}
+
+/// Waiting on you first, then working, then done, each newest first; the bar has room for eight.
+pub fn sort_chips(chips: &mut Vec<SessionChip>) {
+    let rank = |s: &str| match s {
+        "needs" => 0,
+        "working" => 1,
+        _ => 2,
+    };
+    chips.sort_by_key(|c| (rank(c.status), std::cmp::Reverse(c.last_ts)));
+    chips.truncate(8);
 }
 
 /// A subagent's own log (`<session>/subagents/*.jsonl`): part of a session, never a session itself.
@@ -878,6 +939,65 @@ mod tests {
         let mut s = Session::default();
         assert_eq!(feed(Kind::Claude, &mut s, b"{\"type\":\"user\""), 0);
         assert_eq!(s, Session::default());
+    }
+
+    #[test]
+    fn a_session_another_source_reports_is_left_out_of_chips_and_the_summary() {
+        let home = std::env::temp_dir().join(format!("notifi-agents-skip-{}", std::process::id()));
+        let dir = home.join(".claude").join("projects").join("p");
+        fs::create_dir_all(&dir).unwrap();
+        let t0 = parse_ts(T0).unwrap();
+        fs::write(dir.join("s.jsonl"), claude("user", T0, r#"{"content":"hi"}"#) + "\n").unwrap();
+        let mut tracker = Tracker::default();
+        tracker.poll(&home, t0 + 1_000, 0);
+        assert_eq!(tracker.chips(&home, t0 + 1_000).len(), 1);
+        assert!(tracker.snapshot(&home, t0 + 1_000).iter().any(|a| a.working));
+        tracker.leave_out(&home, |id| id == "s");
+        assert!(tracker.chips(&home, t0 + 1_000).is_empty());
+        assert!(!tracker.snapshot(&home, t0 + 1_000).iter().any(|a| a.working));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn claude_turn_ends_on_escape_stop_hooks_and_local_commands() {
+        let t0 = parse_ts(T0).unwrap();
+        let mut s = Session::default();
+        s.apply(t0, Entry::Prompt { project: None });
+        let (ts, e) = parse_claude(r#"{"type":"user","timestamp":"2026-10-20T10:00:05.000Z","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#).unwrap();
+        s.apply(ts, e);
+        assert!(!s.working(t0 + 6_000));
+        assert!(parse_claude(r#"{"type":"user","timestamp":"2026-10-20T10:00:05.000Z","message":{"content":"<local-command-stdout>ok</local-command-stdout>"}}"#).is_none());
+        for subtype in ["stop_hook_summary", "local_command"] {
+            let line = format!(r#"{{"type":"system","subtype":"{subtype}","timestamp":"2026-10-20T10:00:05.000Z"}}"#);
+            assert_eq!(parse_claude(&line).unwrap().1, Entry::TurnEnd);
+        }
+    }
+
+    #[test]
+    fn a_turn_with_no_reply_yet_still_counts_as_working_for_two_minutes() {
+        let t0 = parse_ts(T0).unwrap();
+        let mut s = Session::default();
+        s.apply(t0, Entry::Prompt { project: None });
+        assert!(s.working(t0 + 90_000));
+        assert!(!s.working(t0 + OFFLINE_MS + 1));
+    }
+
+    #[test]
+    fn codex_asks_need_you_at_once_and_a_plain_tool_call_does_not() {
+        let t0 = parse_ts(T0).unwrap();
+        let mut s = Session::default();
+        s.apply(t0, Entry::Prompt { project: None });
+        let (ts, e) = parse_codex(r#"{"timestamp":"2026-10-20T10:00:02.000Z","type":"response_item","payload":{"type":"function_call","name":"shell"}}"#).unwrap();
+        s.apply(ts, e);
+        assert!(s.working(t0 + 30_000) && !s.needs_you(t0 + 30_000), "a command that is just running");
+        let (ts, e) = parse_codex(r#"{"timestamp":"2026-10-20T10:00:03.000Z","type":"event_msg","payload":{"type":"exec_approval_request"}}"#).unwrap();
+        s.apply(ts, e);
+        assert!(s.needs_you(ts + 1));
+        let (ts, e) = parse_codex(r#"{"timestamp":"2026-10-20T10:00:04.000Z","type":"event_msg","payload":{"type":"agent_message"}}"#).unwrap();
+        assert_eq!(e, Entry::Activity);
+        s.apply(ts, e);
+        assert!(s.working(ts + 60_000), "writing counts as activity");
+        assert!(parse_codex(r#"{"timestamp":"2026-10-20T10:00:04.000Z","type":"response_item","payload":{"type":"message","role":"user"}}"#).is_none());
     }
 
     #[test]

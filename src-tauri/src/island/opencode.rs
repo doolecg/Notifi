@@ -154,6 +154,8 @@ fn followed_in(conn: &Connection, now: u64) -> rusqlite::Result<HashMap<String, 
             s.last_ts = s.last_ts.max(part_ts.unwrap_or(0) as u64);
             if s.turn_start.is_some() {
                 s.tool_pending = running.exists(params![id, recent])?;
+                // OpenCode's ask is not in its database, so a tool still going is waited on like a shell command.
+                s.needs_after = Some(agents::NEEDS_SLOW_MS);
             }
         }
         out.insert(id, s);

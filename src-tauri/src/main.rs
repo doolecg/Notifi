@@ -245,6 +245,7 @@ fn main() {
             chat::chat_show,
             chat::chat_hide,
             chat::chat_open_thread,
+            chat::t3_open_thread,
             chat::chat_dictate,
             island::island_media,
             island::lyrics::island_lyrics,

@@ -111,6 +111,7 @@ permissions = [
   "allow-chat-show",
   "allow-chat-hide",
   "allow-chat-open-thread",
+  "allow-t3-open-thread",
   "allow-chat-dictate",
   "allow-island-media",
   "allow-island-lyrics",

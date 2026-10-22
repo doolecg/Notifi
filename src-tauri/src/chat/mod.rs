@@ -3,7 +3,7 @@
 //! works) and it gets no access to Notifi's commands. Version 1 hosts T3 Code only.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex, OnceLock,
@@ -81,12 +81,13 @@ pub struct T3Chat {
     pub title: String,
 }
 
-/// T3 Code's chat for a Claude session id, read from T3's own database (read only). Remembered for 20 seconds.
+/// T3 Code's chat for a Claude session id, read from T3's own database (read only), or from its event logs while a run
+/// is going and the database does not hold the id yet. Remembered for 20 seconds.
 pub fn t3_chat_of(session: &str) -> Option<T3Chat> {
     use std::{collections::HashMap, time::Instant};
     type Cache = HashMap<String, (Instant, Option<T3Chat>)>;
     static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
-    if session.len() < 8 || !session.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if session.len() < 8 || !session.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return None;
     }
     let mut guard = CACHE.lock().unwrap();
@@ -96,18 +97,43 @@ pub fn t3_chat_of(session: &str) -> Option<T3Chat> {
         return found.clone();
     }
     let found = (|| {
-        let db = t3_home()?.join("userdata").join("statev2.sqlite");
-        let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
+        let dir = t3_home()?.join("userdata");
+        let conn = rusqlite::Connection::open_with_flags(dir.join("statev2.sqlite"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
         let _ = conn.busy_timeout(Duration::from_millis(300));
+        let chat = |r: &rusqlite::Row| Ok(T3Chat { thread: r.get(0)?, title: r.get(1)? });
         conn.query_row(
             "select t.thread_id, t.title from orchestration_v2_projection_provider_threads p join orchestration_v2_projection_threads t on t.thread_id = p.thread_id where p.payload_json like ?1 and t.deleted_at is null limit 1",
             [format!("%{session}%")],
-            |r| Ok(T3Chat { thread: r.get(0)?, title: r.get(1)? }),
+            chat,
         )
         .ok()
+        .or_else(|| {
+            let thread = thread_in_logs(&dir, session)?;
+            conn.query_row("select thread_id, title from orchestration_v2_projection_threads where thread_id = ?1 and deleted_at is null", [thread], chat).ok()
+        })
     })();
     cache.insert(session.to_string(), (Instant::now(), found.clone()));
     found
+}
+
+/// The chat whose event log (userdata/logs/provider/events.<chat id>.log) names this session, among the logs written in the last ten minutes.
+fn thread_in_logs(userdata: &Path, session: &str) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 1 << 20;
+    for entry in std::fs::read_dir(userdata.join("logs").join("provider")).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(thread) = name.strip_prefix("events.").and_then(|n| n.strip_suffix(".log")) else { continue };
+        if !thread.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || !entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|e| e < Duration::from_secs(600))) {
+            continue;
+        }
+        let Ok(mut file) = std::fs::File::open(entry.path()) else { continue };
+        let len = file.metadata().map_or(0, |m| m.len());
+        let mut buf = Vec::new();
+        if file.seek(SeekFrom::Start(len.saturating_sub(TAIL))).is_ok() && file.take(TAIL).read_to_end(&mut buf).is_ok() && String::from_utf8_lossy(&buf).contains(session) {
+            return Some(thread.to_string());
+        }
+    }
+    None
 }
 
 pub(crate) fn t3_home() -> Option<PathBuf> {
@@ -365,6 +391,23 @@ pub async fn chat_open_thread(app: AppHandle, thread: String) {
     }
 }
 
+/// A session button for a T3 Code chat while the Island's own chat is off: opens the chat in T3 Code itself through its t3code:// link.
+#[tauri::command]
+pub async fn t3_open_thread(app: AppHandle, thread: String) {
+    let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if !plain(&thread) {
+        return;
+    }
+    match t3_host().await {
+        Ok(host) if plain(&host.environment) => {
+            let _ = crate::updater::open_url(&format!("t3code://threads/{}/{thread}", host.environment));
+            island::focus_program(&app, "t3 code");
+        }
+        Ok(_) => {}
+        Err(e) => island::notice_to(&app, e, None),
+    }
+}
+
 #[tauri::command]
 pub async fn chat_hide(app: AppHandle, fade: Option<bool>, morph: Option<Morph>) {
     hide(&app, fade.unwrap_or(false), morph).await;
@@ -390,6 +433,19 @@ mod tests {
         assert_eq!(origin_from_runtime(&runtime("http://127.0.0.1.evil.example:80")), None);
         assert_eq!(origin_from_runtime(&runtime("http://127.0.0.1:80@elsewhere.example")), None);
         assert_eq!(origin_from_runtime("not json"), None);
+    }
+
+    #[test]
+    fn a_session_is_found_in_the_event_log_of_its_chat() {
+        let dir = std::env::temp_dir().join(format!("notifi-t3logs-{}", std::process::id()));
+        let logs = dir.join("logs").join("provider");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("events.aaaa-1111.log"), "{\"session_id\":\"other-session-0000\"}\n").unwrap();
+        std::fs::write(logs.join("events.bbbb-2222.log"), "x\n{\"session_id\":\"26bc0bc5-a9d6-4b56-be38-a48bf11fb25c\"}\n").unwrap();
+        std::fs::write(logs.join("events.cccc-3333.log.3"), "26bc0bc5-a9d6-4b56-be38-a48bf11fb25c").unwrap();
+        assert_eq!(thread_in_logs(&dir, "26bc0bc5-a9d6-4b56-be38-a48bf11fb25c").as_deref(), Some("bbbb-2222"));
+        assert_eq!(thread_in_logs(&dir, "nothing-here-at-all"), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
