@@ -251,7 +251,9 @@ pub fn local_now() -> Option<Local> {
 pub fn reveal(path: &Path) {
     #[cfg(windows)]
     {
-        let _ = command("explorer.exe").arg(format!("/select,{}", path.display())).spawn();
+        use std::os::windows::process::CommandExt;
+        // Explorer wants `/select,"path"` as written; a normally quoted argument opens the wrong folder when the path has spaces.
+        let _ = command("explorer.exe").raw_arg(format!("/select,\"{}\"", path.display().to_string().replace('/', "\\"))).spawn();
     }
     #[cfg(not(windows))]
     {

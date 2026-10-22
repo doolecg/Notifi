@@ -3,7 +3,7 @@
 //! Everything is driven from the settings pages; there is no window of its own.
 
 mod cleaner;
-mod fsx;
+pub(crate) mod fsx;
 mod installer;
 mod leftovers;
 mod messaging;

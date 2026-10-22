@@ -5,6 +5,7 @@
   import { store } from '../lib/settings.svelte';
   import { message } from './api';
   import { duration, reducedMotion } from '../lib/motion';
+  import Confirm from './Confirm.svelte';
   import { layout, type SpaceNode } from './space-layout';
 
   interface Drive { name: string; mount: string; total: number; free: number }
@@ -25,6 +26,7 @@
   let forward = $state<string[]>([]);
   let heading = $state<'in' | 'out'>('in');
   let menu = $state<{ x: number; y: number; node: SpaceNode } | null>(null);
+  let confirmDelete = $state<SpaceNode | null>(null);
   let error = $state('');
   let note = $state('');
   let exported = $state('');
@@ -156,16 +158,39 @@
     if (n?.dir && !n.other) zoomTo(n.path);
   }
 
+  const reveal = (n: SpaceNode) => invoke('apps_clean_reveal', { path: n.path });
+
+  function ask(n: SpaceNode) {
+    menu = null;
+    if (!n.other && !status?.scanning) confirmDelete = n;
+  }
+
+  async function remove(n: SpaceNode, permanent: boolean) {
+    confirmDelete = null;
+    try {
+      const freed = await invoke<number>('space_delete', { path: n.path, permanent });
+      note = `${permanent ? 'Deleted' : 'Moved to the Recycle Bin:'} ${n.name}, ${size(freed)} freed.`;
+      error = '';
+      selected = null;
+      await load();
+      status = await invoke<Status | null>('space_status');
+    } catch (e) {
+      error = message(e);
+    }
+  }
+
   function onKey(e: KeyboardEvent) {
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
     if (e.key === 'Escape') {
-      if (menu) menu = null;
+      if (confirmDelete) confirmDelete = null;
+      else if (menu) menu = null;
       else if (typing) (e.target as HTMLElement).blur();
       else goUp();
       return;
     }
-    if (typing) return;
-    if (e.altKey && e.key === 'ArrowLeft') goBack();
+    if (typing || confirmDelete) return;
+    if (e.key === 'Delete' && selected) ask(selected);
+    else if (e.altKey && e.key === 'ArrowLeft') goBack();
     else if (e.altKey && e.key === 'ArrowRight') goForward();
     else if (e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') goUp();
     else if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') enter(selected ?? data?.children.find((c) => c.dir && !c.other) ?? null);
@@ -282,6 +307,7 @@
     </div>
   {/if}
   {#if error}<div class="note err">{error}</div>{/if}
+  {#if note}<div class="note">{note}</div>{/if}
   {#if exported}
     <div class="note">Saved {exported} <button class="ghost small" onclick={() => invoke('apps_clean_reveal', { path: exported })}>Show</button></div>
   {/if}
@@ -347,7 +373,27 @@
       <span>{size(data?.size ?? status.bytes)} in {(data?.files ?? status.files).toLocaleString()} files{status.unreadable ? `, ${status.unreadable} folders could not be read` : ''}. Click a folder to go in; Esc or the arrow keys go up and down a level.</span>
     {/if}
   </div>
+  {#if selected && !selected.other && !status?.scanning}
+    <div class="selbar">
+      <span class="selname">{selected.name} <small>{size(selected.size)}</small></span>
+      <button class="ghost small" onclick={() => reveal(selected!)}>Show in Explorer</button>
+      <button class="ghost small danger" onclick={() => ask(selected!)}>Delete&hellip;</button>
+    </div>
+  {/if}
 </div>
+
+{#if confirmDelete}
+  {@const d = confirmDelete}
+  <Confirm
+    title="Delete {d.name}?"
+    body="{d.path} ({size(d.size)}{d.dir ? `, ${d.files.toLocaleString()} files` : ''}). {d.size > 1024 ** 3 ? 'Windows deletes items too big for the Recycle Bin for good. ' : ''}Permanent deletes cannot be undone."
+    oncancel={() => (confirmDelete = null)}
+    choices={[
+      { label: 'Move to Recycle Bin', run: () => remove(d, false) },
+      { label: 'Delete permanently', danger: true, run: () => remove(d, true) },
+    ]}
+  />
+{/if}
 
 {#if menu}
   {@const n = menu.node}
@@ -355,6 +401,7 @@
     <button role="menuitem" onclick={() => { menu = null; open(n); }}>{n.dir ? 'Zoom in' : 'Open'}</button>
     <button role="menuitem" onclick={() => { menu = null; invoke('apps_clean_reveal', { path: n.path }); }}>Show in file manager</button>
     <button role="menuitem" onclick={() => copy(n.path)}>Copy path</button>
+    <button role="menuitem" onclick={() => ask(n)}>Delete&hellip;</button>
     <div class="tags">
       {#each TAGS as c}
         <button role="menuitem" class="swatch" class:on={n.tag === c} aria-label="Tag {c}" title="Tag {c}" style="background:{TAG_COLOR[c]}" onclick={() => tag(n, c)}></button>
@@ -566,6 +613,29 @@
     height: 10px;
     border-radius: 50%;
     box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35);
+  }
+  .selbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    font-size: 12.5px;
+  }
+  .selname {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .selname small {
+    margin-left: 6px;
+    color: var(--mut);
+    font-weight: 400;
+  }
+  .selbar :global(button.danger) {
+    border-color: var(--warn);
+    color: var(--warn);
   }
   .strip {
     display: flex;

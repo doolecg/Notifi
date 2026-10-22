@@ -156,6 +156,7 @@ fn main() {
             apps::space::space_view,
             apps::space::space_tag,
             apps::space::space_open,
+            apps::space::space_delete,
             apps::space::space_export,
             apps::process::apps_proc_list,
             apps::process::apps_proc_end,

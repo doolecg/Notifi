@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -47,6 +47,31 @@ impl Tree {
     fn new(root: PathBuf) -> Self {
         let name = root.display().to_string();
         Tree { nodes: vec![Node::new(name, 0, true, 0, 0)], root, scanning: false, dirs: 1, files: 0, unreadable: 0, current: String::new() }
+    }
+
+    /// Takes an item out of the tree after it was deleted, and its size out of every folder above it.
+    fn remove(&mut self, idx: u32) {
+        let parent = self.nodes[idx as usize].parent;
+        let (size, files, mut dirs, mut stack) = (self.nodes[idx as usize].size, self.nodes[idx as usize].files, 0u64, vec![idx]);
+        while let Some(i) = stack.pop() {
+            if self.nodes[i as usize].dir {
+                dirs += 1;
+                stack.extend(self.nodes[i as usize].kids.iter().copied());
+            }
+        }
+        self.nodes[parent as usize].kids.retain(|&k| k != idx);
+        let mut up = parent;
+        loop {
+            let n = &mut self.nodes[up as usize];
+            n.size = n.size.saturating_sub(size);
+            n.files = n.files.saturating_sub(files);
+            if up == 0 {
+                break;
+            }
+            up = n.parent;
+        }
+        self.files = self.files.saturating_sub(files);
+        self.dirs = self.dirs.saturating_sub(dirs);
     }
 
     /// Adds `size` bytes and `files` files to a directory and every parent above it.
@@ -119,74 +144,138 @@ fn is_hidden(name: &str, _: &fs::Metadata) -> bool {
     name.starts_with('.')
 }
 
-fn scan(shared: Arc<Mutex<Tree>>, cancel: Arc<AtomicBool>, root: PathBuf, min: u64, hidden: bool) {
-    let mut stack = vec![(0u32, root)];
-    while let Some((idx, dir)) = stack.pop() {
-        if cancel.load(Ordering::Relaxed) {
-            break;
-        }
-        shared.lock().unwrap().current = dir.display().to_string();
-        let Ok(read) = fs::read_dir(&dir) else {
-            shared.lock().unwrap().unreadable += 1;
+/// What one folder holds, read without touching the shared tree.
+struct Listing {
+    files: Vec<(String, u64, i64)>,
+    dirs: Vec<String>,
+    small_size: u64,
+    small_count: u64,
+}
+
+fn list_dir(dir: &Path, min: u64, hidden: bool) -> Option<Listing> {
+    let read = fs::read_dir(dir).ok()?;
+    let mut out = Listing { files: Vec::new(), dirs: Vec::new(), small_size: 0, small_count: 0 };
+    for entry in read.flatten() {
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_symlink() {
             continue;
-        };
-        let mut files: Vec<(String, u64, i64)> = Vec::new();
-        let mut dirs: Vec<String> = Vec::new();
-        let (mut small_size, mut small_count) = (0u64, 0u64);
-        for entry in read.flatten() {
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_symlink() {
-                continue;
-            }
-            let Ok(md) = entry.metadata() else { continue };
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if !hidden && is_hidden(&name, &md) {
-                continue;
-            }
-            if kind.is_dir() {
-                if !is_reparse(&md) {
-                    dirs.push(name);
-                }
-                continue;
-            }
-            let size = md.len();
-            if size < min {
-                small_size += size;
-                small_count += 1;
-            } else {
-                let mtime = md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
-                files.push((name, size, mtime));
-            }
         }
-        let mut t = shared.lock().unwrap();
-        let mut total = small_size;
-        let mut count = small_count;
-        {
-            let n = &mut t.nodes[idx as usize];
-            n.small_size += small_size;
-            n.small_count += small_count;
+        let Ok(md) = entry.metadata() else { continue };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !hidden && is_hidden(&name, &md) {
+            continue;
         }
-        for (name, size, mtime) in files {
-            total += size;
-            count += 1;
-            let id = t.nodes.len() as u32;
-            t.nodes.push(Node::new(name, idx, false, size, mtime));
-            t.nodes[idx as usize].kids.push(id);
+        if kind.is_dir() {
+            if !is_reparse(&md) {
+                out.dirs.push(name);
+            }
+            continue;
         }
-        for name in dirs {
-            let id = t.nodes.len() as u32;
-            let path = dir.join(&name);
-            t.nodes.push(Node::new(name, idx, true, 0, 0));
-            t.nodes[idx as usize].kids.push(id);
-            stack.push((id, path));
-            t.dirs += 1;
+        let size = md.len();
+        if size < min {
+            out.small_size += size;
+            out.small_count += 1;
+        } else {
+            let mtime = md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
+            out.files.push((name, size, mtime));
         }
-        t.files += count;
-        t.bump(idx, total, count);
+    }
+    Some(out)
+}
+
+/// Folders waiting to be read, and how many are queued or being read, shared by the scan's workers.
+struct Work {
+    queue: Mutex<(Vec<(u32, PathBuf)>, usize)>,
+    wake: Condvar,
+}
+
+/// Reading a folder waits on the disk, not the processor, so several folders are read at once.
+fn scan_threads() -> usize {
+    std::env::var("NOTIFI_SCAN_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get() * 2).clamp(4, 16))
+}
+
+fn scan(shared: Arc<Mutex<Tree>>, cancel: Arc<AtomicBool>, root: PathBuf, min: u64, hidden: bool, threads: usize) {
+    let work = Arc::new(Work { queue: Mutex::new((vec![(0u32, root)], 1)), wake: Condvar::new() });
+    let workers: Vec<_> = (0..threads.max(1))
+        .map(|_| {
+            let (shared, cancel, work) = (shared.clone(), cancel.clone(), work.clone());
+            std::thread::spawn(move || worker(&shared, &cancel, &work, min, hidden))
+        })
+        .collect();
+    for w in workers {
+        let _ = w.join();
     }
     let mut t = shared.lock().unwrap();
     t.scanning = false;
     t.current.clear();
+}
+
+fn worker(shared: &Mutex<Tree>, cancel: &AtomicBool, work: &Work, min: u64, hidden: bool) {
+    loop {
+        let (idx, dir) = {
+            let mut q = work.queue.lock().unwrap();
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    q.0.clear();
+                    q.1 = 0;
+                    work.wake.notify_all();
+                    return;
+                }
+                if let Some(item) = q.0.pop() {
+                    break item;
+                }
+                if q.1 == 0 {
+                    work.wake.notify_all();
+                    return;
+                }
+                q = work.wake.wait(q).unwrap();
+            }
+        };
+        let listing = list_dir(&dir, min, hidden);
+        let mut found = Vec::new();
+        {
+            let mut t = shared.lock().unwrap();
+            t.current = dir.display().to_string();
+            match listing {
+                None => t.unreadable += 1,
+                Some(l) => {
+                    let mut total = l.small_size;
+                    let mut count = l.small_count;
+                    {
+                        let n = &mut t.nodes[idx as usize];
+                        n.small_size += l.small_size;
+                        n.small_count += l.small_count;
+                    }
+                    for (name, size, mtime) in l.files {
+                        total += size;
+                        count += 1;
+                        let id = t.nodes.len() as u32;
+                        t.nodes.push(Node::new(name, idx, false, size, mtime));
+                        t.nodes[idx as usize].kids.push(id);
+                    }
+                    for name in l.dirs {
+                        let id = t.nodes.len() as u32;
+                        let path = dir.join(&name);
+                        t.nodes.push(Node::new(name, idx, true, 0, 0));
+                        t.nodes[idx as usize].kids.push(id);
+                        found.push((id, path));
+                        t.dirs += 1;
+                    }
+                    t.files += count;
+                    t.bump(idx, total, count);
+                }
+            }
+        }
+        let mut q = work.queue.lock().unwrap();
+        q.1 = (q.1 + found.len()).saturating_sub(1);
+        if !cancel.load(Ordering::Relaxed) {
+            q.0.extend(found);
+        }
+        work.wake.notify_all();
+    }
 }
 
 #[derive(Serialize)]
@@ -235,7 +324,7 @@ pub fn space_start(app: AppHandle, state: State<AppsState>, path: String) -> Res
     *state.space.tree.lock().unwrap() = Some(shared.clone());
     std::thread::Builder::new()
         .name("space-scan".into())
-        .spawn(move || scan(shared, cancel, root, min, hidden))
+        .spawn(move || scan(shared, cancel, root, min, hidden, scan_threads()))
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
@@ -509,6 +598,45 @@ pub fn space_tag(state: State<AppsState>, path: String, color: Option<String>) -
     Ok(())
 }
 
+/// Whether a path is somewhere Notifi will not delete from: the Windows folder and what is inside it, and the
+/// system folders at the top of a drive. Those go through the uninstaller or Windows itself.
+fn protected(path: &Path) -> bool {
+    let key = tag_key(path);
+    let key = key.trim_end_matches('\\');
+    let windows = std::env::var("SystemRoot").map(|r| tag_key(Path::new(&r)).trim_end_matches('\\').to_string()).ok();
+    if windows.is_some_and(|w| key == w || key.starts_with(&format!("{w}\\"))) {
+        return true;
+    }
+    let top = path.parent().is_some_and(|p| p.parent().is_none());
+    top && matches!(key.rsplit('\\').next(), Some("program files" | "program files (x86)" | "programdata" | "users" | "system volume information" | "$recycle.bin"))
+}
+
+/// Deletes a file or folder that is in the scan: to the Recycle Bin, or for good. Returns the bytes freed.
+#[tauri::command]
+pub fn space_delete(state: State<AppsState>, path: String, permanent: bool) -> Result<u64, String> {
+    let shared = state.space.tree()?;
+    let p = PathBuf::from(&path);
+    let (idx, size) = {
+        let t = shared.lock().unwrap();
+        if t.scanning {
+            return Err("Wait for the scan to finish, or cancel it, before deleting.".into());
+        }
+        let idx = t.find(&p).filter(|&i| i != 0).ok_or_else(|| "That item is not in the scan.".to_string())?;
+        (idx, t.nodes[idx as usize].size)
+    };
+    if protected(&p) {
+        return Err("Notifi does not delete a drive's top-level folders or anything in the Windows folder.".into());
+    }
+    let md = fs::symlink_metadata(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    if permanent {
+        if md.is_dir() && !md.file_type().is_symlink() { fs::remove_dir_all(&p) } else { fs::remove_file(&p) }.map_err(|e| format!("{}: {e}", p.display()))?;
+    } else {
+        crate::apps_clean::fsx::trash(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    }
+    shared.lock().unwrap().remove(idx);
+    Ok(size)
+}
+
 #[tauri::command]
 pub fn space_open(path: String) -> Result<(), String> {
     let program = if cfg!(windows) { "explorer" } else { "xdg-open" };
@@ -555,6 +683,77 @@ pub fn space_export(app: AppHandle, state: State<AppsState>, path: String, filte
 mod tests {
     use super::*;
 
+    fn scan_dir(root: &Path, threads: usize) -> Arc<Mutex<Tree>> {
+        let shared = Arc::new(Mutex::new(Tree::new(root.to_path_buf())));
+        shared.lock().unwrap().scanning = true;
+        scan(shared.clone(), Arc::new(AtomicBool::new(false)), root.to_path_buf(), 0, true, threads);
+        shared
+    }
+
+    #[test]
+    fn scanning_on_many_threads_counts_the_same_as_one() {
+        let root = std::env::temp_dir().join(format!("notifi-space-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for d in 0..6 {
+            for e in 0..4 {
+                let dir = root.join(format!("d{d}")).join(format!("e{e}"));
+                fs::create_dir_all(&dir).unwrap();
+                fs::write(dir.join("a.bin"), vec![0u8; 100 + d * 10 + e]).unwrap();
+                fs::write(root.join(format!("d{d}")).join("b.bin"), vec![0u8; 7]).unwrap();
+            }
+        }
+        let want: u64 = (0..6u64).map(|d| (0..4u64).map(|e| 100 + d * 10 + e).sum::<u64>() + 7).sum();
+        for threads in [1, 8] {
+            let t = scan_dir(&root, threads);
+            let t = t.lock().unwrap();
+            assert!(!t.scanning);
+            assert_eq!((t.nodes[0].size, t.nodes[0].files, t.dirs), (want, 30, 1 + 6 + 24), "{threads} threads");
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `NOTIFI_SCAN_DIR=C:\Windows cargo test scan_speed -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn scan_speed() {
+        let root = PathBuf::from(std::env::var("NOTIFI_SCAN_DIR").expect("set NOTIFI_SCAN_DIR"));
+        for threads in [1, 4, 8, 16] {
+            let start = std::time::Instant::now();
+            let t = scan_dir(&root, threads);
+            let t = t.lock().unwrap();
+            println!("{threads:>2} threads: {:?}, {} files, {} folders, {} bytes", start.elapsed(), t.files, t.dirs, t.nodes[0].size);
+        }
+    }
+
+    #[test]
+    fn deleting_takes_the_size_out_of_every_folder_above() {
+        let root = std::env::temp_dir().join(format!("notifi-space-rm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("a/b/x.bin"), vec![0u8; 100]).unwrap();
+        fs::write(root.join("a/y.bin"), vec![0u8; 20]).unwrap();
+        let shared = scan_dir(&root, 2);
+        let mut t = shared.lock().unwrap();
+        let b = t.find(&root.join("a/b")).unwrap();
+        t.remove(b);
+        let a = t.find(&root.join("a")).unwrap();
+        assert_eq!((t.nodes[0].size, t.nodes[0].files, t.nodes[a as usize].size, t.files, t.dirs), (20, 1, 20, 1, 2));
+        assert!(t.find(&root.join("a/b")).is_none());
+        drop(t);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn system_folders_are_protected() {
+        let sys = std::env::var("SystemRoot").unwrap();
+        assert!(protected(Path::new(&sys)));
+        assert!(protected(&Path::new(&sys).join("System32").join("x.dll")));
+        assert!(protected(Path::new("C:/Program Files")));
+        assert!(!protected(Path::new("C:/Program Files/Some App")));
+        assert!(!protected(&std::env::temp_dir().join("anything")));
+    }
+
     fn chars(s: &str) -> Vec<char> {
         s.chars().collect()
     }
@@ -588,7 +787,7 @@ mod tests {
         fs::write(root.join("a/tiny.txt"), b"hi").unwrap();
         fs::write(root.join("b/other.mp4"), vec![0u8; 30_000]).unwrap();
         let shared = Arc::new(Mutex::new(Tree::new(root.clone())));
-        scan(shared.clone(), Arc::new(AtomicBool::new(false)), root.clone(), 16 * 1024, true);
+        scan(shared.clone(), Arc::new(AtomicBool::new(false)), root.clone(), 16 * 1024, true, 1);
         (root, shared)
     }
 
