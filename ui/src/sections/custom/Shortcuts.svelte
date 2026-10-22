@@ -59,7 +59,7 @@
     {/each}
   </div>
 {/each}
-<p class="foot">Click a shortcut, then press the new keys. Esc cancels. Shortcuts of features that are off don't clash.</p>
+<p class="foot">Click a shortcut, then press the new keys. Backspace clears it, Esc cancels. Shortcuts of features that are off don't clash.</p>
 
 <style>
   .controls {

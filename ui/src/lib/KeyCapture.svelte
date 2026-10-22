@@ -20,7 +20,7 @@
     if (!recording) return;
     recording = false;
     held = [];
-    if (accel) onchange(accel);
+    if (accel !== undefined) onchange(accel);
     await store.pauseShortcuts(false);
   }
 
@@ -33,6 +33,7 @@
     e.preventDefault();
     e.stopPropagation();
     if (e.code === 'Escape' && !modifiers(e).length) return stop();
+    if ((e.code === 'Backspace' || e.code === 'Delete') && !modifiers(e).length) return stop('');
     const accel = fromEvent(e);
     if (accel) stop(accel);
     else held = modifiers(e);
@@ -57,7 +58,7 @@
     {#if held.length}
       {#each keycaps(held.join('+')) as cap}<kbd>{cap}</kbd>{/each}<span class="hint">…</span>
     {:else}
-      <span class="hint">Press a shortcut · Esc to cancel</span>
+      <span class="hint">Press a shortcut · Backspace clears · Esc cancels</span>
     {/if}
   {:else if value}
     {#each keycaps(value) as cap}<kbd>{cap}</kbd>{/each}

@@ -268,7 +268,10 @@
   {#each islandActions as a (a.id)}
     <div class="row">
       <strong>{a.label.replace(/^Island: /, '')}</strong>
-      <KeyCapture value={store.settings?.shortcuts[a.id] ?? ''} label={a.label} onchange={(accel) => setShortcut(a.id, accel)} />
+      <span class="keys">
+        <KeyCapture value={store.settings?.shortcuts[a.id] ?? ''} label={a.label} onchange={(accel) => setShortcut(a.id, accel)} />
+        {#if store.settings?.shortcuts[a.id]}<button class="ghost" title="Remove" onclick={() => setShortcut(a.id, '')}>Clear</button>{/if}
+      </span>
     </div>
   {/each}
   {#if !islandActions.length}<p class="hint">Island shortcuts appear here once Notifi has loaded them.</p>{/if}
@@ -445,6 +448,11 @@
   h4 {
     margin: 14px 0 4px;
     font-size: 13px;
+  }
+  .keys {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .ghost {
     padding: 4px 10px;
