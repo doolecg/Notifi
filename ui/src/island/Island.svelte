@@ -496,6 +496,9 @@
     else if (target.startsWith('apps:')) {
       invoke('apps_open', { view: target.slice(5) }).catch(() => {});
       collapse();
+    } else if (target.startsWith('settings:')) {
+      invoke('open_settings_section', { section: target.slice(9) }).catch(() => {});
+      collapse();
     }
   }
 

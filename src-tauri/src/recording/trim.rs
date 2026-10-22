@@ -171,7 +171,7 @@ fn finish_copy(app: &AppHandle, dst: &Path, done: Result<(), String>, what: &str
         return Err(e);
     }
     crate::capture::recent::remember(app, dst, "video");
-    crate::island::notice(app, format!("{what} copy saved \u{b7} {}", dst.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+    crate::island::notice_to(app, format!("{what} copy saved \u{b7} {}", dst.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), Some("module:captures"));
     Ok(dst.display().to_string())
 }
 

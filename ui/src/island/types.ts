@@ -350,7 +350,7 @@ export interface Activity {
   ms: number;
   /** Held back by Do Not Disturb: goes to the list of past notifications only. */
   quiet?: boolean;
-  /** Where clicking it in the Notifications list goes: `module:<id>` or `apps:<view>`. */
+  /** Where clicking it in the Notifications list goes: `module:<id>`, `apps:<view>` or `settings:<section>`. */
   target?: string | null;
 }
 

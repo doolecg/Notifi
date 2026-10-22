@@ -305,7 +305,7 @@ pub fn pause(app: &AppHandle) {
 /// under the pointer. Also the entry point for the capture selector's Recording mode.
 pub fn start(app: &AppHandle) {
     if !available() {
-        crate::island::notice(app, "Screen recording is not available on this system yet".into());
+        crate::island::notice_to(app, "Screen recording is not available on this system yet".into(), Some("module:captures"));
         return;
     }
     let source = opts(app).source;
@@ -396,7 +396,7 @@ fn finish(app: &AppHandle, outcome: Outcome) {
         Outcome::Cancelled => hide(app, BAR),
         Outcome::Failed(msg) => {
             emit(app, "error", 0, 0, None, &msg);
-            crate::island::notice(app, format!("Recording failed \u{b7} {msg}"));
+            crate::island::notice_to(app, format!("Recording failed \u{b7} {msg}"), Some("module:captures"));
         }
     }
 }

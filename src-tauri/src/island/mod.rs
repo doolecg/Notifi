@@ -350,7 +350,7 @@ struct Activity {
     ms: u32,
     /// Held back by Do Not Disturb: kept in the list of past notifications, not shown.
     quiet: bool,
-    /// Where clicking it in the list of past notifications goes: `module:<id>` or `apps:<view>`.
+    /// Where clicking it in the list of past notifications goes: `module:<id>`, `apps:<view>` or `settings:<section>`.
     target: Option<&'static str>,
 }
 
@@ -748,7 +748,7 @@ pub fn deliver(app: &AppHandle, title: &str, body: &str, sound: bool) -> bool {
     if sound && !held {
         click::notify();
     }
-    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms, quiet: held, target: None });
+    let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon: "bell", color: AGENT_COLOR, text, ms: c.activity_ms, quiet: held, target: Some("module:system") });
     true
 }
 
@@ -770,7 +770,7 @@ pub fn notice(app: &AppHandle, text: String) {
     notice_to(app, text, None);
 }
 
-/// A notice that belongs to a feature: clicking it in the list of past notifications opens `target` (`module:<id>` or `apps:<view>`).
+/// A notice that belongs to a feature: clicking it in the list of past notifications opens `target` (`module:<id>`, `apps:<view>` or `settings:<section>`).
 pub fn notice_to(app: &AppHandle, text: String, target: Option<&'static str>) {
     let c = config(app);
     if c.enabled {
@@ -958,7 +958,7 @@ fn start_weather(app: &AppHandle) {
 #[tauri::command]
 pub fn island_ai_prompt(app: AppHandle, index: usize) {
     if let Err(e) = ai_prompt(&app, index) {
-        notice(&app, e);
+        notice_to(&app, e, Some("module:chat"));
     }
 }
 

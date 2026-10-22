@@ -199,7 +199,7 @@ impl Opts {
 }
 
 fn notice(app: &AppHandle, text: impl Into<String>) {
-    crate::island::notice(app, text.into());
+    crate::island::notice_to(app, text.into(), Some("module:captures"));
 }
 
 // ---- Entry points ----
@@ -652,7 +652,7 @@ fn deliver(app: &AppHandle, o: &Opts, img: RgbaImage, scale: f64) {
     } else if o.preview_secs != 0 {
         show_preview(app, o, &last);
     } else if copied {
-        crate::island::notice_to(app, "Screenshot copied".into(), Some("module:captures"));
+        notice(app, "Screenshot copied");
     }
 }
 

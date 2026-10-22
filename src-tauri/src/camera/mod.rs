@@ -216,7 +216,7 @@ pub fn camera_preview_close(window: WebviewWindow) {
 #[tauri::command]
 pub fn camera_preview_lost(window: WebviewWindow, why: String) {
     if window.label() == WINDOW {
-        crate::island::notice(window.app_handle(), why);
+        crate::island::notice_to(window.app_handle(), why, Some("module:camera"));
         let _ = window.close();
     }
 }

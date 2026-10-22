@@ -360,7 +360,7 @@ pub async fn chat_open_thread(app: AppHandle, thread: String) {
             }
             island::open_chat(&app);
         }
-        Err(e) => island::notice(&app, e),
+        Err(e) => island::notice_to(&app, e, Some("module:chat")),
     }
 }
 
@@ -372,7 +372,7 @@ pub async fn chat_hide(app: AppHandle, fade: Option<bool>, morph: Option<Morph>)
 #[tauri::command]
 pub fn chat_dictate(app: AppHandle) {
     if let Err(e) = dictate(&app) {
-        island::notice(&app, e);
+        island::notice_to(&app, e, Some("module:chat"));
     }
 }
 

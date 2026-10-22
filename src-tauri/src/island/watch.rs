@@ -395,7 +395,7 @@ pub fn start(app: &AppHandle) {
                     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
                     for (label, rule) in rules(&s) {
                         if rule.fires(previous.as_deref(), &text) {
-                            super::notice(&app, format!("Watch: {label} ({})", pill_text(&text)));
+                            super::notice_to(&app, format!("Watch: {label} ({})", pill_text(&text)), Some("settings:island"));
                         }
                     }
                     publish(&app, show.then(|| Reading { text: pill_text(&text), paused: String::new() }));

@@ -116,14 +116,14 @@ pub fn record(app: &AppHandle, region: Region, o: &Opts, session: &Arc<Session>)
 
     let gif = o.format == "gif";
     if o.format == "webm" {
-        crate::island::notice(app, "WebM is not available yet, so this recording is saved as MP4".into());
+        crate::island::notice_to(app, "WebM is not available yet, so this recording is saved as MP4".into(), Some("module:captures"));
     }
     let streams = (!gif && (o.system_audio || o.mic)).then(|| {
         let id = o.mic.then(|| mic_id(app, &o.mic_device)).flatten();
         audio::open(o.system_audio, o.mic, id.as_deref())
     });
     if let Some(warning) = streams.as_ref().and_then(|s| s.warning.as_deref()) {
-        crate::island::notice(app, warning.to_string());
+        crate::island::notice_to(app, warning.to_string(), Some("module:captures"));
     }
     let audio_tracks = streams.as_ref().map_or(0, audio::Streams::track_count);
 
