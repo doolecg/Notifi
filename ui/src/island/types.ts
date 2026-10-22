@@ -36,6 +36,9 @@ export interface IslandConfig {
   idleBattery: boolean;
   idleCpuRam: boolean;
   idleAiUsage: boolean;
+  idleNotifications: boolean;
+  weatherCity: string;
+  aiPrompts: string[];
   idleThinBar: boolean;
   dock: 'top' | 'bottomLeft';
   agentsTaskbar: boolean;
@@ -89,6 +92,9 @@ export const DEFAULT_CONFIG: IslandConfig = {
   idleBattery: true,
   idleCpuRam: true,
   idleAiUsage: true,
+  idleNotifications: true,
+  weatherCity: '',
+  aiPrompts: ['Explain this', 'Summarize this', 'Fix this'],
   idleThinBar: true,
   dock: 'top',
   agentsTaskbar: false,
@@ -325,6 +331,10 @@ export interface Snapshot {
   open: boolean;
   /** Text read from the watched screen area; null when nothing is watched or it is not shown on the pill. */
   watch: WatchReading | null;
+  /** The weather for the city in settings; null with no city or while it is fetched. */
+  weather: { city: string; temp: number; icon: string; label: string } | null;
+  /** Why there is no weather (an unknown city, no network). */
+  weatherError: string | null;
 }
 
 /** `paused` says why nothing is being read (the window moved, text recognition failed); empty while reading. */

@@ -132,6 +132,9 @@ pub const PAGES: &[Page] = &[
                 sw("idleAiUsage", "AI usage", "Share of the Claude 5-hour session used.", true),
                 sw("idleCpuRam", "CPU and memory", "", true),
                 sw("idleBattery", "Battery", "Shows CPU instead on computers without a battery.", true),
+                sw("idleNotifications", "Notification count", "A bell with the number of notifications waiting in the list.", true),
+                text("weatherCity", "Weather city", "Shows the weather on the pill. Only this city name is sent, to Open-Meteo (open-meteo.com), a free weather service. Leave empty for no weather and no internet use.", "For example Manchester", ""),
+                list_of("aiPrompts", "Quick AI prompts", "Up to four buttons on the pill. A tap copies the prompt (with any text you had copied after it) and opens the AI chat, ready to paste. Needs the AI chat button turned on.", "Prompt", &["Explain this", "Summarize this", "Fix this"]),
             ]),
             tab_card("Content", "AI questions", &[
                 sw("askInIsland", "Show AI questions in the Island", "When Claude Code asks you something or needs permission, it appears in the Island so you can answer there.", false),

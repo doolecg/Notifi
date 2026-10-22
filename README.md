@@ -20,7 +20,7 @@ That's it. Notifi keeps itself up to date from GitHub releases, and the tray ico
 
 | Capability | What you get |
 | --- | --- |
-| The Island | A pill at the top of the screen that opens into tabs: Nook, Now Playing, Timer, Volume, AI Agents and a module grid. |
+| The Island | A pill (at the top of the screen, or on the taskbar) that opens into tabs: Nook, Now Playing, Timer, Volume, AI Agents and a module grid. When idle it shows the time, the weather, a notification count, quick AI prompt buttons and CPU, memory and AI meters. |
 | AI agents | Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI sessions, with session time and plan use. |
 | AI chat | T3 Code's own chat inside the Island, opened on the chat you used last, with Escape to close and Windows voice typing. |
 | Media | Now playing with controls, time-synced lyrics, volume and brightness sliders, and an app volume mixer. |
@@ -77,6 +77,7 @@ Most of Notifi works only on your PC. These are the times it uses the internet:
 - **Updates.** Asks GitHub for the newest release every few hours and downloads it. Turn off "Update automatically" to stop this.
 - **Lyrics.** Sends the song title and artist to [LRCLIB](https://lrclib.net) when you open lyrics.
 - **Claude plan limits.** Off until you turn it on. Then it sends the login Claude Code saved on your PC to Anthropic to read your 5-hour and weekly use. The login is read for each request and never stored by Notifi.
+- **Weather.** Off until you type a city in the Island settings. Then the city name is sent to [Open-Meteo](https://open-meteo.com) (a free weather service, no account) to find the place and read the weather, every 15 minutes.
 - **Speed test.** Talks to open [LibreSpeed](https://librespeed.org) servers, only when you start a test.
 - **Share links.** Uploads a capture to the server you set, only when you ask it to.
 
@@ -96,7 +97,7 @@ Start with the spec for the feature in `spec/`, then the code it names. Before s
 
 Notifi is modelled on [Vorssaint](https://vorssaint.com), a set of macOS menu-bar tools. It is a clean-room work: it was written only from behaviour specs drawn from Vorssaint's public pages and screenshots, and no Vorssaint code, images or text were used. Notifi's name, icon and look are its own.
 
-It is built with [Tauri](https://tauri.app), Rust and [Svelte](https://svelte.dev), shows [T3 Code](https://github.com/pingdotgg/t3code) for its chat, gets lyrics from [LRCLIB](https://lrclib.net) and speed tests from [LibreSpeed](https://librespeed.org).
+It is built with [Tauri](https://tauri.app), Rust and [Svelte](https://svelte.dev), shows [T3 Code](https://github.com/pingdotgg/t3code) for its chat, gets lyrics from [LRCLIB](https://lrclib.net), weather from [Open-Meteo](https://open-meteo.com) and speed tests from [LibreSpeed](https://librespeed.org).
 
 ## Licence
 

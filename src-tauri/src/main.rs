@@ -221,6 +221,7 @@ fn main() {
             island::island_focus,
             island::island_open_agents,
             island::island_open_chat,
+            island::island_ai_prompt,
             island::island_bar_width,
             island::island_bar_extra,
             island::island_chat,

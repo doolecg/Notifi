@@ -18,6 +18,7 @@ pub mod terminals;
 pub mod timer;
 pub mod usage;
 pub mod watch;
+pub mod weather;
 
 use std::{
     sync::{
@@ -94,6 +95,14 @@ pub struct IslandState {
     claude_refresh: std::sync::atomic::AtomicBool,
     /// Delivery and ride cards read from Windows notifications.
     orders: Mutex<dynamic::Orders>,
+    /// The latest weather for the city in settings, and why there is none when there isn't.
+    weather: Mutex<WeatherState>,
+}
+
+#[derive(Default, Clone)]
+struct WeatherState {
+    now: Option<weather::Weather>,
+    error: Option<String>,
 }
 
 #[derive(Default)]
@@ -132,7 +141,7 @@ struct Inner {
 impl Default for IslandState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), claude: Mutex::default(), claude_refresh: Default::default(), orders: Mutex::default() }
+        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), claude: Mutex::default(), claude_refresh: Default::default(), orders: Mutex::default(), weather: Mutex::default() }
     }
 }
 
@@ -312,6 +321,10 @@ pub struct Snapshot {
     open: bool,
     /// The text read from the watched screen area, for the resting pill; `None` when nothing is watched or it is not shown.
     watch: Option<watch::Reading>,
+    /// The weather for the city in settings; `None` with no city, or while it is being fetched.
+    weather: Option<weather::Weather>,
+    /// Why there is no weather (an unknown city, no network).
+    weather_error: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -824,6 +837,85 @@ fn start_claude_limits(app: &AppHandle) {
         .expect("spawn claude limits thread");
 }
 
+/// How often the weather is read, and how long to wait after a failed read.
+const WEATHER_EVERY: Duration = Duration::from_secs(15 * 60);
+const WEATHER_RETRY: Duration = Duration::from_secs(5 * 60);
+
+/// Keeps the weather for the city in settings up to date. Nothing is sent while the city is empty.
+fn start_weather(app: &AppHandle) {
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("notifi-weather".into()).spawn(move || {
+        let (mut city, mut place, mut next) = (String::new(), None::<weather::Place>, Instant::now());
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+            let state = app.state::<IslandState>();
+            let c = config(&app);
+            let wanted = c.weather_city.trim().to_string();
+            if !c.enabled || wanted.is_empty() {
+                if !city.is_empty() || state.weather.lock().unwrap().error.is_some() {
+                    *state.weather.lock().unwrap() = WeatherState::default();
+                    (city, place) = (String::new(), None);
+                    state.wake();
+                }
+                continue;
+            }
+            if wanted != city {
+                (city, place, next) = (wanted, None, Instant::now());
+            }
+            if Instant::now() < next {
+                continue;
+            }
+            let found = tauri::async_runtime::block_on(async {
+                let at = match &place {
+                    Some(p) => p.clone(),
+                    None => weather::find_place(&city).await?,
+                };
+                weather::current(&at).await.map(|w| (at, w))
+            });
+            match found {
+                Ok((at, w)) => {
+                    place = Some(at);
+                    next = Instant::now() + WEATHER_EVERY;
+                    *state.weather.lock().unwrap() = WeatherState { now: Some(w), error: None };
+                }
+                Err(e) => {
+                    next = Instant::now() + WEATHER_RETRY;
+                    let mut s = state.weather.lock().unwrap();
+                    s.error = Some(e);
+                    // A city that is not found shows nothing; a failed refresh keeps the last weather.
+                    if place.is_none() {
+                        s.now = None;
+                    }
+                }
+            }
+            state.wake();
+        }
+    });
+}
+
+/// A quick AI button: the saved prompt goes on the clipboard (with any text already copied after it) and the AI chat opens, ready to paste.
+#[tauri::command]
+pub fn island_ai_prompt(app: AppHandle, index: usize) {
+    if let Err(e) = ai_prompt(&app, index) {
+        notice(&app, e);
+    }
+}
+
+fn ai_prompt(app: &AppHandle, index: usize) -> Result<(), String> {
+    let c = config(app);
+    if !c.chat_enabled {
+        return Err("Turn on the AI chat button in the Island settings first.".into());
+    }
+    let prompt = c.ai_prompts.get(index).ok_or("That prompt is not in the list any more.")?;
+    let copied = crate::clipboard::read_text().map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && t.chars().count() <= 20_000);
+    crate::clipboard::set_text(&match copied {
+        Some(text) => format!("{prompt}\n\n{text}"),
+        None => prompt.clone(),
+    })?;
+    open_chat(app);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn island_claude_usage(state: State<IslandState>) -> claude_limits::ClaudeUsage {
     state.claude.lock().unwrap().clone()
@@ -891,6 +983,7 @@ fn start(app: &AppHandle) {
     start_claude_limits(app);
     watch::start(app);
     dynamic::start(app);
+    start_weather(app);
     #[cfg(windows)]
     start_raise(app);
     start_hit(app);
@@ -1086,6 +1179,8 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
         }
         let media = np.as_ref().map(MediaSnap::from);
         let playing = media.as_ref().is_some_and(|m| m.playing);
+        // One lock, taken before the struct below: two in the same statement would wait on each other.
+        let wx = state.weather.lock().unwrap().clone();
         let snap = Snapshot {
             enabled: true,
             layout: layout_for(&c, tall, chat, screen, state.inner.lock().unwrap().start_x),
@@ -1107,6 +1202,8 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             media_supported,
             open,
             watch: watch::reading(),
+            weather: wx.now,
+            weather_error: wx.error,
         };
         if let Ok(value) = serde_json::to_value(&snap) {
             let mut i = state.inner.lock().unwrap();

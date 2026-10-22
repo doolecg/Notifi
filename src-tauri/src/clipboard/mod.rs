@@ -87,6 +87,11 @@ pub fn set_text(text: &str) -> Result<(), String> {
     sys::write(&Payload::text(text)).map(|_| ())
 }
 
+/// The plain text on the system clipboard, if there is any.
+pub fn read_text() -> Option<String> {
+    sys::read_text()
+}
+
 /// Puts a PNG image on the system clipboard.
 pub fn set_png(png: &[u8]) -> Result<(), String> {
     sys::write(&Payload { png: Some(png.to_vec()), ..Default::default() }).map(|_| ())

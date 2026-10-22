@@ -72,6 +72,12 @@ pub struct IslandConfig {
     pub idle_battery: bool,
     pub idle_cpu_ram: bool,
     pub idle_ai_usage: bool,
+    /// Notifications waiting in the list, as a count on the pill.
+    pub idle_notifications: bool,
+    /// The city whose weather shows on the pill; empty means no weather and nothing is sent anywhere.
+    pub weather_city: String,
+    /// Buttons on the pill that copy a prompt and open the AI chat.
+    pub ai_prompts: Vec<String>,
     /// When idle the pill shrinks to a thin bar and grows back on hover.
     pub idle_thin_bar: bool,
     /// "top" (hangs from the top centre) or "bottomLeft" (sits on the taskbar's left, grows upward).
@@ -147,6 +153,9 @@ impl Default for IslandConfig {
             idle_battery: true,
             idle_cpu_ram: true,
             idle_ai_usage: true,
+            idle_notifications: true,
+            weather_city: String::new(),
+            ai_prompts: s(&["Explain this", "Summarize this", "Fix this"]),
             idle_thin_bar: true,
             dock: "top".into(),
             agents_taskbar: false,
@@ -248,6 +257,9 @@ impl IslandConfig {
         if !matches!(c.agents_period.as_str(), "today" | "7d" | "30d") {
             c.agents_period = "7d".into();
         }
+        c.weather_city = c.weather_city.trim().chars().take(80).collect();
+        // Up to four prompts fit on the pill.
+        c.ai_prompts = c.ai_prompts.iter().map(|p| p.trim().chars().take(2000).collect::<String>()).filter(|p| !p.is_empty()).take(4).collect();
         c
     }
 }
@@ -425,5 +437,14 @@ mod tests {
         assert!(!c.idle_clock);
         assert!(c.idle_cpu_ram);
         assert!(!c.idle_thin_bar);
+    }
+
+    #[test]
+    fn weather_city_and_ai_prompts() {
+        let d = IslandConfig::default();
+        assert!(d.idle_notifications && d.weather_city.is_empty() && d.ai_prompts.len() == 3);
+        let c = IslandConfig::from_settings(&json!({ "island": { "weatherCity": "  Leeds ", "aiPrompts": [" a ", "", "b", "c", "d", "e"] } }));
+        assert_eq!(c.weather_city, "Leeds");
+        assert_eq!(c.ai_prompts, ["a", "b", "c", "d"]);
     }
 }

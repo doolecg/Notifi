@@ -33,14 +33,11 @@
   const REST = { w: 190, h: 32 };
   const LIVE = { w: 310, h: 34 };
   const ACTIVITY = { w: 390, h: 40 };
-  /** The idle info pill is sized from what it shows (rough text widths), between these. */
+  /** The idle info pill is sized from what it shows (rough widths of each item), between these. */
   const IDLE_MIN = 190;
-  const IDLE_MAX = 420;
-  const IDLE_CH = 6.5;
-  const IDLE_ICON = 17;
-  const IDLE_GAP = 8;
-  const IDLE_PAD = 28;
-  const IDLE_MID = 24;
+  const IDLE_MAX = 820;
+  const IDLE_GAP = 14;
+  const IDLE_PAD = 32;
   /** The thin bar shown when idle, and the taller area around it that catches the pointer. */
   const THIN = { w: 120, h: 4 };
   const THIN_HIT = { w: 160, h: 12 };
@@ -91,38 +88,43 @@
   const workingCount = $derived((snap?.agents ?? []).filter((a) => a.working).length);
   const selLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
 
-  type IdleItem = { key: string; label?: string; icon?: string; text: string };
+  /** One thing on the resting pill: the time, the weather, the notification count, a quick AI button or a system meter. `w` is its rough width. */
+  type IdleItem = { key: string; kind: 'time' | 'weather' | 'bell' | 'prompt' | 'stat'; text: string; label?: string; icon?: string; tip?: string; pct?: number; index?: number; w: number };
   const minute = $derived(Math.floor(island.now / 60_000));
-  const idleLeft = $derived.by(() => {
+  const idleItems = $derived.by(() => {
     if (!cfg) return [];
+    const out: IdleItem[] = [];
     const d = new Date(minute * 60_000);
-    const out: IdleItem[] = [];
-    if (cfg.idleClock) out.push({ key: 'clock', text: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
-    if (cfg.idleDate) out.push({ key: 'date', text: d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) });
-    return out;
-  });
-  const idleRight = $derived.by(() => {
+    const time = cfg.idleClock ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const date = cfg.idleDate ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+    if (time || date) out.push({ key: 'time', kind: 'time', text: time, label: date, w: time.length * 7.6 + (date ? date.length * 6 + 8 : 0) });
+    const wx = snap?.weather;
+    if (wx) out.push({ key: 'wx', kind: 'weather', icon: wx.icon, text: `${wx.temp}°`, tip: `${wx.city}: ${wx.label}`, w: 22 + String(wx.temp).length * 8 });
+    else if (cfg.weatherCity && snap?.weatherError) out.push({ key: 'wx', kind: 'weather', icon: 'cloud', text: '--', tip: snap.weatherError, w: 40 });
+    const waiting = island.history.length;
+    if (cfg.idleNotifications && waiting) out.push({ key: 'bell', kind: 'bell', text: String(waiting), tip: 'Notifications', w: 22 + String(waiting).length * 7.5 });
+    if (cfg.chatEnabled) cfg.aiPrompts.forEach((p, index) => out.push({ key: `ai${index}`, kind: 'prompt', text: p, index, w: 34 + Math.min(96, p.length * 6.4) }));
     const i = snap?.idle;
-    if (!cfg || !i) return [];
-    const out: IdleItem[] = [];
-    const pct = (key: string, label: string, v: number | null) => {
-      if (v !== null) out.push({ key, label, text: `${v}%` });
-    };
-    if (cfg.idleAiUsage) pct('ai', 'AI', i.ai);
-    if (cfg.idleCpuRam) {
-      pct('cpu', 'CPU', i.cpu);
-      pct('mem', 'RAM', i.mem);
-    }
-    if (cfg.idleBattery) {
-      if (i.battery !== null) out.push({ key: 'battery', icon: i.charging ? 'bolt' : 'battery', text: `${i.battery}%` });
-      else if (!cfg.idleCpuRam) pct('cpu', 'CPU', i.cpu);
+    if (i) {
+      const stat = (key: string, label: string | undefined, v: number | null, icon?: string, tip?: string) => {
+        if (v !== null) out.push({ key, kind: 'stat', label, icon, text: `${v}%`, pct: v, tip, w: (label ? label.length * 6.2 + 4 : 17) + 30 + String(v).length * 6.8 + 8 });
+      };
+      if (cfg.idleAiUsage) stat('ai', 'AI', i.ai, undefined, 'Share of the Claude 5 hour session used');
+      if (cfg.idleCpuRam) {
+        stat('cpu', 'CPU', i.cpu);
+        stat('mem', 'RAM', i.mem);
+      }
+      if (cfg.idleBattery) {
+        if (i.battery !== null) stat('battery', undefined, i.battery, i.charging ? 'bolt' : 'battery', i.charging ? 'Charging' : 'Battery');
+        else if (!cfg.idleCpuRam) stat('cpu', 'CPU', i.cpu);
+      }
     }
     return out;
   });
-  const sideW = (items: IdleItem[]) =>
-    items.reduce((w, it) => w + (it.text.length + (it.label ? it.label.length + 1 : 0)) * IDLE_CH + (it.icon ? IDLE_ICON : 0), 0) +
-    Math.max(0, items.length - 1) * IDLE_GAP;
-  const idleShown = $derived(idleLeft.length + idleRight.length > 0);
+  const idleShown = $derived(idleItems.length > 0);
+
+  /** A quick AI button: the prompt is copied and the chat opens (Notifi shows a notice if that fails). */
+  const askAi = (index: number) => invoke('island_ai_prompt', { index }).catch(() => {});
   /** The clock/CPU page is one more page to scroll to when something is live. */
   const watchChosen = $derived(chosenLive === 'watch' && !!snap?.watch);
   const infoChosen = $derived(!watchChosen && chosenLive === 'info' && idleShown && live.length > 0);
@@ -135,7 +137,7 @@
   const idleW = $derived(
     idleShown
       ? Math.round(Math.min(IDLE_MAX, Math.max(IDLE_MIN,
-          IDLE_PAD + sideW(idleLeft) + sideW(idleRight) + (idleLeft.length && idleRight.length ? IDLE_MID : 0))))
+          IDLE_PAD + idleItems.reduce((w, it) => w + it.w, 0) + (idleItems.length - 1) * IDLE_GAP)))
       : REST.w,
   );
 
@@ -710,15 +712,19 @@
           </div>
         {/key}
       {:else if !thin && idleShown}
-        <div class="ends idle live-in" out:fade={swapOut()} class:one={!idleLeft.length || !idleRight.length}>
-          {#each [idleLeft, idleRight] as side, s (s)}
-            {#if side.length}
-              <span class="iside">
-                {#each side as it (it.key)}
-                  <span class="iitem">
-                    {#if it.icon}<Glyph name={it.icon} size={14} />{/if}{#if it.label}<small>{it.label}</small>{/if}{it.text}
-                  </span>
-                {/each}
+        <div class="ends idle live-in" out:fade={swapOut()}>
+          {#each idleItems as it (it.key)}
+            {#if it.kind === 'time'}
+              <span class="iclock">{#if it.text}<b>{it.text}</b>{/if}{#if it.label}<small>{it.label}</small>{/if}</span>
+            {:else if it.kind === 'weather'}
+              <span class="iwx" title={it.tip}><Glyph name={it.icon ?? 'cloud'} size={15} />{it.text}</span>
+            {:else if it.kind === 'bell'}
+              <span class="ibell" title={it.tip}><Glyph name="bell" size={14} />{it.text}</span>
+            {:else if it.kind === 'prompt'}
+              <button class="iprompt" title={it.text} onclick={(e) => { e.stopPropagation(); askAi(it.index ?? 0); }}><Glyph name="sparkle" size={12} /><span>{it.text}</span></button>
+            {:else}
+              <span class="istat" class:warn={(it.pct ?? 0) >= 70} class:hot={(it.pct ?? 0) >= 90} title={it.tip}>
+                {#if it.icon}<Glyph name={it.icon} size={13} />{/if}{#if it.label}<small>{it.label}</small>{/if}<i class="ibar"><u style:width={`${it.pct}%`}></u></i>{it.text}
               </span>
             {/if}
           {/each}
@@ -1330,29 +1336,83 @@
     font-weight: 700;
   }
   .idle {
-    padding: 0 14px;
-    font-size: 11.5px;
+    justify-content: center;
+    gap: 14px;
+    padding: 0 16px;
+    font-size: 12px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .idle.one {
-    justify-content: center;
+  .idle small {
+    color: var(--i-mut);
+    font-size: 10.5px;
+    font-weight: 600;
   }
-  .iside {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .iclock {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
   }
-  .iitem {
+  .iclock b {
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .iwx,
+  .ibell,
+  .istat {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    font-weight: 500;
+    gap: 4px;
   }
-  .iitem small {
-    color: var(--i-mut);
-    font-size: 10px;
-    font-weight: 600;
+  .ibell {
+    color: var(--i-agent);
+  }
+  .iprompt {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 130px;
+    height: 22px;
+    padding: 0 10px 0 8px;
+    border: 0;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--i-fg), transparent 90%);
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .iprompt:hover {
+    background: color-mix(in srgb, var(--i-acc), transparent 78%);
+  }
+  .iprompt span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .istat {
+    --c: var(--i-acc);
+  }
+  .istat.warn {
+    --c: var(--i-agent);
+  }
+  .istat.hot {
+    --c: #ff6b5e;
+  }
+  .ibar {
+    width: 26px;
+    height: 4px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--i-fg), transparent 86%);
+    overflow: hidden;
+  }
+  .ibar u {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--c);
+    transition: width var(--m-glassIn-dur) var(--m-glassIn-ease);
   }
   .activity {
     justify-content: center;
