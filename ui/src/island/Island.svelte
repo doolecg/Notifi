@@ -226,16 +226,6 @@
     invoke<number>('island_bar_height').then((h) => (bar = h)).catch(() => {});
   });
 
-  /** The taskbar's colour, sampled again now and then so wallpaper and theme changes follow. */
-  let taskbar = $state({ bg: '#1c1c1c', light: false });
-  $effect(() => {
-    if (!layout?.dock) return;
-    const read = () => invoke<{ bg: string; light: boolean }>('island_taskbar_style').then((t) => (taskbar = t)).catch(() => {});
-    read();
-    const id = setInterval(read, 15000);
-    return () => clearInterval(id);
-  });
-
   $effect(() => setReducedMotion(store.settings?.general.reducedMotion ?? false));
 
   function clearTimers() {
@@ -272,7 +262,8 @@
       open = true;
       await invoke('island_shape', { open: true, width: box.w, height: box.h }).catch(() => {});
     }
-    requestAnimationFrame(() => (expanded = true));
+    // Two frames: the docked menu is created closed in the first, so it has a size to grow from.
+    requestAnimationFrame(() => requestAnimationFrame(() => (expanded = true)));
   }
 
   function collapse() {
@@ -455,7 +446,8 @@
   /** The menu's height: stretched, or as opened. */
   const flyH = $derived(chatMode ? (layout?.chat[1] ?? baseH) : tall ? (layout?.tall[1] ?? baseH) : baseH);
   const grown = $derived(expanded && !dock);
-  const pillW = $derived(grown && layout ? openW : rest.w);
+  // Docked, the bar in the taskbar widens to the menu above it, so the two read as one block.
+  const pillW = $derived(expanded && layout ? openW : rest.w);
   const pillH = $derived(grown && layout ? flyH : rest.h);
   const radius = $derived(grown && layout ? layout.radius : rest.h / 2);
   /** What the pill is telling you, so a change in it can flash the edge. */
@@ -606,10 +598,7 @@
 
 {#if snap?.enabled && cfg && layout}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="root" class:translucent={cfg.translucent} class:dock={layout.dock}
-    class:light={layout.dock && taskbar.light}
-    style:--tb-bg={layout.dock ? taskbar.bg : undefined}
-    style:--dock-dark={`${cfg.dockDarkness}%`} onpointerenter={() => (near = true)} onpointerleave={() => (near = false)}>
+  <div class="root" class:translucent={cfg.translucent} class:dock={layout.dock} onpointerenter={() => (near = true)} onpointerleave={() => (near = false)}>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
       class="pill"
@@ -736,7 +725,7 @@
         class:shown={expanded}
         style:bottom={`${bar + FLY_GAP}px`}
         style:width={`${openW}px`}
-        style:height={`${flyH}px`}
+        style:height={`${expanded ? flyH : 0}px`}
         style:border-radius={`${layout.radius}px`}
         onpointerenter={enter}
         onpointerleave={leave}
@@ -799,55 +788,45 @@
       height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
       border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
   }
-  .dock {
-    --i-bg: var(--tb-bg);
-    --i-face: color-mix(in srgb, var(--tb-bg), #000 var(--dock-dark, 25%));
-    --i-fg: #f3f3f3;
-    --i-mut: #a8a8a8;
-  }
-  .dock.light {
-    --i-fg: #1a1a1a;
-    --i-mut: #5d5d5d;
-    --i-hover: rgb(0 0 0 / 0.07);
-  }
+  /* Docked, the bar and its menu use the top Island's black, not the taskbar's colour. */
   .dock .pill {
     top: auto;
     left: 0;
     transform: none;
-    background: var(--i-face);
-    box-shadow: none;
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.12);
     transition:
       width var(--m-pillRise-dur) var(--m-pillRise-ease),
       height var(--m-pillRise-dur) var(--m-pillRise-ease),
       bottom var(--m-pillRise-dur) var(--m-pillRise-ease),
       border-radius var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
-  /* The Start-menu style flyout: rises out of the taskbar. */
+  .dock .pill.expanded {
+    transition:
+      width var(--m-pillDrop-dur) var(--m-pillDrop-ease),
+      height var(--m-pillDrop-dur) var(--m-pillDrop-ease),
+      border-radius var(--m-pillDrop-dur) var(--m-pillDrop-ease);
+  }
+  /* The menu grows up out of the bar on the same spring the top Island drops on, already at the bar's width. */
   .fly {
     position: absolute;
     left: 0;
     overflow: hidden;
-    background: var(--tb-bg);
+    background: var(--i-bg);
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--i-fg), transparent 88%),
-      0 12px 36px rgb(0 0 0 / 0.4);
+      0 -6px 18px rgb(0 0 0 / 0.35),
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.12);
     opacity: 0;
-    filter: blur(6px);
-    transform: translateY(28px) scale(0.96);
-    transform-origin: bottom left;
     transition:
       opacity var(--m-pillRise-dur) var(--m-pillRise-ease),
-      filter var(--m-pillRise-dur) var(--m-pillRise-ease),
-      transform var(--m-pillRise-dur) var(--m-pillRise-ease);
+      height var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
   .fly.shown {
     opacity: 1;
-    filter: blur(0);
-    transform: none;
     transition:
       opacity var(--m-glassIn-dur) var(--m-glassIn-ease),
-      filter var(--m-glassIn-dur) var(--m-glassIn-ease),
-      transform var(--m-pillDrop-dur) var(--m-pillDrop-ease),
       height var(--m-pillDrop-dur) var(--m-pillDrop-ease);
   }
   .tabs {

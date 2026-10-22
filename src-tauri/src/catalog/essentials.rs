@@ -177,7 +177,6 @@ pub const PAGES: &[Page] = &[
                 pick("openOn", "Open", "", &[c("click", "On click only"), c("hover", "On hover")], "click"),
                 pick("dock", "Position", "Bottom left sits on the taskbar and grows upward.", &[c("top", "Top centre"), c("bottomLeft", "Bottom left")], "top"),
                 sw("agentsTaskbar", "AI Agents bar on the taskbar", "Keeps the AI Agents bar on its own at the taskbar's left while the Island stays at the top.", false),
-                num("dockDarkness", "Dock darkness", "How much darker than the taskbar the docked bar is.", 0.0, 80.0, 1.0, "%", 25.0),
                 num("hoverDelayMs", "Hover delay", "", 0.0, 1500.0, 50.0, "ms", 250.0),
                 num("collapseDelayMs", "Collapse delay", "", 0.0, 3000.0, 100.0, "ms", 600.0),
                 text("display", "Display", "primary, pointer or a monitor name.", "primary", "primary"),

@@ -251,9 +251,6 @@
       <option value="bottomLeft">Bottom left, on the taskbar</option>
     </select>
   </label>
-  <label class="row"><strong>Dock darkness</strong>
-    <span><input type="range" min="0" max="80" step="1" value={cfg.dockDarkness} disabled={cfg.dock !== 'bottomLeft'} onchange={(e) => set('dockDarkness', Number((e.target as HTMLInputElement).value))} /> {cfg.dockDarkness}%</span>
-  </label>
   <label class="row"><strong>Hover delay</strong>
     <span><input type="range" min="0" max="1500" step="50" value={cfg.hoverDelayMs} disabled={cfg.openOn !== 'hover'} onchange={(e) => set('hoverDelayMs', Number((e.target as HTMLInputElement).value))} /> {cfg.hoverDelayMs} ms</span>
   </label>

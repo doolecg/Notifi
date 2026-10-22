@@ -47,7 +47,6 @@ export interface IslandConfig {
   alertsInIsland: boolean;
   privacyMode: boolean;
   claudeUsageConnect: boolean;
-  dockDarkness: number;
   askInIsland: boolean;
 }
 
@@ -101,7 +100,6 @@ export const DEFAULT_CONFIG: IslandConfig = {
   alertsInIsland: true,
   privacyMode: false,
   claudeUsageConnect: false,
-  dockDarkness: 25,
   askInIsland: false,
 };
 

@@ -95,7 +95,6 @@ pub struct IslandConfig {
     /// Read Claude's 5 hour and weekly limits from Anthropic using Claude Code's saved login.
     pub claude_usage_connect: bool,
     /// How much darker than the taskbar the docked bar is, in percent.
-    pub dock_darkness: f64,
     /// From the AI agents settings page (`features.aiAgents`).
     pub agents_follow: Vec<String>,
     pub log_folders: Vec<String>,
@@ -159,7 +158,6 @@ impl Default for IslandConfig {
             alerts_in_island: true,
             privacy_mode: false,
             claude_usage_connect: false,
-            dock_darkness: 25.0,
             agents_follow: Vec::new(),
             log_folders: Vec::new(),
             limit_shown: "closest".into(),
@@ -244,7 +242,6 @@ impl IslandConfig {
         if !c.claude_plan_limit_usd.is_finite() || c.claude_plan_limit_usd < 0.0 {
             c.claude_plan_limit_usd = 0.0;
         }
-        c.dock_darkness = if c.dock_darkness.is_finite() { c.dock_darkness.clamp(0.0, 80.0) } else { 25.0 };
         if !matches!(c.dock.as_str(), "top" | "bottomLeft") {
             c.dock = "top".into();
         }

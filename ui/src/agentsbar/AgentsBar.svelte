@@ -2,7 +2,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { onMount, untrack } from 'svelte';
-  import { applyCssVars, setReducedMotion } from '../lib/motion';
+  import { applyCssVars, fadeSlide, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
   import { fit } from '../island/fit';
   import Glyph from '../island/Glyph.svelte';
@@ -15,14 +15,16 @@
   const STATUS_TEXT: Record<string, string> = { idle: 'Idle', running: 'Running', done: 'Done', needs: 'Needs you' };
   const compact = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : `${n}`);
 
-  /** Tells the window how wide the items need it; it grows at once and shrinks only for a real drop, so a clock ticking over doesn't jiggle it. */
-  let asked = 0;
+  /** The window's fixed size (Notifi never resizes it): the widest bar, and room above it for the session buttons. Matches BAR_MAX_W and BAR_ROOM in island/mod.rs. */
+  const BAR_MAX = 1000;
+  const ROOM = 120;
+  const BAR_MIN = 520;
+
+  /** How wide the bar's items need it; it grows at once and shrinks only for a real drop, so a clock ticking over doesn't jiggle it. */
+  let barNeed = $state(BAR_MIN);
   function needs(width: number) {
-    const target = Math.min(1000, Math.max(520, width + 16));
-    if (target > asked || target < asked - 60) {
-      asked = target;
-      invoke('island_bar_width', { width: target }).catch(() => {});
-    }
+    const target = Math.min(BAR_MAX, Math.max(BAR_MIN, width + 16));
+    if (target > barNeed || target < barNeed - 60) barNeed = target;
   }
 
   const snap = $derived(island.snap);
@@ -37,23 +39,34 @@
   let leaveTimer: ReturnType<typeof setTimeout> | undefined;
   let chipsEl = $state<HTMLDivElement>();
   let chipsH = $state(0);
-  let winH = $state(32);
-  let extra = $state(0);
-  /** The bar's own height: the window's, less the room asked for above it. */
-  const barH = $derived(Math.max(16, winH - extra));
+  /** The buttons' width in one row, so the bar and the row above it can line up. */
+  let chipsRow = $state(0);
+  let winH = $state(32 + ROOM);
+  /** The bar's own height: the window's, less the room kept above it. */
+  const barH = $derived(Math.max(16, winH - ROOM));
+  const showChips = $derived(hover && chips.length > 0);
+  /** While the buttons show, the bar and their row share one width. */
+  const width = $derived(showChips ? Math.min(BAR_MAX, Math.max(barNeed, chipsRow)) : barNeed);
   $effect(() => {
     if (!chipsEl) return;
     const el = chipsEl;
-    const watcher = new ResizeObserver(() => (chipsH = el.offsetHeight));
+    const measure = () => {
+      chipsH = el.offsetHeight;
+      const kids = [...el.children] as HTMLElement[];
+      chipsRow = Math.ceil(kids.reduce((w, k) => w + k.offsetWidth, 0) + Math.max(0, kids.length - 1) * 6 + 16);
+    };
+    const watcher = new ResizeObserver(measure);
     watcher.observe(el);
-    chipsH = el.offsetHeight;
+    for (const k of el.children) watcher.observe(k);
+    measure();
     return () => watcher.disconnect();
   });
-  /** The window grows upward to hold the buttons while they show. */
+  // Notifi lets clicks through outside these, so the page says what it covers.
   $effect(() => {
-    const want = hover && chips.length ? chipsH + 16 : 0;
-    extra = want;
-    invoke('island_bar_extra', { extra: want }).catch(() => {});
+    invoke('island_bar_width', { width }).catch(() => {});
+  });
+  $effect(() => {
+    invoke('island_bar_extra', { extra: showChips ? Math.min(ROOM, chipsH + 16) : 0 }).catch(() => {});
   });
   function enter() {
     clearTimeout(leaveTimer);
@@ -72,15 +85,6 @@
     const found = await invoke<boolean>('island_goto_agent', { agent: c.agent, project: c.project }).catch(() => false);
     if (!found) invoke('island_open_agents').catch(() => {});
   }
-
-  /** The taskbar's colour, sampled now and then so wallpaper and theme changes follow. */
-  let taskbar = $state({ bg: '#1c1c1c', light: false });
-  $effect(() => {
-    const read = () => invoke<{ bg: string; light: boolean }>('island_taskbar_style').then((t) => (taskbar = t)).catch(() => {});
-    read();
-    const id = setInterval(read, 15000);
-    return () => clearInterval(id);
-  });
 
   $effect(() => setReducedMotion(store.settings?.general.reducedMotion ?? false));
 
@@ -156,22 +160,22 @@
 <svelte:window bind:innerHeight={winH} />
 
 {#if snap?.enabled && cfg}
-  <div class="root" role="group" onpointerenter={enter} onpointerleave={leave} class:light={taskbar.light} style:--tb-bg={taskbar.bg} style:--dock-dark={`${cfg.dockDarkness}%`}>
-    <div class="chips" class:show={hover && chips.length > 0} bind:this={chipsEl} style:bottom={`${barH + 8}px`}>
-      {#each chips as c (c.id)}
-        <button class="chip {c.status}" title={`${c.title ?? c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
+  <div class="root" role="group" onpointerenter={enter} onpointerleave={leave}>
+    <div class="chips" class:show={showChips} bind:this={chipsEl} style:bottom={`${barH + 8}px`} style:width={`${width}px`}>
+      {#each chips as c, i (c.id)}
+        <button class="chip {c.status}" style:--i={i} title={`${c.title ?? c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
           <span class="dot"></span><Logo id={c.agent} size={13} />
           <span class="nm">{c.title ?? c.project ?? 'Session'}</span>
           <span class="st">{CHIP_TEXT[c.status]}{#if c.status === 'working' && c.elapsedMs}<span class="el">{clock(c.elapsedMs)}</span>{/if}</span>
         </button>
       {/each}
     </div>
-    <button class="pill" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:--fc={pixelColor} onclick={click} use:fit={needs}>
+    <button class="pill" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:width={`${width}px`} style:--fc={pixelColor} onclick={click} use:fit={needs}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
         <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
         <span class="mid {live.status}"><span class="nat">
-          {STATUS_TEXT[live.status] ?? ''}
+          {#key live.status}<span class="st-text" in:fadeSlide={{ token: 'tabSwitch', y: 4 }}>{STATUS_TEXT[live.status] ?? ''}</span>{/key}
           {#if live.value}<small class="time" title="Running for">{live.value}</small>{/if}
           {#if live.todos}<small class="todo">Todo {live.todos[0]}/{live.todos[1]}</small>{/if}
         </span></span>
@@ -193,7 +197,7 @@
       {/if}
     </button>
     {#if cfg.chatEnabled}
-      <button class="chat" style:bottom={`${(barH - 26) / 2}px`} title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
+      <button class="chat" style:bottom={`${(barH - 26) / 2}px`} style:left={`${width - 36}px`} title="AI chat" aria-label="AI chat" onclick={() => invoke('island_open_chat').catch(() => {})}><Glyph name="chat" size={16} /></button>
     {/if}
   </div>
 {/if}
@@ -205,12 +209,15 @@
     overflow: hidden;
     background: transparent !important;
   }
+  /* The top Island's palette, so the two read as one thing. */
   .root {
-    --i-fg: #f3f3f3;
-    --i-mut: #a8a8a8;
+    --i-face: #000;
+    --i-raised: #1b1e1f;
+    --i-hover: rgb(255 255 255 / 0.08);
+    --i-fg: #f2f4f3;
+    --i-mut: #9aa1a3;
     --i-acc: #2cc9b2;
     --i-agent: #f0a24a;
-    --i-face: color-mix(in srgb, var(--tb-bg), #000 var(--dock-dark, 25%));
     position: fixed;
     inset: 0;
     color: var(--i-fg);
@@ -218,15 +225,14 @@
     font-size: 13px;
     user-select: none;
   }
-  .root.light {
-    --i-fg: #1a1a1a;
-    --i-mut: #5d5d5d;
-  }
   .pill {
     position: absolute;
     left: 0;
-    right: 0;
     bottom: 0;
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.12);
+    transition: width var(--m-pillRise-dur) var(--m-pillRise-ease);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -242,22 +248,17 @@
   }
   .chips {
     position: absolute;
-    left: 8px;
-    right: 8px;
+    left: 0;
+    box-sizing: border-box;
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 6px;
-    opacity: 0;
-    transform: translateY(6px);
+    padding: 0 8px;
     pointer-events: none;
-    transition:
-      opacity var(--m-hoverLift-dur) var(--m-hoverLift-ease),
-      transform var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+    transition: width var(--m-pillRise-dur) var(--m-pillRise-ease);
   }
   .chips.show {
-    opacity: 1;
-    transform: none;
     pointer-events: auto;
   }
   .chip {
@@ -267,16 +268,34 @@
     gap: 7px;
     height: 30px;
     padding: 0 12px 0 10px;
-    border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+    border: 0;
     border-radius: 99px;
-    background: color-mix(in srgb, var(--c) 20%, var(--i-face));
+    background: color-mix(in srgb, var(--c) 16%, var(--i-face));
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent),
+      inset 0 1px 0 rgb(255 255 255 / 0.1);
     color: var(--i-fg);
     font: inherit;
     font-size: 12.5px;
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+    /* Leaving: all at once and quick. */
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+    transition:
+      opacity var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      transform var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  /* Arriving: one after another, rising on the Island's spring. */
+  .chips.show .chip {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--m-glassIn-dur) var(--m-glassIn-ease) calc(var(--i) * 35ms),
+      transform var(--m-pillDrop-dur) var(--m-pillDrop-ease) calc(var(--i) * 35ms),
+      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
   }
   .chip.needs {
     --c: #f0a24a;
@@ -323,8 +342,11 @@
   }
   .chat {
     position: absolute;
-    right: 10px;
     z-index: 5;
+    transition:
+      left var(--m-pillRise-dur) var(--m-pillRise-ease),
+      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
     display: grid;
     place-items: center;
     width: 26px;
@@ -337,7 +359,7 @@
     cursor: pointer;
   }
   .chat:hover {
-    background: color-mix(in srgb, var(--i-fg), transparent 88%);
+    background: var(--i-hover);
     color: var(--i-fg);
   }
   .pill::before {

@@ -206,7 +206,6 @@ fn main() {
             island::island_cover,
             island::island_shape,
             island::island_bar_height,
-            island::island_taskbar_style,
             island::island_tall,
             island::island_goto_agent,
             island::files::island_recent_files,

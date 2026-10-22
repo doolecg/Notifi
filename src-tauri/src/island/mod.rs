@@ -42,6 +42,10 @@ pub const ISLAND: &str = "island";
 /// The AI Agents bar kept on the taskbar while the Island hangs from the top.
 pub const BAR: &str = "agentsbar";
 const BAR_W: f64 = 640.0;
+/// The bar window's one size (like the Island's, never resized): the widest bar, and room above the taskbar
+/// for three rows of session buttons. Matches BAR_MAX and ROOM in agentsbar/AgentsBar.svelte.
+const BAR_MAX_W: f64 = 1000.0;
+const BAR_ROOM: f64 = 120.0;
 const STATE_EVENT: &str = "island://state";
 const COVER_EVENT: &str = "island://cover";
 const ACTIVITY_EVENT: &str = "island://activity";
@@ -102,8 +106,12 @@ struct Inner {
     bar_visible: bool,
     /// Logical width the AI Agents bar asked for; 0 until it asks.
     bar_w: f64,
-    /// Extra logical height the bar asked for above the taskbar, for the session buttons shown on hover.
+    /// Logical height the bar's session buttons take above the taskbar while shown.
     bar_extra: f64,
+    /// Taskbar height (logical px) the bar fills.
+    bar_h: f64,
+    /// The bar window's last physical rect, so it is only moved when that changes.
+    bar_placed: Option<(i32, i32, u32, u32)>,
     fullscreen: bool,
     /// The session is locked.
     locked: bool,
@@ -392,48 +400,6 @@ fn taskbar_band(mon: &tauri::Monitor) -> (i32, i32) {
         .map_or((bottom - height, bottom), |(_, t, _, b)| (t, b))
 }
 
-#[derive(Serialize)]
-pub struct TaskbarStyle {
-    /// `#rrggbb` of the taskbar.
-    bg: String,
-    light: bool,
-}
-
-/// The taskbar's colour, read from the screen where the island isn't covering it.
-#[tauri::command]
-pub fn island_taskbar_style(app: AppHandle) -> TaskbarStyle {
-    let dark = TaskbarStyle { bg: "#1c1c1c".into(), light: false };
-    #[cfg(windows)]
-    {
-        use std::collections::HashMap;
-        use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC, CLR_INVALID};
-        let c = config(&app);
-        let Some(m) = monitor(&app, &c) else { return dark };
-        let (top, _) = taskbar_band(&m);
-        let x0 = m.position().x + (700.0 * m.scale_factor()) as i32;
-        let mut seen: HashMap<u32, u32> = HashMap::new();
-        unsafe {
-            let dc = GetDC(None);
-            for i in 0..8 {
-                let px = GetPixel(dc, x0 + i * 40, top + 2).0;
-                if px != CLR_INVALID {
-                    *seen.entry(px).or_default() += 1;
-                }
-            }
-            ReleaseDC(None, dc);
-        }
-        let Some((&px, _)) = seen.iter().max_by_key(|(_, n)| **n) else { return dark };
-        let (r, g, b) = (px & 0xff, (px >> 8) & 0xff, (px >> 16) & 0xff);
-        let lum = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
-        return TaskbarStyle { bg: format!("#{r:02x}{g:02x}{b:02x}"), light: lum > 140.0 };
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = app;
-        dark
-    }
-}
-
 /// Height in logical px of a normal window title bar on the island's display.
 #[tauri::command]
 pub fn island_bar_height(app: AppHandle) -> f64 {
@@ -557,20 +523,24 @@ fn set_island_rect(app: &AppHandle, win: &tauri::Window, x: i32, y: i32, w: u32,
     }
 }
 
-/// The AI Agents bar sits at the taskbar's left, as tall as the taskbar.
+/// The AI Agents bar sits at the taskbar's left; its window also covers the room above for the session buttons.
 fn place_bar(app: &AppHandle) {
     let Some(win) = app.get_window(BAR) else { return };
     let c = config(app);
     let Some(mon) = monitor(app, &c) else { return };
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
+    let bar = f64::from(bottom - top) / scale;
+    let rect = bottom_left(mon_rect(&mon), bottom, scale, BAR_MAX_W, bar + BAR_ROOM);
     let state = app.state::<IslandState>();
-    let (asked, extra) = {
-        let i = state.inner.lock().unwrap();
-        (i.bar_w, i.bar_extra)
+    let moved = {
+        let mut i = state.inner.lock().unwrap();
+        i.bar_h = bar;
+        std::mem::replace(&mut i.bar_placed, Some(rect)) != Some(rect)
     };
-    let (x, y, pw, ph) = bottom_left(mon_rect(&mon), bottom, scale, if asked > 0.0 { asked } else { BAR_W }, f64::from(bottom - top) / scale + extra);
-    set_rect(&win, x, y, pw, ph);
+    if moved {
+        set_rect(&win, rect.0, rect.1, rect.2, rect.3);
+    }
     #[cfg(windows)]
     raise(&win);
 }
@@ -759,29 +729,13 @@ fn start_raise(app: &AppHandle) {
     std::thread::Builder::new()
         .name("notifi-island-raise".into())
         .spawn(move || {
-          let mut away = 0u32;
           loop {
             std::thread::sleep(Duration::from_millis(250));
             let state = app.state::<IslandState>();
-            let (visible, bar, extra) = {
+            let (visible, bar) = {
                 let i = state.inner.lock().unwrap();
-                (i.visible, i.bar_visible, i.bar_extra)
+                (i.visible, i.bar_visible)
             };
-            // The bar's page can miss the pointer leaving while its window resizes; then the taller,
-            // invisible window would keep taking clicks above the taskbar. Shrink it once the pointer is away.
-            if bar && extra > 0.0 {
-                let inside = app.get_webview_window(BAR).zip(app.cursor_position().ok()).is_some_and(|(w, p)| {
-                    let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) else { return true };
-                    p.x >= f64::from(pos.x) && p.y >= f64::from(pos.y) && p.x < f64::from(pos.x) + f64::from(size.width) && p.y < f64::from(pos.y) + f64::from(size.height)
-                });
-                away = if inside { 0 } else { away + 1 };
-                if away >= 2 {
-                    away = 0;
-                    state.inner.lock().unwrap().bar_extra = 0.0;
-                    place_bar(&app);
-                    let _ = app.emit_to(BAR, "agentsbar://leave", ());
-                }
-            }
             if visible && config(&app).dock == "bottomLeft" {
                 if let Some(win) = app.get_window(ISLAND) {
                     raise(&win);
@@ -839,32 +793,51 @@ pub fn island_claude_usage_refresh(state: State<IslandState>) {
     state.claude_refresh.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// The window keeps one size, so it lets clicks through unless the pointer is over the pill or the open menu.
-/// Checked about 60 times a second; the pointer moving off the shape is still seen by the page first (HIT_SLACK).
+/// The part of the bar window that takes the pointer: the bar along its bottom, and the session buttons above it while shown.
+fn bar_hit_rect(width: f64, bar: f64, extra: f64) -> (f64, f64, f64, f64) {
+    let top = BAR_ROOM - extra - if extra > 0.0 { HIT_SLACK } else { 0.0 };
+    (0.0, top.max(0.0), width + HIT_SLACK, bar + BAR_ROOM - top.max(0.0))
+}
+
+/// Whether the pointer is inside `rect` (logical px from the window's top-left).
+fn pointer_in(app: &AppHandle, win: &tauri::Window, (rx, ry, rw, rh): (f64, f64, f64, f64)) -> Option<bool> {
+    let (Ok(p), Ok(at), Ok(scale)) = (app.cursor_position(), win.outer_position(), win.scale_factor()) else { return None };
+    let (x, y) = ((p.x - f64::from(at.x)) / scale, (p.y - f64::from(at.y)) / scale);
+    Some(x >= rx && y >= ry && x < rx + rw && y < ry + rh)
+}
+
+/// The Island and the bar keep one window size each, so they let clicks through unless the pointer is over
+/// what they show. Checked about 60 times a second; the pointer moving off a shape is still seen by the page first (HIT_SLACK).
 fn start_hit(app: &AppHandle) {
     let app = app.clone();
     std::thread::Builder::new()
         .name("notifi-island-hit".into())
         .spawn(move || {
-            let mut taking: Option<bool> = None;
+            let mut taking: [Option<bool>; 2] = [None, None];
+            let mut bar_away = 0u32;
             loop {
                 std::thread::sleep(Duration::from_millis(16));
-                let Some(win) = app.get_window(ISLAND) else { continue };
                 let state = app.state::<IslandState>();
-                let (visible, open, tall, chat, rest, geo) = {
+                let (visible, open, tall, chat, rest, geo, bar_visible, bar) = {
                     let i = state.inner.lock().unwrap();
-                    (i.visible, i.open, i.tall, i.chat, i.rest, i.geo)
+                    (i.visible, i.open, i.tall, i.chat, i.rest, i.geo, i.bar_visible, bar_hit_rect(i.bar_w, i.bar_h, i.bar_extra))
                 };
-                if !visible {
-                    taking = None;
-                    continue;
-                }
-                let (Ok(p), Ok(at), Ok(scale)) = (app.cursor_position(), win.outer_position(), win.scale_factor()) else { continue };
-                let (x, y) = ((p.x - f64::from(at.x)) / scale, (p.y - f64::from(at.y)) / scale);
-                let (rx, ry, rw, rh) = hit_rect(&geo, open, tall, chat, rest);
-                let over = x >= rx && y >= ry && x < rx + rw && y < ry + rh;
-                if taking != Some(over) && win.set_ignore_cursor_events(!over).is_ok() {
-                    taking = Some(over);
+                for (n, label, shown, rect) in [(0, ISLAND, visible, hit_rect(&geo, open, tall, chat, rest)), (1, BAR, bar_visible, bar)] {
+                    let Some(win) = app.get_window(label).filter(|_| shown) else {
+                        taking[n] = None;
+                        continue;
+                    };
+                    let Some(over) = pointer_in(&app, &win, rect) else { continue };
+                    if taking[n] != Some(over) && win.set_ignore_cursor_events(!over).is_ok() {
+                        taking[n] = Some(over);
+                    }
+                    // The bar's buttons stay up only while the pointer is near; tell the page if it missed the pointer leaving.
+                    if n == 1 {
+                        bar_away = if over { 0 } else { bar_away + 1 };
+                        if bar_away == 20 && state.inner.lock().unwrap().bar_extra > 0.0 {
+                            let _ = app.emit_to(BAR, "agentsbar://leave", ());
+                        }
+                    }
                 }
             }
         })
@@ -1125,34 +1098,16 @@ pub fn island_open_agents(app: AppHandle) {
     run_action(&app, "islandModuleAgents");
 }
 
-/// The taskbar bar asks to be as wide as its items need.
+/// How wide the taskbar bar is drawn now, so only that much of its window takes the pointer.
 #[tauri::command]
-pub fn island_bar_width(app: AppHandle, state: State<IslandState>, width: f64) {
-    let width = width.clamp(400.0, 1200.0);
-    let (changed, shown) = {
-        let mut i = state.inner.lock().unwrap();
-        let changed = (i.bar_w - width).abs() >= 0.5;
-        i.bar_w = width;
-        (changed, i.bar_visible)
-    };
-    if changed && shown {
-        place_bar(&app);
-    }
+pub fn island_bar_width(state: State<IslandState>, width: f64) {
+    state.inner.lock().unwrap().bar_w = if width.is_finite() { width.clamp(0.0, BAR_MAX_W) } else { BAR_W };
 }
 
-/// The taskbar bar grows upward while it shows its session buttons.
+/// How much room above the taskbar the bar's session buttons take while shown (0 when hidden).
 #[tauri::command]
-pub fn island_bar_extra(app: AppHandle, state: State<IslandState>, extra: f64) {
-    let extra = if extra.is_finite() { extra.clamp(0.0, 400.0) } else { 0.0 };
-    let (changed, shown) = {
-        let mut i = state.inner.lock().unwrap();
-        let changed = (i.bar_extra - extra).abs() >= 0.5;
-        i.bar_extra = extra;
-        (changed, i.bar_visible)
-    };
-    if changed && shown {
-        place_bar(&app);
-    }
+pub fn island_bar_extra(state: State<IslandState>, extra: f64) {
+    state.inner.lock().unwrap().bar_extra = if extra.is_finite() { extra.clamp(0.0, BAR_ROOM) } else { 0.0 };
 }
 
 /// Opens the Island on the AI chat.

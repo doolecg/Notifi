@@ -129,38 +129,6 @@ fn build(dock: bool, base: (f64, f64), tall: bool, chat: bool, screen: (f64, f64
     }
 }
 
-/// One piece of the clickable shape, in logical px relative to the window's top-left.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Piece {
-    /// Rounded at the bottom only; the top is flush with the screen edge.
-    Hanging { x: f64, w: f64, h: f64, r: f64 },
-    Circle { cx: f64, cy: f64, d: f64 },
-}
-
-/// The clickable shape: the island (`w` x `h`, bottom radius `r`) plus, while open, the orbit buttons.
-pub fn shape(window_w: f64, island: (f64, f64), r: f64, orbits: &[(f64, f64)]) -> Vec<Piece> {
-    let cx = window_w / 2.0;
-    let mut out = vec![Piece::Hanging { x: cx - island.0 / 2.0, w: island.0, h: island.1, r }];
-    out.extend(orbits.iter().map(|&(x, y)| Piece::Circle { cx: cx + x, cy: y, d: ORBIT_D }));
-    out
-}
-
-/// The smallest box centred on the window's middle that holds every piece (for platforms without window regions).
-pub fn bounds(window_w: f64, pieces: &[Piece]) -> (f64, f64) {
-    let cx = window_w / 2.0;
-    let mut half = 0.0f64;
-    let mut bottom = 0.0f64;
-    for p in pieces {
-        let (l, rgt, b) = match *p {
-            Piece::Hanging { x, w, h, .. } => (x, x + w, h),
-            Piece::Circle { cx, cy, d } => (cx - d / 2.0, cx + d / 2.0, cy + d / 2.0),
-        };
-        half = half.max(cx - l).max(rgt - cx);
-        bottom = bottom.max(b);
-    }
-    ((2.0 * (half + EDGE)).min(window_w), bottom + EDGE)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,16 +183,5 @@ mod tests {
         assert_eq!(l.base.0, 1366.0 - SCREEN_SIDE);
         assert_eq!(l.chat, (1340.0f64.min(1366.0 - SCREEN_SIDE), 768.0 - SCREEN_VERTICAL));
         assert!(l.window.0 <= small.0 && l.window.1 <= small.1);
-    }
-
-    #[test]
-    fn shape_and_bounds() {
-        let l = layout("compact", 0.0, 0.0, false, false, BIG);
-        let pieces = shape(l.window.0, l.open, OPEN_RADIUS, &[]);
-        assert_eq!(pieces.len(), 1);
-        // The shape is the island and its edge, even though the window is wider.
-        assert_eq!(bounds(l.window.0, &pieces), window_size(l.open));
-        let pill = shape(l.window.0, (180.0, 32.0), 16.0, &[]);
-        assert_eq!(bounds(l.window.0, &pill), (180.0 + 2.0 * EDGE, 32.0 + EDGE));
     }
 }
