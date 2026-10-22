@@ -110,7 +110,7 @@ pub fn t3_chat_of(session: &str) -> Option<T3Chat> {
     found
 }
 
-fn t3_home() -> Option<PathBuf> {
+pub(crate) fn t3_home() -> Option<PathBuf> {
     std::env::var_os("T3CODE_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| island::agents::home().map(|h| h.join(".t3")))
 }
 

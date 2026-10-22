@@ -300,7 +300,7 @@
   <p class="hint">Works with Claude Code only: it is the one agent that lets another app answer its questions. Codex and OpenCode questions stay in their terminals.</p>
 {:else if option.id === 'claudeLimits'}
   <div class="row">
-    <div><strong>Show Claude plan limits</strong><span class="sub">Claude Code hands Notifi your 5 hour and weekly use through its own status line, so nothing leaves your PC and no login is read. This adds Notifi to the status line setting in your Claude Code settings.json and keeps your own status line running; a backup of the file is made. Turn it off to put your own back.</span></div>
+    <div><strong>Show Claude plan limits</strong><span class="sub">Claude in T3 Code needs nothing: Notifi reads the limits T3 Code already logs on this PC. This switch is for the claude command in a terminal. Claude Code hands Notifi your 5 hour and weekly use through its status line, so nothing leaves your PC and no login is read. It adds Notifi to the status line setting in your Claude Code settings.json and keeps your own status line running; a backup of the file is made, and turning it off puts your own back.</span></div>
     <Switch checked={!!limits?.installed} label="Show Claude plan limits" onchange={setLimits} />
   </div>
   {#if limitsText}<p class="hint">{limitsText}</p>{/if}

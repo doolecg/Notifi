@@ -1,8 +1,11 @@
-//! Claude's 5 hour and weekly limits, from Claude Code itself. Its status line hands the command it runs the
-//! session data, which includes `rate_limits` for Pro and Max plans (code.claude.com/docs/en/statusline).
-//! Switching this on sets that command, in `~/.claude/settings.json`, to Notifi (`notifi --claude-statusline`).
-//! Each run saves the limits to a file Notifi reads, then runs the status line the user had before, if any.
-//! Nothing is sent anywhere and no login is read.
+//! Claude's 5 hour and weekly limits, from files already on this PC. Nothing is sent anywhere and no login is read.
+//!
+//! Two sources, the newer one wins:
+//! - Claude in T3 Code: T3 Code logs every `rate_limit_event` the Claude Agent SDK reports into its provider logs.
+//! - The `claude` command in a terminal: Claude Code's status line hands the command it runs the session data, which
+//!   includes `rate_limits` for Pro and Max plans (code.claude.com/docs/en/statusline). Switching that on sets the command,
+//!   in `~/.claude/settings.json`, to Notifi (`notifi --claude-statusline`). Each run saves the limits to a file Notifi
+//!   reads, then runs the status line the user had before, if any.
 
 use std::{
     fs,
@@ -89,10 +92,64 @@ fn limit(w: Option<Window>, window_ms: u64, now: u64) -> Option<Limit> {
     Some(Limit { used_percent, resets_at: (w.resets_at > now).then_some(w.resets_at), window_ms: Some(window_ms) })
 }
 
-/// (5 hour, weekly) as the Island shows them; `None` while Claude Code has never reported.
+/// (5 hour, weekly) as the Island shows them; `None` while neither source has anything.
 pub fn read(now: u64) -> Option<(Option<Limit>, Option<Limit>)> {
-    let saved = load()?;
+    let saved = [load(), t3_latest()].into_iter().flatten().max_by_key(|s| s.at)?;
     Some((limit(saved.session, FIVE_HOURS_MS, now), limit(saved.week, WEEK_MS, now)))
+}
+
+// ---- T3 Code's logs ----
+
+/// How much of the end of a log is searched; the newest events are last.
+const TAIL: u64 = 2 * 1024 * 1024;
+/// Logs looked at, newest first, and how long a result is kept before the files are read again.
+const LOG_FILES: usize = 4;
+const RECHECK: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// The last `"<key>":{"utilization":..,"resetsAt":..}` in `text`: utilization is 0 to 1, resetsAt is Unix seconds.
+fn last_window(text: &str, key: &str) -> Option<Window> {
+    let marker = format!("\"{key}\":{{\"utilization\"");
+    let at = text.rfind(&marker)? + key.len() + 3;
+    let object = &text[at..];
+    let object: Value = serde_json::from_str(&object[..=object.find('}')?]).ok()?;
+    Some(Window { used_percent: ((object.get("utilization")?.as_f64()? * 1000.0).round() / 10.0).clamp(0.0, 100.0), resets_at: object.get("resetsAt")?.as_u64()?.checked_mul(1000)? })
+}
+
+fn newest_in(path: &Path, modified: u64) -> Option<Saved> {
+    let mut file = fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(len.saturating_sub(TAIL))).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+    let (session, week) = (last_window(&text, "five_hour"), last_window(&text, "seven_day"));
+    (session.is_some() || week.is_some()).then_some(Saved { at: modified, session, week })
+}
+
+fn t3_scan() -> Option<Saved> {
+    let dir = crate::chat::t3_home()?.join("userdata").join("logs").join("provider");
+    let mut files: Vec<(u64, PathBuf)> = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("events."))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64, e.path())))
+        .collect();
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.into_iter().take(LOG_FILES).find_map(|(modified, path)| newest_in(&path, modified))
+}
+
+/// The newest limits T3 Code has logged, looked up at most every RECHECK.
+fn t3_latest() -> Option<Saved> {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Option<Saved>)>> = std::sync::Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap();
+    if let Some((at, found)) = *cache {
+        if at.elapsed() < RECHECK {
+            return found;
+        }
+    }
+    let found = t3_scan();
+    *cache = Some((std::time::Instant::now(), found));
+    found
 }
 
 // ---- The status line command ----
@@ -222,7 +279,7 @@ fn status() -> Status {
     let (s, w) = read(now).unwrap_or((None, None));
     Status {
         installed: hooks::settings_path().is_some_and(|p| installed(&p)),
-        reported_at: load().map(|l| l.at),
+        reported_at: [load(), t3_latest()].into_iter().flatten().map(|l| l.at).max(),
         session: s.map(|l| l.used_percent),
         week: w.map(|l| l.used_percent),
     }
@@ -265,6 +322,16 @@ mod tests {
         assert_eq!(parse(&json!({ "rate_limits": {} }), 0), None);
         let one = parse(&json!({ "rate_limits": { "seven_day": { "used_percentage": 150.0, "resets_at": 10 } } }), 0).unwrap();
         assert_eq!((one.session, one.week.unwrap().used_percent), (None, 100.0));
+    }
+
+    #[test]
+    fn the_last_window_in_a_t3_log_is_read() {
+        let log = r#"[t] NTIVE: {"rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.07,"resetsAt":100},"seven_day":{"utilization":0.5,"resetsAt":200}}}}
+[t] NTIVE: {"rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.26,"resetsAt":1792630200},"seven_day":{"utilization":0.51,"resetsAt":1792843200}}}} {"other":1}"#;
+        assert_eq!(last_window(log, "five_hour"), Some(Window { used_percent: 26.0, resets_at: 1_792_630_200_000 }));
+        assert_eq!(last_window(log, "seven_day").unwrap().used_percent, 51.0);
+        assert_eq!(last_window("nothing here", "five_hour"), None);
+        assert_eq!(last_window(r#""five_hour":{"utilization":"x"}"#, "five_hour"), None);
     }
 
     #[test]
