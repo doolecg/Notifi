@@ -59,8 +59,8 @@
   const snap = $derived(island.snap);
   const cfg = $derived(snap?.config);
   const layout = $derived(snap?.layout);
-  /** With the AI Agents bar on the taskbar, the top pill leaves the agents out. */
-  const live = $derived((snap?.live ?? []).filter((l) => !(l.id === 'agents' && cfg?.agentsTaskbar && !layout?.dock)));
+  /** With the AI Agents bar on the taskbar, the top pill leaves the agents out; docked or rising, the pill is that bar. */
+  const live = $derived((snap?.live ?? []).filter((l) => !(l.id === 'agents' && cfg?.agentsTaskbar && !layout?.dock && !layout?.rise)));
 
   /** The window is at its open size. */
   let open = $state(false);
@@ -507,8 +507,14 @@
         collapse();
       }
     };
+    // Opened by hovering, the window can't take keys yet: a click anywhere in it does, so Esc works.
+    const focusOnClick = () => { if (open) invoke('island_focus').catch(() => {}); };
     window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
+    window.addEventListener('pointerdown', focusOnClick, true);
+    return () => {
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('pointerdown', focusOnClick, true);
+    };
   });
 
   /** Docked, the bar stays in the taskbar and the open menu is a separate flyout above it. */
@@ -716,6 +722,7 @@
         <Glyph name={tall ? 'shrink' : 'expand'} size={16} />
       </button>
     {/if}
+    <button class="act" aria-label="Close" title="Close (Esc)" onclick={(e) => { e.stopPropagation(); pop = null; collapse(); }}><Glyph name="close" size={16} /></button>
   </nav>
 {/snippet}
 

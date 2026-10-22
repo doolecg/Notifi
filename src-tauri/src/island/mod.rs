@@ -362,12 +362,17 @@ pub fn bottom_centre(mon: (i32, i32, u32, u32), bottom: i32, scale: f64, w: f64,
     (x, bottom - ph as i32, pw, ph)
 }
 
+/// Whether the Start button is at the taskbar's far left (a left-aligned taskbar); `start` is its left edge in logical px.
+fn start_is_left(start: Option<f64>, screen_w: f64) -> bool {
+    start.is_some_and(|x| x < screen_w * 0.25)
+}
+
 /// The Island's size and where it sits, kept inside the screen it is on. `start` is the Start button's
 /// left edge (logical px from the screen's left), when known.
 fn layout_for(c: &IslandConfig, tall: bool, chat: bool, screen: (f64, f64), start: Option<f64>) -> Layout {
     // With Start at the taskbar's far left there is no room for the bar beside it, so the docked Island
     // becomes the top Island turned upside down, at the bottom centre.
-    let start_left = start.is_some_and(|x| x < screen.0 * 0.25);
+    let start_left = start_is_left(start, screen.0);
     let docked = c.dock == "bottomLeft";
     let mut l = if docked && !start_left {
         layout::layout_dock(&c.size, c.custom_width, c.custom_height, tall, chat, screen)
@@ -576,8 +581,17 @@ fn place_bar(app: &AppHandle) {
     let scale = mon.scale_factor();
     let (top, bottom) = taskbar_band(&mon);
     let bar = f64::from(bottom - top) / scale;
-    let rect = bottom_left(mon_rect(&mon), bottom, scale, BAR_MAX_W, bar + BAR_ROOM);
     let state = app.state::<IslandState>();
+    let (start, bar_w) = {
+        let i = state.inner.lock().unwrap();
+        (i.start_x, i.bar_w)
+    };
+    // With the taskbar left-aligned the Start button is where the bar would sit, so the bar goes to the middle instead.
+    let mut rect = bottom_left(mon_rect(&mon), bottom, scale, BAR_MAX_W, bar + BAR_ROOM);
+    if start_is_left(start, screen_of(Some(&mon)).0) {
+        let mon_r = mon_rect(&mon);
+        rect.0 = (f64::from(mon_r.0) + (f64::from(mon_r.2) - bar_w * scale) / 2.0).round() as i32;
+    }
     let moved = {
         let mut i = state.inner.lock().unwrap();
         i.bar_h = bar;
@@ -798,6 +812,9 @@ fn start_raise(app: &AppHandle) {
                 let changed = std::mem::replace(&mut state.inner.lock().unwrap().start_x, start) != start;
                 if changed {
                     place(&app);
+                    if bar {
+                        place_bar(&app);
+                    }
                     state.wake();
                 }
             }
@@ -1249,8 +1266,12 @@ pub fn island_open_agents(app: AppHandle) {
 
 /// How wide the taskbar bar is drawn now, so only that much of its window takes the pointer.
 #[tauri::command]
-pub fn island_bar_width(state: State<IslandState>, width: f64) {
-    state.inner.lock().unwrap().bar_w = if width.is_finite() { width.clamp(0.0, BAR_MAX_W) } else { BAR_W };
+pub fn island_bar_width(app: AppHandle, state: State<IslandState>, width: f64) {
+    let width = if width.is_finite() { width.clamp(0.0, BAR_MAX_W) } else { BAR_W };
+    let changed = std::mem::replace(&mut state.inner.lock().unwrap().bar_w, width) != width;
+    if changed && start_is_left(state.inner.lock().unwrap().start_x, monitor(&app, &config(&app)).map_or(1920.0, |m| screen_of(Some(&m)).0)) {
+        place_bar(&app);
+    }
 }
 
 /// How much room above the taskbar the bar's session buttons take while shown (0 when hidden).
