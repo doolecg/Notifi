@@ -2,6 +2,7 @@
 
 use std::{
     cmp::Ordering,
+    fs,
     sync::atomic::{AtomicBool, Ordering as Atomic},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -150,7 +151,34 @@ fn new_count(seen: &[String], now: &[String]) -> usize {
     now.iter().filter(|n| !seen.contains(n)).count()
 }
 
-/// Checks shortly after startup and then every `checkHours`.
+/// The least time between two "updates found" notices, so the check can run often and the alert still comes once a day.
+const ALERT_EVERY_SECS: u64 = 24 * 3600;
+
+/// Whether a notice may be shown now, given when the last one was (unix seconds). A time in the future (the clock was set back) doesn't hold it up.
+fn alert_due(last: Option<u64>, now: u64) -> bool {
+    last.map_or(true, |t| t > now || now - t >= ALERT_EVERY_SECS)
+}
+
+/// When the last notice was shown, kept in a file so a restart doesn't tell you again.
+fn alert_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|dir| dir.join("app-updates-told"))
+}
+
+fn last_alert(app: &AppHandle) -> Option<u64> {
+    fs::read_to_string(alert_file(app)?).ok()?.trim().parse().ok()
+}
+
+fn stamp_alert(app: &AppHandle, now: u64) {
+    if let Some(file) = alert_file(app) {
+        if let Some(dir) = file.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::write(file, now.to_string());
+    }
+}
+
+/// Checks shortly after startup and then every `checkHours`. Updates found are told about once a day at most: ones that turn up
+/// in between are kept for the next notice, which then counts all of them.
 pub fn start(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
@@ -168,11 +196,18 @@ pub fn start(app: &AppHandle) {
                 let found = run_check(&app);
                 let now: Vec<String> = found.items.iter().map(|i| format!("{}@{}", i.id, i.available)).collect();
                 let fresh = new_count(&seen, &now);
-                if fresh > 0 && super::flag(&app, "appUpdates", "alertOnFound", true) {
+                let wanted = fresh > 0 && super::flag(&app, "appUpdates", "alertOnFound", true);
+                let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                let told = wanted && alert_due(last_alert(&app), stamp);
+                if told {
                     let text = if fresh == 1 { "1 app update found".to_string() } else { format!("{fresh} app updates found") };
                     crate::island::notice_to(&app, text, Some("apps:updates"));
+                    stamp_alert(&app, stamp);
                 }
-                seen = now;
+                // Updates not told about yet (the day isn't up) stay new, so the next notice has them.
+                if !wanted || told {
+                    seen = now;
+                }
                 last = Some(SystemTime::now());
             } else if last.is_none() && !on_start {
                 last = Some(SystemTime::now());
@@ -185,6 +220,16 @@ pub fn start(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updates_are_told_about_once_a_day() {
+        let day = ALERT_EVERY_SECS;
+        assert!(alert_due(None, 1_000));
+        assert!(!alert_due(Some(1_000), 1_000 + day - 1));
+        assert!(alert_due(Some(1_000), 1_000 + day));
+        // The clock was set back since the last notice: not held up for the difference.
+        assert!(alert_due(Some(5_000_000), 1_000));
+    }
 
     #[test]
     fn counts_only_new_updates() {

@@ -53,7 +53,7 @@ Building it yourself? See [Install](#install).
 
 **Install only what you use.** The first run asks what you want. A feature you leave out builds no window and runs no background work. You can add or remove any of them later from the Installed page in Settings.
 
-**It knows when an AI agent needs you.** The pill shows when Claude Code, Codex, OpenCode or Copilot CLI is working, waiting on you, or done, with session time and plan use. When one of those apps is in front, the taskbar bar grows Stop, Continue, Clear and Compact buttons that type into it for you.
+**It knows when an AI agent needs you.** The pill shows when Claude Code, Codex, OpenCode, Copilot CLI or Antigravity is working, waiting on you, or done, with session time and plan use. When one of those apps is in front, the taskbar bar grows Stop, Continue, Clear and Compact buttons that type into it for you.
 
 **Private by default.** Clipboard history, notifications, notes, captures and settings stay on your PC. The few things that use the internet are listed under [Security and privacy](#security-and-privacy), and the ones that send anything about you are off until you turn them on.
 
@@ -69,7 +69,7 @@ Building it yourself? See [Install](#install).
 A pill that opens into the Nook (now playing, calendar, notifications, scratchpad), Now Playing, Timer, Volume, AI Agents and a grid of modules. Idle, it shows the weather, a notification count and quick AI prompts. Esc, the close button, or a click outside puts it away.
 
 **AI agents**<br>
-Working, needs-you and done states for Claude Code, Codex, OpenCode and Copilot CLI, with session time, token use and plan limits. Claude's 5-hour and weekly limits come from T3 Code's logs, or from Claude Code's own status line for the terminal (one switch in the Island settings); Codex's come from its logs. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
+Working, needs-you and done states for Claude Code, Codex, OpenCode, Copilot CLI and Antigravity (the app and the `agy` command line), with session time, token use and plan limits. Claude's 5-hour and weekly limits come from T3 Code's logs, or from Claude Code's own status line for the terminal (one switch in the Island settings); Codex's come from its logs. Session buttons jump to the right terminal or chat. Optional: answer an agent's questions and permission prompts from the Island.
 
 **AI chat**<br>
 T3 Code's own chat inside the Island, opened on the chat you used last, with Escape to close and Windows voice typing.

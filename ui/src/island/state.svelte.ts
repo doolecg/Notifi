@@ -48,10 +48,10 @@ class IslandLive {
   }
 
   #showActivity(a: Activity) {
-    this.activity = a;
     // A new song isn't news to keep.
     if (a.icon !== 'music') this.history = [{ id: ++this.#historyId, icon: a.icon, color: a.color, text: a.text, at: Date.now(), target: a.target ?? null }, ...this.history].slice(0, 100);
     if (a.quiet) return;
+    this.activity = a;
     clearTimeout(this.#activityTimer);
     this.#activityTimer = setTimeout(() => (this.activity = null), a.ms);
   }

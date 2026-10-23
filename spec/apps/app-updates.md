@@ -10,6 +10,7 @@ A single list of installed apps with newer versions available; tick the ones you
 - Per-app rules, from a right-click on a row (page or tray panel): skip this one version, or stop checking the app entirely. Skipped or ignored apps stay out of results and out of alerts. Every rule is listed under "Update rules" on the same page and can be undone there.
 - Update exceptions: a settings list that excludes any app, including apps with no update showing at the moment.
 - Download progress is shown as a real percentage in the panel banner. An update badge appears on the tray icon when updates exist, and an optional alert fires when new ones are found.
+- The alert for new updates comes at most once a day, however often the check runs and however often Notifi is restarted; updates that turn up in between are held for the next alert, which counts all of them. (Notifi design, not from source docs.)
 - Notifi's own update is never listed here (it has its own banner).
 
 ## Settings

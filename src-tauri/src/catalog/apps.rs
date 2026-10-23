@@ -12,7 +12,7 @@ pub const PAGES: &[Page] = &[
                 sw("checkAtStartup", "Check at startup", "", true),
                 num("checkHours", "Then every", "", 1.0, 48.0, 1.0, "hours", 6.0),
                 sw("prerelease", "Include pre-release channels", "", false),
-                sw("alertOnFound", "Tell me when updates are found", "", true),
+                sw("alertOnFound", "Tell me when updates are found", "At most once a day.", true),
             ]),
             card("Sources", &[
                 sw("sourcePackageManagers", "Package managers", "winget, Scoop, Chocolatey, PackageKit, Flatpak and Snap.", true),

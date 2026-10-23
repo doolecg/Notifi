@@ -51,6 +51,7 @@ fn main() {
                 .with_handler(keybinds::handle)
                 .build(),
         )
+        .on_menu_event(|app, event| island::on_menu_event(app, event.id().as_ref()))
         .register_uri_scheme_protocol("capturemedia", |ctx, request| recording::trim::media(ctx.app_handle(), &request))
         .manage(apps::AppsState::default())
         .manage(ask::AskState::default())
@@ -232,6 +233,7 @@ fn main() {
             island::watch::watch_clear_area,
             island::watch::watch_read,
             island::island_focus,
+            island::island_context_menu,
             island::island_open_agents,
             island::claude_status::claude_limits_status,
             island::claude_status::claude_limits_install,

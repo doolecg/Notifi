@@ -329,7 +329,7 @@ fn roots_in(dir: &Path) -> Vec<(Kind, PathBuf)> {
     add(Kind::Claude, dir.join("projects"));
     add(Kind::Codex, dir.join("sessions"));
     add(Kind::Codex, dir.join("archived_sessions"));
-    if dir.join("opencode.db").is_file() {
+    if !super::opencode::dbs_in(dir).is_empty() {
         out.push((Kind::OpenCode, dir.to_path_buf()));
     }
     out

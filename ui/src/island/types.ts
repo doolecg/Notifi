@@ -207,15 +207,75 @@ export interface Agent {
   sessionLimit: Limit | null;
   weekLimit: Limit | null;
   lastActive: number;
+  /** A working session is waiting on you. */
+  needsYou: boolean;
+  /** A session finished a moment ago and none is working. */
+  done: boolean;
+  /** [done, total] of the main session's to-do list. */
+  todos: [number, number] | null;
 }
 
-export type ProviderId = 'claude' | 'codex' | 'openCode' | 'copilot';
+/** The agent's own colour, as the pill shows it; the same as `look` in island/mod.rs (the others share one). */
+export const agentColor = (id: string) => ({ claude: '#d97757', codex: '#7b8ceb' } as Record<string, string>)[id] ?? '#f0a24a';
+/** The name the pill uses: the logo and colour tables spell OpenCode in lower case. */
+export const agentIcon = (id: string) => (id === 'openCode' ? 'opencode' : id);
+
+/** The agents the number, pills and scrolling switch between: every one Notifi can follow that is installed, the ones waiting on you first, then working, then open, then the rest, newest first. */
+export function trackable(agents: Agent[]) {
+  const rank = (a: Agent) => (a.needsYou ? 0 : a.working ? 1 : a.terminals > 0 ? 2 : 3);
+  return agents.filter((a) => a.supported).sort((a, b) => rank(a) - rank(b) || b.lastActive - a.lastActive);
+}
+
+/** What a pill says about its agent. */
+export function pillText(a: Agent, status: Live['status']) {
+  return { running: 'Working', needs: 'Needs you', done: 'Done', idle: a.terminals > 0 ? 'Open' : 'Idle', '': '' }[status];
+}
+
+/** One agent as the bar's tracker shows it, the way the lead agent's is. */
+export function agentView(a: Agent): Live {
+  const status = a.needsYou ? 'needs' : a.working ? 'running' : a.done ? 'done' : 'idle';
+  return {
+    id: 'agents',
+    label: 'AI Agents',
+    icon: agentIcon(a.id),
+    color: agentColor(a.id),
+    value: a.working ? clock(a.elapsedMs) : '',
+    status,
+    count: a.count,
+    todos: a.todos,
+    tokens: a.usage.read + a.usage.written,
+    sessionPct: a.sessionLimit?.usedPercent ?? null,
+    weekPct: a.weekLimit?.usedPercent ?? null,
+    project: a.project,
+    terminals: a.terminals,
+    subagents: a.subagents,
+    progress: null,
+    detail: null,
+  };
+}
+
+/** What is loaded on the PC at once, across every agent: sessions open and subagents running, and the two together. */
+export function loaded(agents: Agent[]) {
+  const sessions = agents.reduce((t, a) => t + a.terminals, 0);
+  const subagents = agents.reduce((t, a) => t + a.subagents, 0);
+  const total = sessions + subagents;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  return {
+    total,
+    text: total ? plural(total, 'session') : 'No sessions',
+    tip: total ? `${plural(sessions, 'session')} open and ${plural(subagents, 'subagent')} running, across every agent` : 'No agent sessions open',
+  };
+}
+
+export type ProviderId = 'claude' | 'codex' | 'openCode' | 'copilot' | 'antigravity';
 
 export interface ToolInfo {
   id: ProviderId;
   name: string;
   parsed: boolean;
   plan: string | null;
+  /** Tokens used over the last 5 hours and 7 days, for a tool whose logs are read: shown where it reports no plan limit. */
+  used: { fiveHour: number; week: number; split: { name: string; fiveHour: number; week: number }[] } | null;
   lastUsed: number | null;
 }
 

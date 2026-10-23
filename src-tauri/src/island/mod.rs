@@ -4,6 +4,7 @@
 //! transparent area around a resting pill never blocks clicks.
 
 pub mod agents;
+pub mod antigravity;
 pub mod claude_status;
 pub mod click;
 pub mod config;
@@ -95,6 +96,8 @@ pub struct IslandState {
     orders: Mutex<dynamic::Orders>,
     /// The latest weather for the city in settings, and why there is none when there isn't.
     weather: Mutex<WeatherState>,
+    /// The right-click menu's Refresh: read the agents again at the next pass instead of waiting out the idle gap.
+    refresh: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Default, Clone)]
@@ -139,13 +142,20 @@ struct Inner {
 impl Default for IslandState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), orders: Mutex::default(), weather: Mutex::default() }
+        Self { inner: Mutex::new(Inner { rest: (200.0, 32.0), ..Inner::default() }), wake: Mutex::new(tx), wake_rx: Mutex::new(Some(rx)), usage: Arc::default(), orders: Mutex::default(), weather: Mutex::default(), refresh: Default::default() }
     }
 }
 
 impl IslandState {
     fn wake(&self) {
         let _ = self.wake.lock().unwrap().send(());
+    }
+
+    /// Reads the agents again and sends the page everything, whether or not it changed.
+    fn refresh_now(&self) {
+        self.refresh.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.inner.lock().unwrap().last = None;
+        self.wake();
     }
 }
 
@@ -266,6 +276,7 @@ pub fn live(playing: bool, timer: &Timer, hide_countdown: bool, agents: &[AgentS
         agents::Kind::Codex => ("codex", CODEX_COLOR),
         agents::Kind::OpenCode => ("opencode", AGENT_COLOR),
         agents::Kind::Copilot => ("copilot", AGENT_COLOR),
+        agents::Kind::Antigravity => ("antigravity", AGENT_COLOR),
     };
     if let Some(a) = lead {
         let (icon, color) = look(a);
@@ -714,10 +725,15 @@ fn system_dnd() -> bool {
     on
 }
 
-/// Every notification Notifi shows on the pill goes through here: a deep click, and nothing on screen
-/// when quiet. Do Not Disturb still sends it to the Nook's list of past notifications; Privacy mode drops it.
+/// Every notification Notifi shows on the pill goes through here: a chime (not for a new song, which is shown without a sound), and nothing
+/// on screen when quiet. Do Not Disturb still sends it to the Nook's list of past notifications; Privacy mode drops it.
 fn activity(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'static str, text: String) {
     activity_to(app, c, icon, color, text, None);
+}
+
+/// Notices that never make a sound: a song changing is background, and a chime on every track would be a nuisance.
+fn silent(icon: &str) -> bool {
+    icon == "music"
 }
 
 fn activity_to(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'static str, text: String, target: Option<&'static str>) {
@@ -725,7 +741,7 @@ fn activity_to(app: &AppHandle, c: &IslandConfig, icon: &'static str, color: &'s
         return;
     }
     let held = system_dnd();
-    if c.activity_sound && !held {
+    if c.activity_sound && !held && !silent(icon) {
         click::notify();
     }
     let _ = app.emit_to(ISLAND, ACTIVITY_EVENT, Activity { icon, color, text, ms: c.activity_ms, quiet: held, target });
@@ -1073,6 +1089,8 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
     // T3 Code's chats from its own database, and which of them were going at the last read.
     let mut t3_chats: Vec<agents::SessionChip> = Vec::new();
     let mut t3_going: std::collections::HashSet<String> = Default::default();
+    // The plan usage T3 Code keeps for each agent, read with the agents.
+    let mut t3_limits: std::collections::HashMap<agents::Kind, (Option<agents::Limit>, Option<agents::Limit>)> = Default::default();
     let mut next_agents = Instant::now();
     let mut next_fullscreen = Instant::now();
     let mut track: Option<String> = None;
@@ -1136,6 +1154,9 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             first_track = false;
         }
 
+        if state.refresh.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            next_agents = Instant::now();
+        }
         if let Some(home) = home.as_deref() {
             if Instant::now() >= next_agents {
                 let notice_ms = u64::from(c.agent_finish_minutes) * 60_000;
@@ -1155,6 +1176,7 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
                     }
                 }
                 t3_going = t3_chats.iter().filter(|s| s.status != "done").map(|s| s.id.clone()).collect();
+                t3_limits = t3::limits(now);
                 next_agents = Instant::now() + if tracker.busy(now) { AGENTS_BUSY } else { AGENTS_IDLE };
             }
             agent_snaps = tracker.snapshot(home, now);
@@ -1164,6 +1186,13 @@ fn run(app: AppHandle, platform: Platform, wake: Receiver<()>) {
             chips.extend(t3_chats.iter().cloned());
             agents::sort_chips(&mut chips);
             t3::apply(&mut agent_snaps, &t3_chats, now);
+            // A limit the agent's own logs reported wins; otherwise the plan usage T3 Code keeps for it (Antigravity, Claude).
+            for a in &mut agent_snaps {
+                if let Some((session, week)) = t3_limits.get(&a.id) {
+                    a.session_limit = a.session_limit.or(*session);
+                    a.week_limit = a.week_limit.or(*week);
+                }
+            }
             let open = terminal_counter.tick();
             for a in &mut agent_snaps {
                 a.terminals = open[terminals::index(a.id)];
@@ -1342,6 +1371,39 @@ pub fn run_action(app: &AppHandle, action: &str) {
     };
     focus(app);
     let _ = app.emit_to(ISLAND, COMMAND_EVENT, command);
+}
+
+const MENU_TOGGLE: &str = "island_menu_toggle";
+const MENU_AGENTS: &str = "island_menu_agents";
+const MENU_REFRESH: &str = "island_menu_refresh";
+const MENU_SETTINGS: &str = "island_menu_settings";
+
+/// A right click on the Island or the agents bar. Notifi's own menu takes the place of the web view's (Reload, Inspect), which
+/// would reload the page under a window Notifi is still placing. It is a native menu, so it isn't cut off by the small window.
+#[tauri::command]
+pub fn island_context_menu(app: AppHandle, window: tauri::Window, state: State<IslandState>) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    let open = state.inner.lock().unwrap().open;
+    let e = |e: tauri::Error| e.to_string();
+    let item = |id: &str, label: &str| MenuItem::with_id(&app, id, label, true, None::<&str>).map_err(e);
+    let toggle = item(MENU_TOGGLE, if open { "Close Island" } else { "Open Island" })?;
+    let agents = item(MENU_AGENTS, "AI Agents")?;
+    let refresh = item(MENU_REFRESH, "Refresh agents")?;
+    let settings = item(MENU_SETTINGS, "Island settings")?;
+    let line = PredefinedMenuItem::separator(&app).map_err(e)?;
+    let menu = Menu::with_items(&app, &[&toggle, &agents, &refresh, &line, &settings]).map_err(e)?;
+    window.popup_menu(&menu).map_err(e)
+}
+
+/// What was chosen in the right-click menu.
+pub fn on_menu_event(app: &AppHandle, id: &str) {
+    match id {
+        MENU_TOGGLE => run_action(app, "islandToggle"),
+        MENU_AGENTS => run_action(app, "islandModuleAgents"),
+        MENU_REFRESH => app.state::<IslandState>().refresh_now(),
+        MENU_SETTINGS => window::open_settings_at(app, Some("island")),
+        _ => {}
+    }
 }
 
 fn lower_first(s: &str) -> String {
@@ -1563,6 +1625,25 @@ pub struct ToolInfo {
     parsed: bool,
     plan: Option<String>,
     last_used: Option<u64>,
+    /// Tokens used in a plan's usual windows, for a tool whose logs are read: what to show where it reports no plan limit.
+    used: Option<UsedView>,
+}
+
+/// Tokens used over the last 5 hours and the last 7 days, and for a tool that runs several kinds of model, each kind's share of them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedView {
+    five_hour: u64,
+    week: u64,
+    split: Vec<UsedSplit>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedSplit {
+    name: &'static str,
+    five_hour: u64,
+    week: u64,
 }
 
 #[derive(Serialize)]
@@ -1629,6 +1710,20 @@ pub fn island_agent_stats(app: AppHandle, state: State<IslandState>, days: u32, 
                 _ => None,
             },
             last_used: h.last_used(k).or(h.newest[i]),
+            used: match k {
+                agents::Kind::Claude | agents::Kind::Codex | agents::Kind::OpenCode => Some(UsedView {
+                    five_hour: h.tokens_since(k, now.saturating_sub(5 * 3_600_000)),
+                    week: h.tokens_since(k, now.saturating_sub(7 * 86_400_000)),
+                    split: Vec::new(),
+                }),
+                // Antigravity runs Gemini, Claude and GPT models: each is counted on its own.
+                agents::Kind::Antigravity => agents::home().map(|home| antigravity::usage_by_family(&home, now)).filter(|u| !u.is_empty()).map(|u| UsedView {
+                    five_hour: u.iter().map(|f| f.five_hour).sum(),
+                    week: u.iter().map(|f| f.week).sum(),
+                    split: u.iter().map(|f| UsedSplit { name: f.family.name(), five_hour: f.five_hour, week: f.week }).collect(),
+                }),
+                agents::Kind::Copilot => None,
+            },
         })
         .collect();
     let claude_window = h.claude_window(now).map(|(start, resets_at, cost_usd, tokens)| WindowView {
@@ -1654,6 +1749,14 @@ pub fn island_agent_stats(app: AppHandle, state: State<IslandState>, days: u32, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_song_changing_is_shown_without_a_sound() {
+        assert!(silent("music"));
+        for icon in ["bell", "timer", "agents"] {
+            assert!(!silent(icon), "{icon}");
+        }
+    }
 
     #[test]
     fn ai_windows() {

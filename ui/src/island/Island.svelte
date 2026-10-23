@@ -7,6 +7,7 @@
   import AiButtons from './AiButtons.svelte';
   import Glyph from './Glyph.svelte';
   import Logo, { LOGOS } from './Logo.svelte';
+  import { installContextMenu } from './contextMenu';
   import { fit } from './fit';
   import PixelBar from './PixelBar.svelte';
   import Agents from './modules/Agents.svelte';
@@ -28,7 +29,7 @@
   import Timer from './modules/Timer.svelte';
   import Tools from './modules/Tools.svelte';
   import { island, media, runOutside } from './state.svelte';
-  import { BUTTONS, MODULE_ICONS } from './types';
+  import { BUTTONS, MODULE_ICONS, agentColor, agentIcon, agentView, loaded, pillText, trackable } from './types';
 
   /** Resting pill sizes in logical px (Notifi design). */
   const REST = { w: 190, h: 32 };
@@ -85,7 +86,16 @@
   let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
 
   const workingCount = $derived((snap?.agents ?? []).filter((a) => a.working).length);
-  const selLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
+  /** The agents to switch between (installed ones, open first), for the number beside the logo and the list it opens. */
+  const choices = $derived(trackable(snap?.agents ?? []));
+  /** The agent picked from that list, shown instead of the lead one until it is picked again or closes. */
+  let picked = $state<string | null>(null);
+  const pickedAgent = $derived(choices.find((a) => a.id === picked));
+  $effect(() => {
+    if (picked && !pickedAgent) picked = null;
+  });
+  const baseLive = $derived(live.find((l) => l.id === chosenLive) ?? live[0]);
+  const selLive = $derived(baseLive?.id === 'agents' && pickedAgent ? agentView(pickedAgent) : baseLive);
   /** An AI app in front: on the taskbar the pill becomes that app's buttons beside the agent's limits. */
   const aiOn = $derived(!!snap?.aiApp && !open && !!(layout?.dock || layout?.rise));
   const agentLive = $derived(live.find((l) => l.id === 'agents'));
@@ -201,6 +211,32 @@
     pop = null;
     askAi(index);
   }
+  /** The list of open agents under the number beside the logo: it opens while the pointer is on the number or the list. */
+  let agentPop = $state<{ left: number; y: number; up: boolean } | null>(null);
+  let agentPopTimer: ReturnType<typeof setTimeout> | undefined;
+  const AGENT_POP_W = 280;
+  const agentPopH = $derived(agentPop ? choices.length * POP_ROW + 12 : 0);
+  function agentPopOpen(e: Event) {
+    clearTimeout(agentPopTimer);
+    if (agentPop) return;
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const pr = el.closest('.pill')?.getBoundingClientRect() ?? r;
+    const up = !!(layout?.rise || layout?.dock);
+    pop = null;
+    agentPop = { left: Math.max(8, Math.min(window.innerWidth - AGENT_POP_W - 8, r.left + r.width / 2 - AGENT_POP_W / 2)), y: up ? window.innerHeight - pr.top + 8 : pr.bottom + 8, up };
+  }
+  function agentPopLeave() {
+    clearTimeout(agentPopTimer);
+    agentPopTimer = setTimeout(() => (agentPop = null), 250);
+  }
+  function pickAgent(id: string) {
+    picked = picked === id ? null : id;
+    agentPop = null;
+  }
+  $effect(() => {
+    if (open || choices.length < 2) agentPop = null;
+  });
   // The list closes soon after the pointer leaves, and in any case after a while.
   $effect(() => {
     if (!pop) return;
@@ -285,7 +321,7 @@
   const box = $derived(
     thin
       ? THIN_HIT
-      : { w: barCap(rest.w), h: rest.h + (pop ? popH + 8 : 0) },
+      : { w: barCap(rest.w), h: rest.h + (pop ? popH + 8 : agentPop ? agentPopH + 8 : 0) },
   );
 
   /** What the window was last told, so a shrinking pill can keep its room until it has finished shrinking. */
@@ -466,6 +502,18 @@
     chosenLive = pages[(at + (e.deltaY > 0 ? 1 : pages.length - 1)) % pages.length].id;
   }
 
+  /** Scrolling over the logo or the number steps through the agents (waiting first), where the rest of the pill steps through its pages. */
+  function wheelAgents(e: WheelEvent) {
+    if (open || choices.length < 2 || Math.abs(e.deltaY) < 1) return;
+    e.stopPropagation();
+    const now = performance.now();
+    if (now - lastWheel < 260) return;
+    lastWheel = now;
+    const shown = pickedAgent?.id ?? choices.find((a) => agentIcon(a.id) === selLive?.icon)?.id;
+    const at = Math.max(0, choices.findIndex((a) => a.id === shown));
+    picked = choices[(at + (e.deltaY > 0 ? 1 : choices.length - 1)) % choices.length].id;
+  }
+
   /** Done or needs you: the click jumps to that session's window instead of opening the menu. */
   async function gotoSession() {
     const l = selLive;
@@ -534,9 +582,11 @@
     const focusOnClick = () => { if (open) invoke('island_focus').catch(() => {}); };
     window.addEventListener('keydown', key);
     window.addEventListener('pointerdown', focusOnClick, true);
+    const removeMenu = installContextMenu();
     return () => {
       window.removeEventListener('keydown', key);
       window.removeEventListener('pointerdown', focusOnClick, true);
+      removeMenu();
     };
   });
 
@@ -623,8 +673,8 @@
     const id = setInterval(read, 20000);
     return () => clearInterval(id);
   });
-  /** Agents that have a session working right now, shown as logos on the agents pill. */
-  const workingAgents = $derived((snap?.agents ?? []).filter((a) => a.working));
+  /** Sessions and subagents loaded across every agent, the count on the agents pill. */
+  const loadedNow = $derived(loaded(snap?.agents ?? []));
   /** How far through the song, for the fill behind the resting media pill. */
   const songPct = $derived.by(() => {
     const d = snap?.media?.durationMs;
@@ -810,7 +860,8 @@
             {:else if selLive.id === 'order'}
               <span class="prog" style:--c={selLive.color} style:width={`${(selLive.progress ?? 0) * 100}%`}></span>
             {/if}
-            <span class="end" style:color={selLive.color}>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <span class="end" style:color={selLive.color} onwheel={selLive.id === 'agents' ? wheelAgents : undefined}>
               {#if selLive.id === 'music' && island.cover}
                 <img class="tiny" src={island.cover} alt="" />
               {:else if selLive.id === 'music' && snap.media?.app}
@@ -819,6 +870,22 @@
                 <Logo id={selLive.icon} size={18} />
               {:else}
                 <Glyph name={selLive.icon} size={16} />
+              {/if}
+              <!-- The room is kept while two or more agents can be shown, so the pill doesn't change width as the pointer comes and goes. -->
+              {#if selLive.id === 'agents' && choices.length > 1}
+                <button
+                  class="multi"
+                  class:show={near}
+                  class:on={!!agentPop || picked !== null}
+                  tabindex={near ? 0 : -1}
+                  aria-label={`${choices.length} agents: choose which to show`}
+                  onpointerenter={agentPopOpen}
+                  onpointerleave={agentPopLeave}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    if (agentPop) agentPop = null;
+                    else agentPopOpen(e);
+                  }}>{choices.length}</button>
               {/if}
             </span>
             {#if selLive.id === 'music' && snap.media}
@@ -845,11 +912,7 @@
             {/if}
             <span class="end value" style:color={selLive.color}>
               {#if selLive.id === 'agents'}
-                {#each workingAgents as a (a.id)}
-                  <span class="ag" title={`${a.name}: ${a.count} working`}>{#if a.id !== selLive.icon}<Logo id={a.id} size={15} />{/if}{#if a.count > 1}<small>{a.count}{a.id === selLive.icon ? ' running' : ''}</small>{/if}</span>
-                {/each}
-                {#if selLive.subagents > 0}<span class="count sub">{selLive.subagents} {selLive.subagents === 1 ? 'subagent' : 'subagents'}</span>{/if}
-                <span class="count">{selLive.terminals ? `${selLive.terminals} ${selLive.terminals === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
+                <span class="count" title={loadedNow.tip}>{loadedNow.text}</span>
               {/if}
               {#if selLive.id === 'agents'}
                 <!-- the running time sits beside the status -->
@@ -882,6 +945,28 @@
       <div class="askpop" style:left={`${pop.left}px`} style:bottom={pop.up ? `${pop.y}px` : undefined} style:top={pop.up ? undefined : `${pop.y}px`} in:fade={{ duration: 120 }}>
         {#each cfg.aiPrompts as p, i (i)}
           <button onclick={() => pickPrompt(i)}>{p}</button>
+        {/each}
+      </div>
+    {/if}
+
+    {#if agentPop && !open && choices.length > 1}
+      <div
+        class="askpop agentpop"
+        role="group"
+        style:left={`${agentPop.left}px`}
+        style:bottom={agentPop.up ? `${agentPop.y}px` : undefined}
+        style:top={agentPop.up ? undefined : `${agentPop.y}px`}
+        in:fade={{ duration: 120 }}
+        onpointerenter={() => clearTimeout(agentPopTimer)}
+        onpointerleave={agentPopLeave}
+      >
+        {#each choices as a (a.id)}
+          {@const v = agentView(a)}
+          <button class="s-{v.status}" class:sel={picked === a.id} style:--a={agentColor(a.id)} title={`${a.name}: show its tracker${picked === a.id ? ' (click again to go back to the busiest)' : ''}`} onclick={() => pickAgent(a.id)}>
+            <i class="adot"></i><Logo id={a.id} size={14} />
+            <span class="anm">{a.id === 'claude' ? 'Claude' : a.name}</span>
+            <span class="ast">{pillText(a, v.status)}{#if v.value}<span class="ael">{v.value}</span>{/if}</span>
+          </button>
         {/each}
       </div>
     {/if}
@@ -1446,18 +1531,6 @@
     height: 100%;
     animation-delay: -0.45s;
   }
-  .ag {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    margin-right: 4px;
-    color: var(--i-fg);
-  }
-  .ag small {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--i-mut);
-  }
   .asking {
     color: var(--i-fg);
     font-weight: 700;
@@ -1489,10 +1562,6 @@
   }
   :global([data-reduced-motion]) .asking :global(svg) {
     animation: none;
-  }
-  .count.sub {
-    margin-right: 10px;
-    color: var(--i-mut);
   }
   .count {
     font-size: 13px;
@@ -1697,6 +1766,102 @@
   }
   .askpop button:hover {
     background: rgb(255 255 255 / 0.08);
+  }
+  /* The open agents under the number beside the logo: one row each, in the agent's own colour. */
+  .agentpop {
+    width: 280px;
+    box-sizing: border-box;
+  }
+  .agentpop button {
+    --c: #8d979a;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 0 12px 0 11px;
+  }
+  /* The dot and the status take the colour of the state, as the session buttons do; the agent's own colour rings the one shown. */
+  .agentpop button.s-needs {
+    --c: #f0a24a;
+  }
+  .agentpop button.s-running {
+    --c: #6ea8ff;
+  }
+  .agentpop button.s-done {
+    --c: #35d6a4;
+  }
+  .agentpop button.sel {
+    box-shadow: inset 0 0 0 1.5px var(--a);
+    background: color-mix(in srgb, var(--a) 14%, transparent);
+  }
+  .agentpop .anm {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+  }
+  .agentpop .ast {
+    flex: none;
+    color: var(--c);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .agentpop .ael {
+    margin-left: 6px;
+  }
+  .adot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c);
+  }
+  .s-running .adot,
+  .s-needs .adot {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  :global([data-reduced-motion]) .adot {
+    animation: none;
+  }
+  /* The number beside the logo: how many agents can be shown. It is there while the pointer is on the pill. */
+  .multi {
+    display: inline-grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 99px;
+    background: var(--i-raised, rgb(255 255 255 / 0.1));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 120ms linear,
+      background-color 120ms linear;
+  }
+  .multi.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .multi:hover,
+  .multi.on {
+    background: rgb(255 255 255 / 0.12);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
   }
   .activity {
     justify-content: center;

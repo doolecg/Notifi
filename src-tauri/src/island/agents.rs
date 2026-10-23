@@ -1,6 +1,6 @@
 //! Follows local coding agents through the logs they already write (spec/everyday/ai-agents.md).
 //! Only new bytes are read on each pass, a new file is read from its last 512 KB, and nothing
-//! leaves this computer. Claude Code and Codex logs and OpenCode's database are read; Copilot is only detected.
+//! leaves this computer. Claude Code and Codex logs, OpenCode's database and Antigravity's conversation index are read; Copilot is only detected.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -13,7 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::opencode;
+use super::{antigravity, opencode};
 
 /// A turn stops counting after this long without a log line, unless a tool call is still out. Claude
 /// writes a line only when a block is finished, so thinking before the first reply can stay quiet for a minute or two.
@@ -40,10 +40,13 @@ pub enum Kind {
     Codex,
     OpenCode,
     Copilot,
+    /// The desktop app and the `agy` command line, which share their conversations.
+    Antigravity,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Claude, Kind::Codex, Kind::OpenCode, Kind::Copilot];
+    /// New agents go on the end: the usage cache stores a tool as its place in this list.
+    pub const ALL: [Kind; 5] = [Kind::Claude, Kind::Codex, Kind::OpenCode, Kind::Copilot, Kind::Antigravity];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -51,20 +54,22 @@ impl Kind {
             Kind::Codex => "Codex",
             Kind::OpenCode => "OpenCode",
             Kind::Copilot => "Copilot CLI",
+            Kind::Antigravity => "Antigravity",
         }
     }
 
-    fn root(self, home: &Path) -> PathBuf {
+    pub(crate) fn root(self, home: &Path) -> PathBuf {
         match self {
             Kind::Claude => home.join(".claude").join("projects"),
             Kind::Codex => home.join(".codex").join("sessions"),
             Kind::OpenCode => home.join(".local").join("share").join("opencode"),
             Kind::Copilot => home.join(".copilot"),
+            Kind::Antigravity => home.join(".gemini").join("antigravity"),
         }
     }
 
     pub fn parsed(self) -> bool {
-        matches!(self, Kind::Claude | Kind::Codex | Kind::OpenCode)
+        matches!(self, Kind::Claude | Kind::Codex | Kind::OpenCode | Kind::Antigravity)
     }
 
     fn parse(self, line: &str) -> Option<(u64, Entry)> {
@@ -556,10 +561,18 @@ impl Tracker {
             }
         }
         self.files.retain(|p, _| p.exists());
-        // OpenCode keeps sessions in one database: each is followed under a path inside it.
-        if let Some(db) = opencode::db_path(home) {
+        // OpenCode keeps sessions in a database, shared by its app and its command line: each is followed under a path inside it.
+        for db in opencode::db_paths(home) {
             for (id, session) in opencode::followed(&db, now) {
                 self.files.insert(db.join(id), Followed { offset: 0, session });
+            }
+        }
+        // Antigravity keeps an index of its conversations, from the app and the command line alike. A conversation
+        // another one started is filed as a subagent, like the logs under Claude's `subagents` folders.
+        if let Some(db) = antigravity::db_path(home) {
+            for c in antigravity::followed(&db, now) {
+                let at = if c.sub { db.join("subagents") } else { db.clone() };
+                self.files.insert(at.join(c.id), Followed { offset: 0, session: c.session });
             }
         }
 
@@ -689,6 +702,8 @@ fn kind_of(home: &Path, path: &Path) -> Kind {
         Kind::Codex
     } else if path.starts_with(Kind::Claude.root(home)) {
         Kind::Claude
+    } else if path.starts_with(Kind::Antigravity.root(home)) {
+        Kind::Antigravity
     } else {
         Kind::OpenCode
     }
@@ -825,8 +840,13 @@ pub fn island_agent_sessions(agent: Option<Kind>) -> Vec<SessionRow> {
         })
         .collect();
     if agent.map_or(true, |a| a == Kind::OpenCode) {
-        if let Some(db) = opencode::db_path(&home) {
+        for db in opencode::db_paths(&home) {
             rows.extend(opencode::session_rows(&db, now));
+        }
+    }
+    if agent.map_or(true, |a| a == Kind::Antigravity) {
+        if let Some(db) = antigravity::db_path(&home) {
+            rows.extend(antigravity::session_rows(&db, now));
         }
     }
     rows.sort_by_key(|r| std::cmp::Reverse(r.last_ts));
@@ -840,7 +860,8 @@ pub fn island_agent_sessions(agent: Option<Kind>) -> Vec<SessionRow> {
 pub fn island_agent_log(id: String) -> Vec<LogLine> {
     let Some(home) = home() else { return Vec::new() };
     if let Some(session) = id.strip_prefix(opencode::ID_PREFIX) {
-        return opencode::db_path(&home).map_or_else(Vec::new, |db| opencode::log(&db, session));
+        // The session is in whichever of OpenCode's databases has it.
+        return opencode::db_paths(&home).iter().map(|db| opencode::log(db, session)).find(|lines| !lines.is_empty()).unwrap_or_default();
     }
     let Ok(path) = fs::canonicalize(&id) else { return Vec::new() };
     let inside = |k: Kind| fs::canonicalize(k.root(&home)).is_ok_and(|r| path.starts_with(r));

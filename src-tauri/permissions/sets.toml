@@ -100,6 +100,7 @@ permissions = [
   "allow-watch-clear-area",
   "allow-watch-read",
   "allow-island-focus",
+  "allow-island-context-menu",
   "allow-island-open-agents",
   "allow-claude-limits-status",
   "allow-island-ai-send",

@@ -5,12 +5,13 @@
   import { applyCssVars, fadeSlide, setReducedMotion } from '../lib/motion';
   import { store } from '../lib/settings.svelte';
   import AiButtons from '../island/AiButtons.svelte';
+  import { installContextMenu } from '../island/contextMenu';
   import { fit } from '../island/fit';
   import Glyph from '../island/Glyph.svelte';
   import Logo from '../island/Logo.svelte';
   import PixelBar from '../island/PixelBar.svelte';
   import { island } from '../island/state.svelte';
-  import { clock, type SessionChip } from '../island/types';
+  import { agentColor, agentIcon, agentView, clock, loaded, trackable, pillText, type SessionChip } from '../island/types';
 
   const CELLS = Array.from({ length: 10 }, (_, n) => n);
   const STATUS_TEXT: Record<string, string> = { idle: 'Idle', running: 'Running', done: 'Done', needs: 'Needs you' };
@@ -30,8 +31,45 @@
 
   const snap = $derived(island.snap);
   const cfg = $derived(snap?.config);
-  const live = $derived(snap?.live.find((l) => l.id === 'agents'));
-  const workingAgents = $derived((snap?.agents ?? []).filter((a) => a.working));
+  /** The agent Notifi leads with: the one working longest, else the one used last. */
+  const lead = $derived(snap?.live.find((l) => l.id === 'agents'));
+  const loadedNow = $derived(loaded(snap?.agents ?? []));
+  /** The agents to switch between (installed ones, open first), for the number beside the logo and the pills it opens. */
+  const choices = $derived(trackable(snap?.agents ?? []));
+  /** The agent picked from the pills, shown instead of the lead one until it is picked again or closes. */
+  let picked = $state<string | null>(null);
+  const pickedAgent = $derived(choices.find((a) => a.id === picked));
+  const live = $derived(pickedAgent ? agentView(pickedAgent) : lead);
+  $effect(() => {
+    if (picked && !pickedAgent) picked = null;
+  });
+  /** The pills are shown while the pointer is on the number or on them. */
+  let picking = $state(false);
+  let pickTimer: ReturnType<typeof setTimeout> | undefined;
+  const pickEnter = () => {
+    clearTimeout(pickTimer);
+    picking = true;
+  };
+  const pickLeave = () => {
+    clearTimeout(pickTimer);
+    pickTimer = setTimeout(() => (picking = false), 250);
+  };
+  function pick(id: string) {
+    picked = picked === id ? null : id;
+    picking = false;
+  }
+  /** Scrolling over the logo or the number steps through the agents (waiting first). */
+  let lastWheel = 0;
+  function wheelAgents(e: WheelEvent) {
+    if (choices.length < 2 || Math.abs(e.deltaY) < 1) return;
+    e.stopPropagation();
+    const now = performance.now();
+    if (now - lastWheel < 260) return;
+    lastWheel = now;
+    const shown = pickedAgent?.id ?? choices.find((a) => agentIcon(a.id) === lead?.icon)?.id;
+    const at = Math.max(0, choices.findIndex((a) => a.id === shown));
+    picked = choices[(at + (e.deltaY > 0 ? 1 : choices.length - 1)) % choices.length].id;
+  }
 
   /** Sessions as buttons above the bar while the pointer is over it, coloured by what they are doing. */
   const chips = $derived(snap?.sessions ?? []);
@@ -45,7 +83,9 @@
   let winH = $state(32 + ROOM);
   /** The bar's own height: the window's, less the room kept above it. */
   const barH = $derived(Math.max(16, winH - ROOM));
-  const showChips = $derived(hover && chips.length > 0);
+  /** The pills take the place of the session buttons while the pointer is on the number. */
+  const showPills = $derived(hover && picking && choices.length > 1);
+  const showChips = $derived(showPills || (hover && chips.length > 0));
   /** While the buttons show, the bar and their row share one width. */
   /** Never past the taskbar's Start button. */
   const cap = $derived(Math.min(BAR_MAX, snap?.layout.barMax ?? BAR_MAX));
@@ -77,7 +117,10 @@
   }
   function leave() {
     clearTimeout(leaveTimer);
-    leaveTimer = setTimeout(() => (hover = false), 250);
+    leaveTimer = setTimeout(() => {
+      hover = false;
+      picking = false;
+    }, 250);
   }
   async function openChip(c: SessionChip) {
     // A T3 Code chat opens in the Island's own chat when that is on, otherwise in T3 Code.
@@ -133,7 +176,7 @@
   /** Done or needs you: jump to that session (its T3 Code chat or its window); otherwise open the Island on its AI Agents module. */
   function click() {
     const status = live?.status;
-    const chip = status === 'done' || status === 'needs' ? chips.find((c) => c.status === status) : undefined;
+    const chip = status === 'done' || status === 'needs' ? chips.find((c) => c.status === status && (!picked || c.agent === picked)) : undefined;
     if (chip) openChip(chip);
     else invoke('island_open_agents').catch(() => {});
   }
@@ -143,8 +186,15 @@
     store.init().catch(() => {});
     island.init(() => {});
     // Notifi saw the pointer leave even if this page missed it.
-    const off = listen('agentsbar://leave', () => (hover = false));
-    return () => off.then((f) => f());
+    const off = listen('agentsbar://leave', () => {
+      hover = false;
+      picking = false;
+    });
+    const removeMenu = installContextMenu();
+    return () => {
+      off.then((f) => f());
+      removeMenu();
+    };
   });
 </script>
 
@@ -163,19 +213,57 @@
 
 {#if snap?.enabled && cfg}
   <div class="root" role="group" onpointerenter={enter} onpointerleave={leave}>
-    <div class="chips" class:show={showChips} bind:this={chipsEl} style:bottom={`${barH + 8}px`} style:width={`${width}px`}>
-      {#each chips as c, i (c.id)}
-        <button class="chip {c.status}" style:--i={i} title={`${c.title ?? c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
-          <span class="dot"></span><Logo id={c.agent} size={13} />
-          <span class="nm">{c.title ?? c.project ?? 'Session'}</span>
-          <span class="st">{CHIP_TEXT[c.status]}{#if c.status === 'working' && c.elapsedMs}<span class="el">{clock(c.elapsedMs)}</span>{/if}</span>
-        </button>
-      {/each}
+    <div
+      class="chips"
+      class:show={showChips}
+      bind:this={chipsEl}
+      style:bottom={`${barH + 8}px`}
+      style:width={`${width}px`}
+      role="group"
+      onpointerenter={() => showPills && pickEnter()}
+      onpointerleave={() => showPills && pickLeave()}
+    >
+      {#if showPills}
+        {#each choices as a, i (a.id)}
+          {@const v = agentView(a)}
+          <button class="chip {v.status}" class:sel={picked === a.id} style:--i={i} style:--a={agentColor(a.id)} title={`${a.name}: show its tracker${picked === a.id ? ' (click again to go back to the busiest)' : ''}`} onclick={() => pick(a.id)}>
+            <span class="dot"></span><Logo id={a.id} size={13} />
+            <span class="nm">{a.id === 'claude' ? 'Claude' : a.name}</span>
+            <span class="st">{pillText(a, v.status)}{#if v.value}<span class="el">{v.value}</span>{/if}</span>
+          </button>
+        {/each}
+      {:else}
+        {#each chips as c, i (c.id)}
+          <button class="chip {c.status}" style:--i={i} title={`${c.title ?? c.project ?? c.agent}: ${CHIP_TEXT[c.status]}`} onclick={() => openChip(c)}>
+            <span class="dot"></span><Logo id={c.agent} size={13} />
+            <span class="nm">{c.title ?? c.project ?? 'Session'}</span>
+            <span class="st">{CHIP_TEXT[c.status]}{#if c.status === 'working' && c.elapsedMs}<span class="el">{clock(c.elapsedMs)}</span>{/if}</span>
+          </button>
+        {/each}
+      {/if}
     </div>
     <div class="pill" role="button" tabindex="0" class:with-chat={cfg.chatEnabled} style:height={`${barH}px`} style:width={`${width}px`} style:--fc={pixelColor} onclick={click} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && click()} use:fit={needs}>
       {#if live}
         <PixelBar color={pixelColor} calm={live.status === 'done' || live.status === 'idle'} period={live.status === 'needs' ? 900 : live.status === 'running' ? 2000 : 4200} {burst} />
-        <span class="end" style:color={live.color}><Logo id={live.icon} size={18} /></span>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <span class="end" style:color={live.color} onwheel={wheelAgents}>
+          <Logo id={live.icon} size={18} />
+          <!-- The room is kept while two or more agents can be shown, so the bar doesn't change width as the pointer comes and goes. -->
+          {#if choices.length > 1}
+            <button
+              class="multi"
+              class:show={hover}
+              class:on={picking || picked !== null}
+              tabindex={hover ? 0 : -1}
+              aria-label={`${choices.length} agents: choose which to show`}
+              onpointerenter={pickEnter}
+              onpointerleave={pickLeave}
+              onclick={(e) => {
+                e.stopPropagation();
+                picking ? (picking = false) : pickEnter();
+              }}>{choices.length}</button>
+          {/if}
+        </span>
         <span class="mid {live.status}"><span class="nat">
           {#key live.status}<span class="st-text" in:fadeSlide={{ token: 'tabSwitch', y: 4 }}>{STATUS_TEXT[live.status] ?? ''}</span>{/key}
           {#if live.value}<small class="time" title="Running for">{live.value}</small>{/if}
@@ -188,11 +276,7 @@
           {#if dayTokens !== null}<span class="tok" title="Tokens used today"><small>today</small>{compact(dayTokens)}</span>{/if}
         </span>
         <span class="end value" style:color={live.color}>
-          {#each workingAgents as a (a.id)}
-            <span class="ag" title={`${a.name}: ${a.count} working`}>{#if a.id !== live.icon}<Logo id={a.id} size={15} />{/if}{#if a.count > 1}<small>{a.count}{a.id === live.icon ? ' running' : ''}</small>{/if}</span>
-          {/each}
-          {#if live.subagents > 0}<span class="count sub">{live.subagents} {live.subagents === 1 ? 'subagent' : 'subagents'}</span>{/if}
-          <span class="count">{live.terminals ? `${live.terminals} ${live.terminals === 1 ? 'session' : 'sessions'}` : 'No sessions'}</span>
+          <span class="count" title={loadedNow.tip}>{loadedNow.text}</span>
         </span>
       {:else}
         <span class="mid"><span class="nat">AI Agents</span></span>
@@ -306,6 +390,53 @@
   }
   .chip.done {
     --c: #35d6a4;
+  }
+  /* An agent pill's dot and status take the colour of its state, like the session buttons; the agent's own colour rings the one shown. */
+  .chip.idle {
+    --c: #8d979a;
+  }
+  .chip.running .dot {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .chip.sel {
+    background: color-mix(in srgb, var(--a) 16%, var(--i-face));
+    box-shadow:
+      inset 0 0 0 1.5px var(--a),
+      inset 0 1px 0 rgb(255 255 255 / 0.1);
+  }
+  /* The number beside the logo: how many agents can be shown. It is there on hover. */
+  .multi {
+    display: inline-grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 99px;
+    background: var(--i-raised);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+    color: var(--i-fg);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity var(--m-hoverLift-dur) var(--m-hoverLift-ease),
+      background-color var(--m-hoverLift-dur) var(--m-hoverLift-ease);
+  }
+  .multi.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .multi:hover,
+  .multi.on {
+    background: var(--i-hover);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
   }
   .chip:hover {
     background: color-mix(in srgb, var(--c) 34%, var(--i-face));
@@ -469,24 +600,8 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
-  .ag {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    margin-right: 4px;
-    color: var(--i-fg);
-  }
-  .ag small {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--i-mut);
-  }
   .count {
     font-size: 13px;
     font-weight: 700;
-  }
-  .count.sub {
-    margin-right: 10px;
-    color: var(--i-mut);
   }
 </style>

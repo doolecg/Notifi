@@ -37,6 +37,12 @@ A black shape that hangs from the top centre of the screen, like a camera notch.
 - Each button opens a module or runs an action. Inside a module, the top-left button becomes "back".
 - The buttons are fully customisable in settings (see below).
 
+## Notification sound
+- A notice on the pill plays the notification sound unless sounds are off or Do Not Disturb is on. A song changing is the exception: it is shown on the pill but never makes a sound. (Notifi design, not from source docs.)
+
+## Right-click menu
+- Right-clicking the Island or the taskbar agents bar shows a small menu: open or close the Island, AI Agents, Refresh agents (read the agents again now), and Island settings. It replaces the web view's own menu, whose Reload and Inspect have no place in the app. A right click that an item already uses (a module tile's, a file's) keeps its own action, and so does one on a text field. (Notifi design, not from source docs.)
+
 ## Settings page (in Notifi's settings window)
 - An on/off switch with a one-line description.
 - A segmented control with four tabs: **Layout**, **Content**, **Activity**, **Behaviour**, and a button that opens the real Island for a preview.

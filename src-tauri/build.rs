@@ -113,6 +113,7 @@ const COMMANDS: &[&str] = &[
     "watch_clear_area",
     "watch_read",
     "island_focus",
+    "island_context_menu",
     "island_open_agents",
     "claude_limits_status",
     "claude_limits_install",

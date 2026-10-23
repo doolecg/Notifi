@@ -1,3 +1,29 @@
+# Notifi 0.3.2
+
+## New
+
+- Antigravity (the desktop app and the `agy` command) is tracked as an AI agent, with its own card, logo and Sessions chip. It shows plan usage, and token use for Gemini, Claude and GPT over the last 5 hours and 7 days, read from its local conversation files.
+- With two or more agents installed, the Island pill and the taskbar agents bar show a count beside the lead logo. Hover it for a list of every agent, or scroll over the logo to switch between them. Clicking a row shows that agent on the pill.
+- A right-click menu on the Island and the taskbar bar: Open or Close Island, AI Agents, Refresh agents and Island settings.
+- Clicking a done or needs-you session opens its T3 Code chat and brings T3 Code forward.
+
+## Changed
+
+- Agent status for T3 Code chats comes from T3's own database (running, waiting on you, done), so chats are no longer counted twice from their logs.
+- Better reading of Claude, Codex and OpenCode logs: Escape, local commands and stop hooks end a turn, Codex questions need you at once, and OpenCode tools wait like shell commands.
+- OpenCode command-line sessions are picked up beside the desktop app. Claude, Codex and Copilot installed through npm are recognised.
+- The taskbar agents bar shows one total of open sessions and running subagents, with a breakdown on hover.
+- App update notices ("N app updates found") appear at most once a day.
+- Song changes on the Island no longer play the notification chime.
+- The taskbar AI buttons no longer show while T3 Code is in front.
+
+## Fixed
+
+- Dropping files on the Shelf works again.
+- Windows no longer draws a title bar on the Shelf, radial menu and app switcher windows.
+
+---
+
 # Notifi 0.3.1
 
 ## Changed

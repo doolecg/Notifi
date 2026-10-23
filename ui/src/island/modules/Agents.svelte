@@ -177,6 +177,21 @@
   function limitRow(l: LimitView) {
     return { pct: Math.min(100, Math.max(0, l.usedPercent)), left: l.resetsAt ? countdown(l.resetsAt - now) : null };
   }
+
+  /** The plan limits an agent reports (its session and its week), from the live snapshot, with where use would be at an even rate. */
+  function planLimits(id: ProviderId) {
+    const a = live.find((x) => x.id === id);
+    return (
+      [
+        ['Session', a?.sessionLimit],
+        ['Week', a?.weekLimit],
+      ] as const
+    ).flatMap(([label, l]) => {
+      if (!l) return [];
+      const pace = l.resetsAt && l.windowMs ? Math.min(1, Math.max(0, 1 - (l.resetsAt - now) / l.windowMs)) : null;
+      return [{ label, pct: Math.min(100, Math.max(0, l.usedPercent)), left: l.resetsAt ? countdown(l.resetsAt - now) : null, pace }];
+    });
+  }
 </script>
 
 {#snippet logoHead(t: ToolInfo)}
@@ -192,6 +207,17 @@
 {#snippet idle(t: ToolInfo)}
   <p class="line">No session running</p>
   <p class="dim">{ago(lastActive(t))}</p>
+{/snippet}
+
+{#snippet planBars(t: ToolInfo)}
+  {#each planLimits(t.id) as r (r.label)}
+    <div class="lrow">
+      <span class="label">{r.label}</span>
+      {#if r.left && showResets}<span class="reset"><span class="cyc">↻</span>{r.left}</span>{/if}
+      <span class="value">{Math.round(r.pct)}%</span>
+    </div>
+    {@render bar(r.pct / 100, PROVIDER_COLORS[t.id], r.pace)}
+  {/each}
 {/snippet}
 
 {#snippet bar(fill: number, color: string, pace: number | null = null)}
@@ -215,6 +241,8 @@
           {@render logoHead(t)}
           {#if !showLimits}
             <p class="dim">{working(t.id) ? 'Working' : ago(lastActive(t))}</p>
+          {:else if t.id === 'claude' && planLimits(t.id).length}
+            {@render planBars(t)}
           {:else if t.id === 'claude'}
             {@const win = stats.claudeWindow}
             {#if win}
@@ -249,6 +277,26 @@
             {/each}
           {:else if t.id === 'codex' && working('codex')}
             <p class="dim">Limits appear after Codex's next reply.</p>
+          {:else if t.id === 'antigravity' && (planLimits(t.id).length || t.used?.split.length)}
+            <!-- Antigravity keeps Claude and GPT on one quota, so that has one meter; the tokens are counted for each kind of model on its own. -->
+            {#if planLimits(t.id).length}
+              {@render planBars(t)}
+              <p class="dim">Session and Week are the quota Claude and GPT share</p>
+            {/if}
+            {#each t.used?.split ?? [] as s (s.name)}
+              <div class="lrow">
+                <span class="label">{s.name}</span>
+                <span class="reset">{compact(s.fiveHour)} · 5h</span>
+                <span class="value">{compact(s.week)}<small> week</small></span>
+              </div>
+            {/each}
+          {:else if planLimits(t.id).length}
+            {@render planBars(t)}
+          {:else if t.used && (t.used.fiveHour > 0 || t.used.week > 0)}
+            <!-- No plan limit is reported (OpenCode): the same windows, in tokens used. -->
+            <div class="lrow"><span class="label">5 hours</span><span class="value">{compact(t.used.fiveHour)}<small> tokens</small></span></div>
+            <div class="lrow"><span class="label">Week</span><span class="value">{compact(t.used.week)}<small> tokens</small></span></div>
+            <p class="dim">No plan limit reported</p>
           {:else}
             {@render idle(t)}
           {/if}
@@ -309,8 +357,8 @@
           <div class="head">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
             <span class="title">Sessions</span>
-            {#each [null, 'claude', 'codex', 'openCode'] as f (f)}
-              <button class="chip" class:sel={filter === f} onclick={() => pickFilter(f as ProviderId | null)}>{f === null ? 'All' : f === 'claude' ? 'Claude' : f === 'codex' ? 'Codex' : 'OpenCode'}</button>
+            {#each [null, 'claude', 'codex', 'openCode', 'antigravity'] as f (f)}
+              <button class="chip" class:sel={filter === f} onclick={() => pickFilter(f as ProviderId | null)}>{f === null ? 'All' : f === 'claude' ? 'Claude' : f === 'codex' ? 'Codex' : f === 'openCode' ? 'OpenCode' : 'Antigravity'}</button>
             {/each}
             <button class="chip" title="Refresh" onclick={loadSessions}>↻</button>
           </div>

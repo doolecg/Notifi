@@ -2,13 +2,58 @@
 //! you or finished, where Claude's log can only be guessed from. The taskbar bar reads it for those chats.
 //! Read only; nothing is written, and nothing leaves this computer.
 
-use std::{fs, path::Path, time::Duration};
+use std::{collections::HashMap, fs, path::Path, time::Duration};
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use super::agents::{parse_ts, AgentSnap, Kind, SessionChip, CHIP_DONE_MS, DONE_MS};
+use super::agents::{parse_ts, AgentSnap, Kind, Limit, SessionChip, CHIP_DONE_MS, DONE_MS};
+
+/// T3 Code's name for each provider, which is also the name of its file in `caches/`.
+const PROVIDERS: [(&str, Kind); 4] = [("claudeAgent", Kind::Claude), ("codex", Kind::Codex), ("opencode", Kind::OpenCode), ("antigravity", Kind::Antigravity)];
+
+/// One usage window from a provider's cache: how much of it is used and when it renews. A window that has already renewed
+/// reads as empty until T3 Code looks again.
+fn window(w: &Value, now: u64) -> Option<Limit> {
+    let used = w.get("usedPercent")?.as_f64()?.clamp(0.0, 100.0);
+    let resets_at = w.get("resetsAt").and_then(Value::as_str).and_then(parse_ts);
+    let renewed = resets_at.is_some_and(|r| r <= now);
+    Some(Limit {
+        used_percent: if renewed { 0.0 } else { used },
+        resets_at: resets_at.filter(|r| *r > now),
+        window_ms: w.get("windowDurationMins").and_then(Value::as_u64).map(|m| m * 60_000),
+    })
+}
+
+/// (session, weekly) from one provider's cache file. A provider can report several of each (Claude has a weekly limit for one model
+/// as well as the overall one); the one closest to running out is the one shown.
+fn limits_in(text: &str, now: u64) -> (Option<Limit>, Option<Limit>) {
+    let Ok(v) = serde_json::from_str::<Value>(text) else { return (None, None) };
+    let windows = v.pointer("/usageLimits/windows").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    let fullest = |kind: &str| {
+        windows
+            .iter()
+            .filter(|w| w.get("kind").and_then(Value::as_str) == Some(kind))
+            .filter_map(|w| window(w, now))
+            .max_by(|a, b| a.used_percent.total_cmp(&b.used_percent))
+    };
+    (fullest("session"), fullest("weekly"))
+}
+
+/// The plan usage T3 Code keeps for each agent (`caches/<provider>.json`, `usageLimits`), the same shape for every provider that
+/// reports it. A provider that doesn't (OpenCode) or is turned off in T3 Code has none, and is left out.
+pub fn limits(now: u64) -> HashMap<Kind, (Option<Limit>, Option<Limit>)> {
+    let Some(dir) = crate::chat::t3_home().map(|h| h.join("caches")) else { return HashMap::new() };
+    PROVIDERS
+        .into_iter()
+        .filter_map(|(name, kind)| {
+            let text = fs::read_to_string(dir.join(format!("{name}.json"))).ok()?;
+            let found = limits_in(&text, now);
+            (found.0.is_some() || found.1.is_some()).then_some((kind, found))
+        })
+        .collect()
+}
 
 /// A run still marked running after this long is left over from a T3 Code that was closed, not a job.
 const STALE_MS: u64 = 6 * 3_600_000;
@@ -85,6 +130,7 @@ fn read(conn: &Connection, now: u64) -> rusqlite::Result<Vec<SessionChip>> {
             "claudeAgent" => Kind::Claude,
             "codex" => Kind::Codex,
             "opencode" => Kind::OpenCode,
+            "antigravity" => Kind::Antigravity,
             _ => continue,
         };
         let start = parse_ts(&requested).unwrap_or(now);
@@ -134,6 +180,40 @@ mod tests {
 
     fn now() -> u64 {
         parse_ts(NOW).unwrap()
+    }
+
+    /// The shape of `caches/claudeAgent.json` and `caches/antigravity.json`, trimmed.
+    fn cache(windows: &str) -> String {
+        format!(r#"{{"displayName":"X","models":[{{"slug":"m"}}],"usageLimits":{{"checkedAt":"2026-10-22T11:59:00.000Z","windows":[{windows}]}}}}"#)
+    }
+
+    #[test]
+    fn plan_usage_is_read_from_a_providers_cache() {
+        let text = cache(
+            r#"{"id":"five_hour","kind":"session","label":"Session","windowDurationMins":300,"usedPercent":10,"resetsAt":"2026-10-22T15:00:00.000Z"},
+               {"id":"seven_day","kind":"weekly","label":"Weekly","windowDurationMins":10080,"usedPercent":64,"resetsAt":"2026-10-24T12:00:00.000Z"},
+               {"id":"seven_day_x","kind":"weekly","label":"Weekly, one model","windowDurationMins":10080,"usedPercent":2,"resetsAt":"2026-10-24T12:00:00.000Z"}"#,
+        );
+        let (session, week) = limits_in(&text, now());
+        let (session, week) = (session.unwrap(), week.unwrap());
+        assert_eq!((session.used_percent, session.window_ms), (10.0, Some(300 * 60_000)));
+        assert_eq!(session.resets_at, parse_ts("2026-10-22T15:00:00.000Z"));
+        // Of several weekly limits, the one closest to running out.
+        assert_eq!((week.used_percent, week.window_ms), (64.0, Some(10_080 * 60_000)));
+    }
+
+    #[test]
+    fn a_window_that_has_renewed_reads_as_empty_and_odd_caches_give_nothing() {
+        let text = cache(r#"{"kind":"session","usedPercent":80,"resetsAt":"2026-10-22T11:00:00.000Z","windowDurationMins":300}"#);
+        let (session, week) = limits_in(&text, now());
+        assert_eq!((session.unwrap().used_percent, session.unwrap().resets_at, week), (0.0, None, None));
+        // A provider that reports no usage, one that is switched off, and a file that is not JSON.
+        assert_eq!(limits_in(r#"{"usageLimits":{"windows":[],"unavailable":{"reason":"unsupported"}}}"#, now()), (None, None));
+        assert_eq!(limits_in(r#"{"displayName":"Codex","status":"disabled"}"#, now()), (None, None));
+        assert_eq!(limits_in("not json", now()), (None, None));
+        // A window with no figure is skipped, and one with no reset time still counts.
+        let text = cache(r#"{"kind":"weekly","label":"no figure"},{"kind":"weekly","usedPercent":33}"#);
+        assert_eq!(limits_in(&text, now()).1.map(|l| (l.used_percent, l.resets_at)), Some((33.0, None)));
     }
 
     #[test]

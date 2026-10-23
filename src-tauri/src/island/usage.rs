@@ -213,8 +213,8 @@ pub struct History {
     /// Not cached: re-read on each scan.
     pub claude_plan: Option<String>,
     /// Per tool (in `Kind::ALL` order): a data folder exists, and its newest file time.
-    pub found: [bool; 4],
-    pub newest: [Option<u64>; 4],
+    pub found: [bool; 5],
+    pub newest: [Option<u64>; 5],
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -303,6 +303,7 @@ pub fn log_roots(home: &Path, kind: Kind) -> Vec<PathBuf> {
             out
         }
         Kind::Copilot => vec![home.join(".copilot")],
+        Kind::Antigravity => vec![home.join(".gemini").join("antigravity")],
     };
     roots.extend(super::config::extra_roots(kind));
     roots
@@ -554,6 +555,13 @@ impl History {
         self.codex_plan.clone()
     }
 
+    /// Tokens a tool has used since `since` (unix ms), by the hour it was used in, so the hour `since` falls in counts whole.
+    /// For a tool that reports no plan limit, this is the usage to show over the same windows.
+    pub fn tokens_since(&self, kind: Kind, since: u64) -> u64 {
+        let (first, kind) = ((since / HOUR) as u32, kind_index(kind));
+        self.buckets.range((first, 0, 0, 0)..).filter(|((_, k, _, _), _)| *k == kind).map(|(_, t)| t.total()).sum()
+    }
+
     pub fn codex_limits(&self) -> Option<CodexLimits> {
         self.codex_limits
     }
@@ -791,7 +799,7 @@ pub fn scan(history: &std::sync::Mutex<History>, home: &Path) {
             }
         }
     }
-    if let Some(db) = opencode::db_path(home) {
+    for db in opencode::db_paths(home) {
         let key = db.to_string_lossy().into_owned();
         seen.push(key.clone());
         let after = history.lock().unwrap().offset(&key).unwrap_or(now.saturating_sub(KEEP_DAYS * DAY));
@@ -800,12 +808,12 @@ pub fn scan(history: &std::sync::Mutex<History>, home: &Path) {
         }
     }
     let plan = claude_plan(home);
-    let mut found = [false; 4];
-    let mut newest = [None; 4];
+    let mut found = [false; 5];
+    let mut newest = [None; 5];
     for (i, kind) in Kind::ALL.into_iter().enumerate() {
         for root in log_roots(home, kind).iter().filter(|r| r.is_dir()) {
             found[i] = true;
-            if matches!(kind, Kind::OpenCode | Kind::Copilot) {
+            if matches!(kind, Kind::OpenCode | Kind::Copilot | Kind::Antigravity) {
                 newest[i] = newest[i].max(newest_mtime(root, 1));
             }
         }
@@ -976,6 +984,17 @@ mod tests {
         assert_eq!(l.session.unwrap().window_ms, Some(CODEX_SESSION_MS));
         assert_eq!(l.week.unwrap().resets_at, Some(1_793_000_000_000));
         assert_eq!(h.last_used(Kind::Codex), Some(T0 + MINUTE));
+    }
+
+    #[test]
+    fn a_tools_use_over_the_last_hours_counts_whole_hours_of_that_tool_only() {
+        let mut h = History::default();
+        let reply = |ts: u64, n: u64| opencode::Reply { ts, model: None, project: None, tokens: Tokens { input: n, output: 0, cache_read: 0, cache_write: 0 } };
+        h.fold_opencode("db", &[reply(T0, 100), reply(T0 - 2 * HOUR, 10), reply(T0 - 6 * HOUR, 1000)], T0);
+        assert_eq!(h.tokens_since(Kind::OpenCode, T0 - 5 * HOUR), 110);
+        assert_eq!(h.tokens_since(Kind::OpenCode, T0 - 7 * HOUR), 1110);
+        assert_eq!(h.tokens_since(Kind::OpenCode, T0 + HOUR), 0);
+        assert_eq!(h.tokens_since(Kind::Codex, 0), 0);
     }
 
     #[test]
