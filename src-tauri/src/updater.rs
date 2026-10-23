@@ -16,7 +16,7 @@ use tauri_plugin_http::reqwest;
 
 use crate::{settings, tray};
 
-const REPO: &str = "doolecg/notifi";
+pub(crate) const REPO: &str = "doolecg/notifi";
 /// The Ed25519 public key (hex) whose private half signs every installer (`scripts/sign-update.mjs`).
 /// An installer is only used when its `.sig` beside it on the release checks out against this key,
 /// so a changed or swapped file is refused even if it came from GitHub.

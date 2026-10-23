@@ -4,8 +4,11 @@
   import { onMount } from 'svelte';
 
   let version = $state('');
+  let crash = $state<{ title: string; time: number } | null>(null);
+  const refreshCrash = () => invoke<typeof crash>('crash_status').then((c) => (crash = c)).catch(() => {});
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
+    refreshCrash();
   });
 </script>
 
@@ -27,7 +30,7 @@
     <span class="name">Not affiliated<small>Notifi is not made by, affiliated with or endorsed by Vorssaint, Anthropic, OpenAI, GitHub, the makers of T3 Code or OpenCode, Microsoft, Spotify, Amazon, Just Eat, Uber, Deliveroo, LRCLIB, Open-Meteo or LibreSpeed. Their names belong to their owners and are only used to say what Notifi works with. AI agents' output can be wrong; check it before relying on it.</small></span>
   </div>
   <div class="row">
-    <span class="name">Your data<small>Most of Notifi works only on this PC. It uses the internet for updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo, only once you set a city), speed tests (LibreSpeed) and share links (your own server). Clipboard history, notes and captures are saved unencrypted on this PC.</small></span>
+    <span class="name">Your data<small>Most of Notifi works only on this PC. It uses the internet for updates (GitHub), lyrics (LRCLIB), weather (Open-Meteo, only once you set a city), speed tests (LibreSpeed) and share links (your own server). Clipboard history, notes and captures are saved unencrypted on this PC. Crash logs stay on this PC unless you choose to report one.</small></span>
   </div>
   <div class="row">
     <span class="name">Deleting files<small>The app cleaner, the uninstaller and Disk space can delete files. Each shows what it will remove and asks first. Anything permanently deleted cannot be undone, so back up what you cannot replace.</small></span>
@@ -38,6 +41,13 @@
   <div class="row">
     <span class="name">Clean room<small>Written only from behaviour specs drawn from public docs and screenshots. No other project's code is read or copied. The name, icon and look are Notifi's own.</small></span>
   </div>
+  {#if crash}
+    <div class="row">
+      <span class="name">Crash log<small>{new Date(crash.time * 1000).toLocaleString()}: {crash.title}. Report opens a GitHub issue in your browser with this log (your user name and folder removed). Nothing is sent unless you submit it there.</small></span>
+      <button class="ghost" onclick={() => invoke('crash_report').then(refreshCrash)}>Report</button>
+      <button class="ghost" onclick={() => invoke('crash_dismiss').then(refreshCrash)}>Dismiss</button>
+    </div>
+  {/if}
   <div class="row">
     <span class="name">Release notes<small>What changed in each version.</small></span>
     <button class="ghost" onclick={() => invoke('open_release_notes')}>Open</button>

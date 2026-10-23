@@ -6,6 +6,7 @@
 - With two or more agents installed, the Island pill and the taskbar agents bar show a count beside the lead logo. Hover it for a list of every agent, or scroll over the logo to switch between them. Clicking a row shows that agent on the pill.
 - A right-click menu on the Island and the taskbar bar: Open or Close Island, AI Agents, Refresh agents and Island settings.
 - Clicking a done or needs-you session opens its T3 Code chat and brings T3 Code forward.
+- Crash logs: if Notifi panics or Windows ends it on an error, a log is saved on this PC. Next start the Island tells you, and Settings, About can open a GitHub issue with the log filled in (your user name and folder removed). Nothing is sent unless you submit that issue.
 
 ## Changed
 

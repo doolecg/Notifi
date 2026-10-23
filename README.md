@@ -191,6 +191,7 @@ Notifi has no account and no server of its own. It is built so that nothing outs
 | Weather ([Open-Meteo](https://open-meteo.com)) | The city you typed, then its coordinates | Off until you type a city; every 15 minutes after |
 | Speed test ([LibreSpeed](https://librespeed.org)) | Test data | Only when you start a test |
 | Share links (a server you set) | The capture or recording you share, and your token | Only when you ask, and only to that server |
+| Crash report (GitHub) | The crash log, with your user name and folder removed, in a new issue you can read before you submit | Only when you click Report in Settings, About. Notifi sends nothing itself. |
 
 winget, Scoop and ffmpeg make their own network calls when Notifi runs them for you.
 

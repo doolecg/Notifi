@@ -9,6 +9,7 @@ mod chat;
 mod catalog;
 mod clipboard;
 mod commandbar;
+mod crash;
 mod energy;
 mod island;
 mod input;
@@ -81,6 +82,7 @@ fn main() {
                 let _ = std::fs::create_dir_all(&dir);
                 let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
             }
+            crash::install(app.handle());
             let path = app.path().app_config_dir()?.join("settings.json");
             let store = settings::Store::load(path);
             let current = store.get();
@@ -114,6 +116,7 @@ fn main() {
             tools::start(app.handle());
             ask::start(app.handle());
             updater::start(app.handle());
+            crash::start(app.handle());
             // The first launch opens settings on the chooser for which features to install.
             if !current.general.setup_done {
                 window::open_settings(app.handle());
@@ -183,6 +186,9 @@ fn main() {
             updater::install_update,
             updater::open_release_page,
             updater::open_release_notes,
+            crash::crash_status,
+            crash::crash_report,
+            crash::crash_dismiss,
             updater::update_notes,
             panel::panel_status,
             window::open_settings_section,
